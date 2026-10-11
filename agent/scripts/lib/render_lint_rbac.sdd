@@ -1,0 +1,64 @@
+# Spec fichier de ./render_lint_rbac.rhai — le thème « rbac » du catalogue de vérifications
+# portées de kube-linter. Le contrat commun d'une vérification (signature, nom, sévérité,
+# kinds non concernés) est possédé par ./render_lint.sdd et n'est pas redit ici.
+
+Spec: LibRenderLintRbac
+
+Platform: librairie de scripts Rhai (moteur vynil-core 0.7.7)
+
+Purpose:
+  Les vérifications dont le sujet est le contrôle d'accès : Role, ClusterRole,
+    RoleBinding, ClusterRoleBinding, comptes de service liés, jokers dans les règles, accès aux
+    secrets, création de pods, liaison à cluster-admin.
+
+Owns:
+  ./render_lint_rbac.rhai
+
+References:
+  ./render_lint.sdd — le contrat d'une vérification, les constats et les itérateurs que ce
+    module utilise.
+  /agent/tests/fixtures/render_lint/catalogue.yaml — l'inventaire qui attribue chaque vérification de
+    l'oracle à un thème et à un statut ; la liste des vérifications de ce module est celle des
+    entrées `theme: rbac` et `status: ported`.
+  /agent/tests/lint_oracle.sdd — le harnais qui compare chaque vérification à l'oracle.
+
+Must:
+  Satisfaire, pour chaque vérification portée du thème, le verdict de l'oracle kube-linter sur
+    les fixtures du catalogue : mêmes objets signalés, même règle, aucun objet signalé en plus
+    ni en moins. Le texte du message est libre mais doit nommer l'objet, la valeur fautive et
+    la correction attendue.
+  Honorer les paramètres de la vérification portant le nom, la casse et la sémantique de ceux
+    de kube-linter, et appliquer les mêmes valeurs par défaut.
+  Ne signaler que ce que la vérification définit : une vérification n'infère aucune règle
+    voisine.
+
+Tasks:
+  [ ] Porter les vérifications du thème par lots, chacune avec sa fixture
+      `/agent/tests/fixtures/render_lint/{nom}/` et son statut mis à jour dans le catalogue ; un lot
+      est livrable seul tant que le harnais d'oracle reste vert.
+  [?] Une vérification de l'oracle qui dépend de ressources externes à la liste d'objets
+      (un `ServiceMonitor` pour des CRD tierces par exemple) : décider si elle est portée sur
+      la seule liste d'objets du test ou marquée `deferred` avec sa raison.
+
+Done when:
+  Chaque entrée `theme: rbac` du catalogue est `ported`, `deferred` avec raison, ou
+    `excluded` avec raison, et le harnais d'oracle ne rapporte aucune divergence pour les
+    entrées portées.
+
+Scenario: wildcard rule is reported
+  Given un ClusterRole dont une règle porte `verbs: ["*"]`
+  When la vérification `wildcard_in_rules` s'exécute
+  Then un constat de règle `wildcard-in-rules` nomme le ClusterRole
+  Test @wildcard-rule-is-reported
+
+Scenario: cluster-admin binding is reported
+  Given un ClusterRoleBinding vers le ClusterRole `cluster-admin`
+  When la vérification `cluster_admin_role_binding` s'exécute
+  Then un constat nomme le ClusterRoleBinding
+  Test @cluster-admin-binding-is-reported
+
+Scenario: read access to secrets is reported
+  Given un Role autorisant `get` sur la ressource `secrets`
+  When la vérification `access_to_secrets` s'exécute
+  Then un constat nomme le Role
+  Test @read-access-to-secrets-is-reported

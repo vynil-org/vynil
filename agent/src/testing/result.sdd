@@ -94,6 +94,18 @@ Must:
   Reconstruire toute sortie à chaque appel depuis les seuls enregistrements stockés : @to_junit construit
     un @junit_report::ReportBuilder flambant neuf à chaque appel, donc des appels répétés ne diffèrent
     que par le champ `timestamp` de la suite.
+  Tenir un inventaire de suppressions distinct des enregistrements : @add_suppressions
+    empile des @Suppression dans l'ordre d'appel, sans effet sur @total_asserts,
+    @total_passed, @total_failed ni @all_passed — une suppression est un fait à relire, pas
+    un résultat.
+  Rendre l'inventaire seulement quand il n'est pas vide, et ne rien changer aux trois formes
+    figées sinon : @to_text ajoute après la ligne `Results:` une ligne
+    `Suppressed: {n}` puis, par suppression, `  [SKIP] {test}: {rule} {kind}
+    {namespace}/{name}: {reason}` (`(no reason)` si la raison est absente, `{kind} {name}`
+    sans namespace) ; @to_json ajoute après `summary` une clé `suppressions`, tableau
+    d'objets `{test, rule, kind, namespace, name, path, reason, origin}` aux champs
+    absents rendus `null` ; @to_junit pose sur le `<testsuite>` du test concerné un
+    `<system-out>` listant ses suppressions une par ligne, et aucun `<system-out>` ailleurs.
 
 Exposes:
   @TestResult — enregistrement `#[derive(@Clone, @Debug, @Serialize)]`, trois champs pub :
@@ -107,6 +119,13 @@ Exposes:
     @std::time::Duration) -> @() ; lecteurs @total_tests (const), @total_asserts,
     @total_passed, @total_failed -> @usize, @all_passed -> @bool, @to_text, @to_json,
     @to_junit -> @String — chaque lecteur @&self et `#[must_use]`.
+  @Suppression — `#[derive(@Clone, @Debug, @Serialize)]`, champs publics : @test, @rule,
+    @kind, @name (@String) ; @namespace, @path, @reason, @origin (@Option<@String>, absents
+    rendus `null` en JSON) ;
+    publiquement constructible, produit par ./lint/finding.sdd.
+  @TestResultCollector::add_suppressions(@Vec<@Suppression>) -> `()`,
+    @TestResultCollector::suppressions(&self) -> `&[@Suppression]`, `#[must_use]`, et
+    @TestResultCollector::total_suppressed(&self) -> @usize.
   Surface du crate : @TestResultCollector côté client via `pub use` dans ./mod.rs et /agent/src/lib.rs.
 
 Accepts:
@@ -154,6 +173,7 @@ Must not:
     print-then-err figée.
 
 Tasks:
+  [ ] Couvrir les scénarios d'inventaire de suppressions ci-dessous par des tests de même nom.
   [ ] Cartographier les scenarios sans test ci-dessous vers des tests du même nom, en étendant les six
       existants : zero-assert-record-vacuously-passes, text-shape-desc-parens-blank-lines-and-fixed-decimals
       (un contrôle de chaîne complète là où to_text_contains_results_summary ne fait que du contains),
@@ -234,3 +254,22 @@ Scenario: junit time is the equal whole-nanosecond share
     est la somme des parts, pas la durée stockée
   Given un enregistrement sans assert — un `<testsuite>` auto-fermé avec `tests="0"` et `time="0"`
   Aucun test cartographié n'existe.
+
+Scenario: suppressions do not touch the verdict
+  Given un collector avec un test entièrement passant et une suppression ajoutée
+  Then @all_passed vaut true et les compteurs sont inchangés
+  Test @suppressions-do-not-touch-the-verdict
+
+Scenario: the three forms are unchanged without suppressions
+  Given un collector sans aucune suppression
+  When @to_text, @to_json et @to_junit s'exécutent
+  Then leur sortie est celle d'avant l'inventaire, octet pour octet
+  Test @forms-unchanged-without-suppressions
+
+Scenario: suppressions are rendered in the three forms
+  Given une suppression de règle `latest-tag` sur le Deployment `web` du namespace `app`,
+    raison `legacy image`
+  When @to_text, @to_json et @to_junit s'exécutent
+  Then le texte porte `Suppressed: 1` et une ligne `[SKIP]`, le JSON une clé `suppressions`
+    d'un élément, et le JUnit un `<system-out>` sur la suite du test
+  Test @suppressions-rendered-in-three-forms

@@ -1,0 +1,55 @@
+# Spec de répertoire du sous-système de validation de schéma des objets Kubernetes rendus.
+# Il fournit un mécanisme (valider un objet contre un schéma) et jamais une politique
+# (quoi valider, avec quelle sévérité) : la politique appartient à la distribution, qui
+# l'exprime dans son script de lint (./../lint/lint.sdd).
+
+Spec: Schema
+
+Platform: Rust
+
+Purpose:
+  Répondre à la question « cet objet est-il conforme au schéma de son apiVersion/kind ? »
+    pour les objets que produit un test de package, sans cluster. Les schémas viennent de
+    trois sources hiérarchisées : les CRD du package, un répertoire de schémas fourni par la
+    distribution, puis les types natifs Kubernetes embarqués dans le binaire. Le résultat est
+    une liste d'erreurs de validation portant un chemin et un message ; la décision d'en faire
+    une erreur, un avertissement ou rien appartient à l'appelant.
+
+Structure:
+  ./dialect.rs: normalisation de dialecte (CRD et types natifs vers JSON Schema 2020-12),
+    mode strict, retrait des `null` — pur, sans E/S (./dialect.sdd)
+  ./native.rs: table apiVersion/kind vers schéma natif généré depuis `k8s-openapi` (./native.sdd)
+  ./registry.rs: chargement des schémas externes, hiérarchie des sources, cache de
+    validateurs compilés (./registry.sdd)
+  ./rhai.rs: enregistrement des fonctions `schema_*` dans le moteur Rhai (./rhai.sdd)
+  ./mod.rs: déclaration des modules et ré-exports — shim sans spec de fichier
+
+Can modify:
+  ../mod.rs: déclaration `pub mod schema;`
+  /Cargo.toml: bloc `[workspace.dependencies]` uniquement, pour `jsonschema`
+  /agent/Cargo.toml: dépendance `jsonschema` de la crate
+
+References:
+  ./../lint/lint.sdd — le consommateur : le script de lint de la distribution appelle les
+    fonctions `schema_*` et décide de la sévérité des résultats.
+  /linting.sdd — le harnais clippy/rustfmt que ce code doit satisfaire sans `allow`.
+
+Must:
+  Rester sans politique : aucun fichier du répertoire ne contient de sévérité, de règle
+    activée par défaut, de liste d'exclusions ni de message orienté « bonne pratique ». Un
+    objet dont le schéma est inconnu est un fait (`known` faux), pas une erreur.
+  Ne jamais accéder au réseau ni au système de fichiers hors des répertoires de schémas
+    explicitement fournis : aucune résolution de `$ref` distante ou fichier n'est autorisée
+    dans un schéma, quel que soit son contenu.
+  Rester déterministe : deux appels avec les mêmes entrées rendent les mêmes erreurs dans le
+    même ordre.
+
+Depends on:
+  `k8s-openapi` avec la feature `schemars` (déjà activée au niveau workspace) — source des
+    schémas natifs ; la version Kubernetes ciblée est celle de la feature de compilation.
+  `jsonschema` `0.30` sans fonctionnalités par défaut — moteur de validation, version épinglée
+    par le spike de validation.
+
+Done when:
+  Chaque spec fichier du répertoire a ses scénarios couverts par des tests du même nom et
+    `cargo test -p agent`, clippy et `cargo +nightly fmt --check` sont verts.

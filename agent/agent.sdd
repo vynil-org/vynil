@@ -51,7 +51,9 @@ References:
     `.specdd/bootstrap.project.md` : `./src/lib.rs` (4 lignes : la paire d'attributs partagée
     de `/linting.sdd` + `pub mod testing;` ; sa cible `[lib]` est nommée `client` dans ./Cargo.toml —
     le chemin qu'empruntent le binaire et les tests d'intégration pour atteindre le harnais)
-    et `./src/testing/mod.rs` (mods privés + quatre `pub use` uniquement). Les `reconfigure.rs`
+    et `./src/testing/mod.rs` (déclarations `pub mod` de `handler`, `result`, `vyniltest`,
+    `vyniltestset`, `lint` et `schema`, plus quatre `pub use`, rien d'autre ; `lint` et `schema`
+    sont déclarés à leur livraison, tâche #4). Les `reconfigure.rs`
     service/tenant sont HORS DU GRAPHE DE BUILD (`//mod reconfigure;`) et leurs specs les gèlent
     dormants ; la copie tenant ne compile même pas (formats @PathBuf en `{}` nus, E0277).
 
@@ -84,3 +86,6 @@ Tasks:
   [ ] #3 Réconcilier `/docs/cli.md` avec les barèmes de codes de sortie et l'aide des flags
       gelés dans les nouvelles specs (la doc n'annonce que 0/1/2 ; les barèmes vont désormais
       de 1–5 ; document vide `template_crds` et coquille `High-availibity` attendent une passe doc/décision).
+  [ ] #4 Référencer `./src/testing/schema/schema.sdd` et `./src/testing/lint/lint.sdd` (et leurs
+      specs fichier) dans `References` à leur livraison, et décrire dans `Structure` les deux
+      sous-répertoires de `./src/testing/`.

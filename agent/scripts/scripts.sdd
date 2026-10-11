@@ -80,6 +80,9 @@ Tasks:
       réécriture d'une spec tier-1 corrige ses pointeurs d'abord.
   [ ] Tenu à jour des References de couverture à chaque script ajouté/retiré/renommé (l'invariant de
       Must est mécanique : la boucle de recensement ne doit jamais retrouver d'orphelin).
+  [ ] Mettre à jour les décomptes (120 scripts, 16 utilitaires de `./lib/`) à la livraison des
+      six modules `render_lint*.rhai` de `./lib/` (noyau, schéma, quatre thèmes), chacun avec
+      sa spec même-basename déjà posée.
   [ ] Décider le sort de `./agent/scripts/packages/test.rhai` (code mort, gelé dans sa
       spec même-nom) et du scan boxes (mismatch credentials).
 
