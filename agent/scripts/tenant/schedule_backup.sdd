@@ -84,11 +84,9 @@ Raises:
   Dans le @try (chemin marqueur) : une levée brute de @bctx::run (`status.vitals` mort/absent,
     clé de contexte `instance` manquante, la lecture @list_meta des Secrets de la branche
     Cluster — voir Raises de sa spec), d'un des deux appels @register_partial_dir sur un
-    répertoire de partials cassé/illisible, de @render_from ou @yaml_decode_multi, de l'argument
+    répertoire de partials cassé/illisible, de @render_from ou @yd::decode, de l'argument
     `context.tenant.namespaces` lu une fois la clé `tenant` disparue (property-on-`()`),
-    l'erreur moteur d'un document non-map arrivant au dot `.metadata.namespace` de
-    @install_allowed_obj (aucun filtre de qualification à la @get_objects ne tourne sur ce
-    stream), le throw de @install_allowed_obj
+    le throw de @install_allowed_obj
     `kind: ${obj.kind} is unknown from the apiServer.`, ou un KubeError d'apply — devient
     @set_status_schedule_backup_failed(reason)
     (chaîne verbatim ; non-chaîne via @json_encode) puis `throw;` : la lane install n'atteint
@@ -134,7 +132,7 @@ Must:
     @bctx::run (@instance, @context, `false`) → @import_run("schedule_backup_prepare") + fusion
     map → @new_hbs → @register_partial_dir(`context.template_dir`) →
     @register_partial_dir(`${context.package_dir}/pods`) gardé par @is_dir →
-    @yaml_decode_multi de @render_from (`"{{> cronbackup.yaml }}"`, @context) →
+    @yd::decode de @render_from (`"{{> cronbackup.yaml }}"`, @context) →
     @dir::install_allowed_obj(`obj`, `context.tenant.namespaces`,
     `instance.metadata.namespace`) par document dans l'ordre du stream } → sur levée
     @set_status_schedule_backup_failed + `throw;` → @import_run("schedule_backup_post") +
@@ -205,7 +203,7 @@ Depends on:
   API moteur vynil-core 0.8.0 — le shim @import_run, @new_hbs + @register_partial_dir +
     @render_from du type `"HandleBars"` (/common/src/handlebarshandler.sdd, helpers
     `json_to_str`/`selector_from_ctx`/`to_json` chevauchant le même moteur), @is_dir,
-    @yaml_decode_multi, @type_of, @json_encode ; les armes de `switch type_of(e)` sont du rhai
+    @yd::decode, @type_of, @json_encode ; les armes de `switch type_of(e)` sont du rhai
     nu.
   /common/src/instancetenant.sdd + /common/src/instance_macros.sdd — le pont
     @set_status_schedule_backup_failed sur @TenantInstance et la condition
@@ -213,6 +211,8 @@ Depends on:
     constructeur @Script qui monte tout ce qui précède.
 
 References:
+  ../lib/yaml_docs.sdd — le décodeur multi-document gardé (@yd::decode, `import "yaml_docs" as yd`)
+    que ce fichier utilise ; seules les cartes y survivent.
   ./install.rhai + ./install.sdd — l'appelant unique : le gate de la branche backup (status
     vitals + `context.namespace.use_backup` + Secret `backup-settings` lisible dans
     `context.instance.namespace`), l'injection (instance, context), la dépendance commentée

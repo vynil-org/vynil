@@ -50,14 +50,14 @@ Raises:
     `api = @k8s_resource("CustomResourceDefinition")` — delta avec la famille dont
     seules les levées de hooks sortent du try.
   - Dans le try — toute levée (@read_dir d'un dossier disparu après le gate, @file_read
-    d'une entrée-dossier à suffixe manifeste, @yaml_decode_multi, rendu HBS, @get_meta
+    d'une entrée-dossier à suffixe manifeste, @yd::decode, rendu HBS, @get_meta
     NotFound si le CRD a disparu depuis le snapshot, @replace en conflit, @create
     already_exists, conversion de la liste par @set_status_crds, @delete d'un CRD
     déjà absent → NotFound NON toléré) passe par le catch : @set_status_crd_failed
     (string verbatim, sinon texte @json_encode), puis relance à cru.
   - La non-tolérance du NotFound au `api.delete(old)` est un delta avec la tolérance
     NotFound du @dir::remove de la lib (famille).
-  - Document non-map : la lecture `crd.kind` lève et tombe dans le même catch. CRD sans
+  - Document non-map : écarté en amont par @yd::decode (jamais vu par la boucle). CRD sans
     `metadata` : `.metadata.name` lève aussi (le rend non-posé, jamais warn-and-drop
     comme la lib). Voir Tasks.
 
@@ -107,7 +107,7 @@ Must:
     @update_k8s_crd_cache que l'orchestrateur enchaîne après ce stage (./install.sdd),
     jamais par une attente d'ici.
   Rester sans aucun import de module : seul stage du répertoire à n'appeler ni `dir` ni
-    `wait`, tous les globaux (@read_dir, @file_read, @yaml_decode_multi, @yaml_encode,
+    `wait`, tous les globaux (@read_dir, @file_read, @yd::decode, @yaml_encode,
     @k8s_resource, @type_of, @import_run, @json_encode) étant utilisés en direct.
 
 Must not:
@@ -123,7 +123,7 @@ Depends on:
   L'API d'engine vynil-core 0.8.0 montée par @Script (/common/src/rhaihandler.sdd) :
     @k8s_resource argument unique (cluster-scope) et les méthodes K8sGeneric
     @get_meta/@replace/@create/@exist/@list_meta/@delete du registrar `k8s` core ;
-    @read_dir/@file_read, @yaml_decode_multi/@yaml_encode, @log_warn/@log_debug ;
+    @read_dir/@file_read, @yd::decode/@yaml_encode, @log_warn/@log_debug ;
     @import_run (frontière skip-absent vs rethrow gelée ./install.sdd), @type_of,
     @json_encode.
   /common/src/handlebarshandler.sdd — @new_hbs, @register_partial_dir,
@@ -134,6 +134,8 @@ Depends on:
     `cluster.crds`, `config_dir` et `package_dir` ; contrat amont non re-décrit.
 
 References:
+  ../lib/yaml_docs.sdd — le décodeur multi-document gardé (@yd::decode, `import "yaml_docs" as yd`)
+    que ce fichier utilise ; seules les cartes y survivent.
   ./install_stages.sdd — squelette familial partagé (hooks `_pre`/`_post`, statut
     pluriel/marqueur singulier, fusions `map`, `let tmp` jamais relu, valeur terminale) :
     cité, non re-spécifié ici.
@@ -167,9 +169,9 @@ Tasks:
   [?] Le NotFound du `api.delete(old)` d'un CRD déjà retiré à la main aborte l'install via
       marqueur, quand @dir::remove familial tolère NotFound. Décider la tolérance
       symétrique.
-  [?] Documents non-map (levée sur @kind) et CRD sans `metadata` (levée sur
-      `.metadata.name`) abortent le stage quand la lib warn-and-drop leurs équivalents.
-      Décider un garde de drop symétrique.
+  [?] CRD sans `metadata` (levée sur `.metadata.name`) aborte le stage quand la lib
+      warn-and-drop son équivalent. Décider un garde de drop symétrique. (Les documents non-map
+      sont déjà écartés par @yd::decode.)
   [?] @read_dir d'un dossier disparu entre le gate @is_dir et l'import : levée ou liste
       vide — même question ouverte que ./install_stages.sdd, à trancher dans
       ./../lib/install_from_dir.sdd puis citer ici.

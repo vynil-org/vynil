@@ -79,8 +79,7 @@ Raises:
   Dans le @try (chemin du marqueur) : une levée brute de @bctx::run (`status.vitals` mort/absent,
     clé de contexte `instance` manquante, la lecture @list_meta des Secrets de la Cluster-branch —
     voir ses Raises), de l'un des deux appels @register_partial_dir sur un gabarit cassé, de
-    @render_from et @yaml_decode_multi, l'erreur moteur d'un document non-map atteignant le dot
-    `kind` de @dir::install_obj, son throw `kind: ${obj.kind} is unknown from the apiServer.`, ou
+    @render_from et @yd::decode, son throw `kind: ${obj.kind} is unknown from the apiServer.`, ou
     un timeout de @wait::all — devient @set_status_init_failed(reason) (chaîne verbatim ; non-string
     via @json_encode) puis `throw;` : l'installation tenant avorte sans bucket suivant ni close,
     exit 1 (/agent/src/tenant/install.sdd), avec la condition `InitFrom`/`Warning` `InitFromFail`
@@ -115,7 +114,7 @@ Handles:
 Must:
   Exécuter exactement : @import_run("init_from_pre") → garde de fusion-map → @try { @import_run
     ("init_from_prepare") + fusion-map → @new_hbs + @register_partial_dir(`context.template_dir`) →
-    @register_partial_dir(`${context.package_dir}/pods`) conditionnel → @yaml_decode_multi de
+    @register_partial_dir(`${context.package_dir}/pods`) conditionnel → @yd::decode de
     @render_from(`"{{> init_job.yaml }}"`, @bctx::run(instance, context, `true`)) → gate dedup Job
     par document → @dir::install_obj(obj, true, instance.metadata.namespace, false) pour chaque
     document appliqué → @wait::all(applied_objs, `20*60`) } → sur levée : @set_status_init_failed +
@@ -187,7 +186,7 @@ Depends on:
     pas gelée ici.
   API moteur vynil-core 0.8.0 — shim @import_run, @new_hbs, @register_partial_dir, @render_from
     (nom-de-partiel = nom de fichier moins `.hbs`, écrasement silencieux de même nom ; /common/src/handlebarshandler.sdd),
-    @is_dir, @yaml_decode_multi, @k8s_resource(kind, ns) + @exist, @list, @log_warn, @json_encode,
+    @is_dir, @yd::decode, @k8s_resource(kind, ns) + @exist, @list, @log_warn, @json_encode,
     @type_of.
   ./../../../common/src/instancetenant.sdd — le pont `set_status_init_failed` de @tenant_rhai_register
     (@TenantInstance::rhai_set_status_init_failed) et le stage @ConditionsType `InitFrom` porté par
@@ -196,6 +195,8 @@ Depends on:
     tout ce qui précède.
 
 References:
+  ../lib/yaml_docs.sdd — le décodeur multi-document gardé (@yd::decode, `import "yaml_docs" as yd`)
+    que ce fichier utilise ; seules les cartes y survivent.
   ./install.rhai + ./install.sdd — le seul appelant : condition du gate, injection (instance,
     context) et discard du contexte retourné, gelés là ; /agent/src/tenant/install.sdd — la lane
     exit-1 où toute levée d'ici atterrit.

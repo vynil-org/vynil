@@ -51,9 +51,9 @@ Raises:
     encadrent les poses. Ici toute levée sort à cru et aborte le stream en cours :
     hooks livrés dont le `template` ou le `run` de repli lève, @new_hbs,
     @register_partial_dir/@register_helper_dir, @read_dir d'un dossier disparu après le
-    gate, @file_read d'une entrée-dossier à suffixe manifeste, @yaml_decode_multi d'un
-    YAML cassé, @render_named d'un `.hbs` cassé, et la lecture de la propriété `kind`
-    sur un document décodé non-map (scalaire ou string). Les documents déjà imprimés
+    gate, @file_read d'une entrée-dossier à suffixe manifeste, @yd::decode d'un
+    YAML cassé et @render_named d'un `.hbs` cassé. Les documents décodés non-map (vides,
+    scalaires, listes) sont écartés par @yd::decode et ne lèvent pas. Les documents déjà imprimés
     restent sur stdout ; la lane Rust system tombe en sortie 3, déviation gelée par
     ./template.sdd et /agent/src/template/system.sdd (citées).
 
@@ -66,13 +66,13 @@ Handles:
     ouvert de ./template.sdd, hérité sans re-tranche). Zéro slot `_add`. Absents, le skip
     renvoie `()` non fusionné ; tout retour non-`map` n'est pas fusionné.
   - Fichiers triés par suffixe sur le chemin complet rendu par @read_dir :
-    `.yaml`/`.yml` décodés bruts par @yaml_decode_multi ; `.yaml.hbs`/`.yml.hbs` rendus
+    `.yaml`/`.yml` décodés bruts par @yd::decode ; `.yaml.hbs`/`.yml.hbs` rendus
     d'abord puis décodés ; tout le reste devient le tableau vide `[]` sans log — la
     boucle de documents ne court pas.
   - Document de `kind` absent (map sans la propriété, se lisant `()`) ou différent de
     `CustomResourceDefinition` : séparateur `---` quand même imprimé, @log_warn du
     littéral `# Ignoring an item as it is not a CRD` et @log_debug du @yaml_encode,
-    aucun document émis. Un document non-map ne tombe pas dans ce bras : il lève (Raises).
+    aucun document émis. Un document non-map n'atteint jamais ce bras : @yd::decode l'écarte.
   - Aucun `metadata`, aucun nom, aucune liste d'inventaire lus : la classification ne
     porte que sur `kind`.
 
@@ -102,7 +102,7 @@ Must:
     @set_status_crd_failed, méthodes de la lane vivante), au-delà des deux seuls @print
     du switch.
   Rester sans aucun import de module ni effet de bord au chargement : tous les globaux
-    (@read_dir, @file_read, @yaml_decode_multi, @yaml_encode, @new_hbs et consorts
+    (@read_dir, @file_read, @yd::decode, @yaml_encode, @new_hbs et consorts
     handlebars, @import_template, @type_of, @log_warn, @log_debug, @print) appelés en direct.
   Garder l'émission non triée : ordre des fichiers de @read_dir, puis ordre de
     décodage dans le fichier ; la reproductibilité octet-pour-octet repose sur l'ordre
@@ -121,13 +121,15 @@ Depends on:
     @register_helper_dir, @render_named et leurs sémantiques de rendu (strict mode,
     no-escape, réenregistrement) qui ne sont pas re-décrites ici.
   L'API d'engine vynil-core 0.8.0 montée par @Script (/common/src/rhaihandler.sdd) :
-    @import_template avec fallback `run`, @read_dir, @file_read, @yaml_decode_multi,
+    @import_template avec fallback `run`, @read_dir, @file_read, @yd::decode,
     @yaml_encode, @type_of, @log_warn, @log_debug et le print hook vers stdout ; la
     frontière skip-absent contre relance-erreur est gelée dans ./template.sdd.
   ./context.sdd (+ ./../lib/build_context.rhai) — producteur de `config_dir` et
     `package_dir` ; contrat amont non re-décrit.
 
 References:
+  ../lib/yaml_docs.sdd — le décodeur multi-document gardé (@yd::decode, `import "yaml_docs" as yd`)
+    que ce fichier utilise ; seules les cartes y survivent.
   ./template.sdd — l'orchestrateur : le gate `crds` en PREMIER, l'appel @import_run, la
     fusion `map` du retour, l'ordre crds-avant-systems et l'abort mid-stream vers la
     sortie 3 amont — tout cela gelé là-bas, cité.
@@ -168,10 +170,6 @@ Tasks:
       du préfixe `# ` du warn, qui sent le commentaire de flux mais ne tombe que dans
       les logs). Le comportement actuel est gelé en Must du côté script ; la tranche se
       prend là-bas, ici on la cite.
-  [?] Document non-map levant (@kind sur un scalaire) quand la lib de la lane bucketisée
-      warn-and-drop ses invalides : le double vivant porte le même point ouvert
-      (./../service/install_crds.sdd) ; trancher une fois la garde symétrique pour les
-      deux moitiés du dossier `crds`.
   [?] Le `crds` rendu reste l'apanage du seul system (dissymétrie des trois kinds,
       cross-ref le [?] de ./template.sdd) : cette spec ne vit que si la décision
       crds-in-render-everywhere-or-system-special-case tombe en faveur de l'ordre
@@ -208,13 +206,15 @@ Scenario: suffixe hors manifeste et YAML cassé
     contenu décode en erreur
   When @run atteint le premier puis le second
   Then le premier ne produit ni log ni émission — tableau vide — et la levée de
-    @yaml_decode_multi du second traverse sans rattrapage : stream coupé, documents déjà
+    @yd::decode du second traverse sans rattrapage : stream coupé, documents déjà
     imprimés laissés sur stdout, ./template.sdd avorte vers la sortie 3
   Aucun test mappé (Tasks)
 
-Scenario: document scalaire aborte le rendu
-  Given un `.yaml` décodant en un document scalaire non-map
-  When la boucle lit sa propriété `kind`
-  Then la levée de lecture de propriété sort à cru (aucun try, aucun warn, aucun
-    séparateur de plus) et avorte le run comme une casse de rendu
-  Aucun test mappé (Tasks) ; cross-ref le [?] de garde symétrique (Tasks)
+Scenario: document scalaire ou vide ignoré
+  Given un `.yaml` décodant en un document scalaire, ou un `.yaml.hbs` rendant un document
+    vide entre deux `---`
+  When @yd::decode est appelé
+  Then le document est écarté (log_debug) : aucun `kind` n'est lu dessus, aucune levée,
+    aucun séparateur imprimé pour lui
+  Couvert côté lib par les tests `yaml_docs_*` de /agent/tests/rhai_lib.rs ; aucun test
+    de la boucle elle-même (Tasks)

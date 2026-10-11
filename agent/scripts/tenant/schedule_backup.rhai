@@ -1,5 +1,6 @@
 import "backup_context" as bctx;
 import "install_from_dir" as dir;
+import "yaml_docs" as yd;
 
 fn run(instance, context) {
     let ctx = import_run("schedule_backup_pre", instance, context);
@@ -17,7 +18,7 @@ fn run(instance, context) {
         if is_dir(`${context.package_dir}/pods`) {
             hbs.register_partial_dir(`${context.package_dir}/pods`);
         }
-        let all = yaml_decode_multi(hbs.render_from("{{> cronbackup.yaml }}", context));
+        let all = yd::decode(hbs.render_from("{{> cronbackup.yaml }}", context));
         for obj in all {
             dir::install_allowed_obj(obj, context.tenant.namespaces, instance.metadata.namespace);
         }

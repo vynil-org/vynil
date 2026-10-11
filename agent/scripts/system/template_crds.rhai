@@ -1,3 +1,4 @@
+import "yaml_docs" as yd;
 fn run(instance, context) {
     let ctx = import_template("install_crds_pre", instance, context);
     if type_of(ctx) == "map" {
@@ -9,9 +10,9 @@ fn run(instance, context) {
     hbs.register_helper_dir(`${context.package_dir}/handlebars/helpers`);
     for file in read_dir(`${context.package_dir}/crds`) {
         let crds = if file.ends_with(".yaml") || file.ends_with(".yml") {
-            yaml_decode_multi(file_read(file))
+            yd::decode(file_read(file))
         } else if file.ends_with(".yaml.hbs") || file.ends_with(".yml.hbs") {
-            yaml_decode_multi(hbs.render_named(file, file_read(file), context))
+            yd::decode(hbs.render_named(file, file_read(file), context))
         } else {[]};
         for crd in crds {
             if crd.kind == "CustomResourceDefinition" {

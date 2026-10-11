@@ -69,9 +69,7 @@ Raises:
   Dans le @try (voie marqueur) : une levée brute de @bctx::run (`status.vitals` mort/absent, clé
     `instance` absente du contexte, la lecture @list_meta des Secrets de la branche Cluster —
     voir les Raises de sa spec), de l'un ou l'autre appel @register_partial_dir sur un répertoire
-    de partials cassé/illisible, de @render_from ou @yaml_decode_multi, l'erreur moteur d'un
-    document non-carte atteignant le `.kind` pointé de @install_obj (aucun filtre de
-    qualification style @get_objects ne court sur ce flux), le throw
+    de partials cassé/illisible, de @render_from ou @yd::decode, le throw
     `kind: ${obj.kind} is unknown from the apiServer.` de @install_obj, ou un KubeError
     d'apply — devient
     @set_status_schedule_backup_failed(reason) (chaîne verbatim ; non-chaîne via @json_encode)
@@ -110,7 +108,7 @@ Must:
   Exécuter exactement : @import_run("schedule_backup_pre") + garde de fusion de carte → @try {
     @bctx::run (instance, context, `false`) → @import_run("schedule_backup_prepare") + fusion de
     carte → @new_hbs → @register_partial_dir(`context.template_dir`) →
-    @register_partial_dir(`${context.package_dir}/pods`) gardé par @is_dir → @yaml_decode_multi
+    @register_partial_dir(`${context.package_dir}/pods`) gardé par @is_dir → @yd::decode
     de @render_from (`"{{> cronbackup.yaml }}"`, @context) → @dir::install_obj(obj, `true`,
     instance.metadata.namespace, `false`) par document dans l'ordre du flux } → sur levée
     @set_status_schedule_backup_failed + `throw;` → @import_run("schedule_backup_post") + fusion
@@ -175,7 +173,7 @@ Depends on:
   API moteur vynil-core 0.8.0 — le shim @import_run, @new_hbs + @register_partial_dir +
     @render_from du type `"HandleBars"` (/common/src/handlebarshandler.sdd, helpers
     `json_to_str`/`selector_from_ctx`/`to_json` surfant sur le même moteur), @is_dir,
-    @yaml_decode_multi, @type_of, @json_encode ; les branches `switch type_of(e)` sont du rhai
+    @yd::decode, @type_of, @json_encode ; les branches `switch type_of(e)` sont du rhai
     ordinaire.
   /common/src/instanceservice.sdd + /common/src/instance_macros.sdd — le pont
     @set_status_schedule_backup_failed et la condition `ScheduleBackup`/`ScheduleBackupFailed`
@@ -183,6 +181,8 @@ Depends on:
     précède.
 
 References:
+  ../lib/yaml_docs.sdd — le décodeur multi-document gardé (@yd::decode, `import "yaml_docs" as yd`)
+    que ce fichier utilise ; seules les cartes y survivent.
   ./install.rhai + ./install.sdd — l'unique appelant : le gate de la branche backup (status
     vitals + `use_backup` + Secret `backup-settings` lisible), l'injection (instance, context) et
     le rejet du contexte retourné, gelés là ; /agent/src/service/install.sdd — le lane d'erreur

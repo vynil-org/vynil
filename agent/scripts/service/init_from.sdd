@@ -70,9 +70,8 @@ Raises:
   Dans le @try (chemin du marqueur) : une levée brute de @bctx::run (`status.vitals` morte/
     absente, clé `instance` manquante dans le context, la lecture @list_meta des Secrets de la
     branche Cluster — voir la section Raises de sa spec), de l'un ou l'autre appel
-    @register_partial_dir sur un template cassé, de @render_from et @yaml_decode_multi,
-    l'erreur moteur d'un document non-map atteignant le point `kind` de @dir::install_obj, son
-    throw `kind: ${obj.kind} is unknown from the apiServer.`, ou un timeout de @wait::all —
+    @register_partial_dir sur un template cassé, de @render_from et @yd::decode,
+    le throw `kind: ${obj.kind} is unknown from the apiServer.`, ou un timeout de @wait::all —
     devient @set_status_init_failed(reason) (chaîne verbatim ; non-chaîne via @json_encode)
     puis `throw;` : la lane install ne continue vers aucun bucket ultérieur et sort en 1
     (./install.sdd), avec la condition `InitFrom`/`Warning` `InitFromFail` écrite
@@ -110,7 +109,7 @@ Must:
   Exécuter exactement : @import_run("init_from_pre") → garde de fusion map → @try {
     @import_run("init_from_prepare") + fusion map → @new_hbs +
     @register_partial_dir(`context.template_dir`) → @register_partial_dir
-    (`${context.package_dir}/pods`) conditionnel → @yaml_decode_multi de
+    (`${context.package_dir}/pods`) conditionnel → @yd::decode de
     @render_from(`"{{> init_job.yaml }}"`, @bctx::run(instance, context, `true`)) → gate de
     dédup Job par document → @dir::install_obj(obj, true, instance.metadata.namespace, false)
     pour chaque document appliqué → @wait::all(applied_objs, `20*60`) } → sur levée :
@@ -177,13 +176,15 @@ Depends on:
     elle-même est propriété du template, pas gelée ici.
   API moteur vynil-core 0.8.0 — shim @import_run, @new_hbs, @register_partial_dir,
     @render_from (nom de partiel = nom de fichier moins `.hbs`, écrasement silencieux de même
-    nom ; /common/src/handlebarshandler.sdd), @is_dir, @yaml_decode_multi,
+    nom ; /common/src/handlebarshandler.sdd), @is_dir, @yd::decode,
     @k8s_resource(kind, ns) + @exist, @list, @log_warn, @json_encode, @type_of.
   /common/src/instanceservice.sdd + /common/src/instance_macros.sdd — le pont
     @set_status_init_failed et la condition `InitFrom`/`InitFromFail` qu'il patche ;
     /common/src/rhaihandler.sdd — le constructeur @Script qui monte tout ce qui précède.
 
 References:
+  ../lib/yaml_docs.sdd — le décodeur multi-document gardé (@yd::decode, `import "yaml_docs" as yd`)
+    que ce fichier utilise ; seules les cartes y survivent.
   ./install.rhai + ./install.sdd — le seul appelant : condition du gate, injection
     (instance, context) et rejet du context retourné, gelés là ;
     /agent/src/service/install.sdd — la lane exit-1 où atterrissent toutes les levées d'ici.

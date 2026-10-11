@@ -1,6 +1,7 @@
 import "backup_context" as bctx;
 import "install_from_dir" as dir;
 import "wait" as wait;
+import "yaml_docs" as yd;
 
 fn run(instance, context) {
     let ctx = import_run("init_from_pre", instance, context);
@@ -17,7 +18,7 @@ fn run(instance, context) {
         if is_dir(`${context.package_dir}/pods`) {
             hbs.register_partial_dir(`${context.package_dir}/pods`);
         }
-        let all = yaml_decode_multi(hbs.render_from("{{> init_job.yaml }}", bctx::run(instance, context, true)));
+        let all = yd::decode(hbs.render_from("{{> init_job.yaml }}", bctx::run(instance, context, true)));
         let applied_objs = [];
         for obj in all {
             let to_apply = true;

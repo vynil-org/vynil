@@ -4207,3 +4207,114 @@ fn clean_metadata_removes_all_helm_sh_annotations() {
         "clean_metadata doit supprimer TOUTES les annotations contenant 'helm.sh', y compris resource-policy"
     );
 }
+
+#[test]
+fn yaml_docs_documents_vides_entre_separateurs_ignores() {
+    let mut rhai = make_lib_script();
+    let result = rhai
+        .eval(
+            r#"
+        import "yaml_docs" as yd;
+
+        yd::decode("---\n---\nkind: A\nmetadata: {name: a}\n---\n\n---\nkind: B\nmetadata: {name: b}\n")
+    "#,
+        )
+        .unwrap();
+
+    let docs = result.into_array().unwrap();
+    assert_eq!(docs.len(), 2, "exactement deux cartes attendues");
+    let kinds: Vec<String> = docs
+        .into_iter()
+        .map(|d| {
+            d.try_cast::<rhai::Map>()
+                .unwrap()
+                .get("kind")
+                .unwrap()
+                .clone()
+                .into_string()
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(kinds, vec!["A".to_string(), "B".to_string()]);
+}
+
+#[test]
+fn yaml_docs_texte_vide_ou_commentaires_seulement() {
+    let mut rhai = make_lib_script();
+    let result = rhai
+        .eval(
+            r##"
+        import "yaml_docs" as yd;
+
+        [
+            yd::decode(""),
+            yd::decode("---\n"),
+            yd::decode("# rien\n---\n# toujours rien\n"),
+        ]
+    "##,
+        )
+        .unwrap();
+
+    let results = result.into_array().unwrap();
+    assert_eq!(results.len(), 3);
+    for docs in results {
+        assert!(docs.into_array().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn yaml_docs_document_court_mais_valide_conserve() {
+    let mut rhai = make_lib_script();
+    let result = rhai
+        .eval(
+            r#"
+        import "yaml_docs" as yd;
+
+        yd::decode("a: 1\n")
+    "#,
+        )
+        .unwrap();
+
+    let docs = result.into_array().unwrap();
+    assert_eq!(docs.len(), 1);
+    let map = docs.into_iter().next().unwrap().try_cast::<rhai::Map>().unwrap();
+    assert_eq!(map.get("a").unwrap().as_int().unwrap(), 1);
+}
+
+#[test]
+fn yaml_docs_documents_non_carte_ecartes() {
+    let mut rhai = make_lib_script();
+    let result = rhai
+        .eval(
+            r#"
+        import "yaml_docs" as yd;
+
+        yd::decode("- 1\n- 2\n---\nplain\n---\nkind: A\n")
+    "#,
+        )
+        .unwrap();
+
+    let docs = result.into_array().unwrap();
+    assert_eq!(docs.len(), 1, "seul le document `kind: A` doit rester");
+    let map = docs.into_iter().next().unwrap().try_cast::<rhai::Map>().unwrap();
+    assert_eq!(map.get("kind").unwrap().clone().into_string().unwrap(), "A");
+}
+
+#[test]
+fn yaml_docs_yaml_invalide() {
+    let mut rhai = make_lib_script();
+    let err = rhai
+        .eval(
+            r#"
+        import "yaml_docs" as yd;
+
+        yd::decode("kind: [unclosed\n")
+    "#,
+        )
+        .unwrap_err();
+
+    assert!(
+        err.to_string().contains("YamlError:"),
+        "erreur YamlError attendue, obtenu : {err}"
+    );
+}

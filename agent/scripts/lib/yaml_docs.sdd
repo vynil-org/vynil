@@ -1,0 +1,79 @@
+Spec: LibYamlDocs
+
+Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+
+Purpose:
+  Décoder un texte YAML multi-document en tableau de documents *utilisables* : celui que les
+    scripts d'installation itèrent pour lire `.kind` / `.metadata`. Depuis vynil-core 0.8.0,
+    @yaml_decode_multi ne saute plus les documents de 5 caractères ou moins et un document vide
+    se décode en `()` ; un template `.yaml.hbs` qui rend du vide entre deux `---` (cas banal
+    d'un `{{#if}}` faux) produirait donc un `()` que `doc.kind` fait lever. Cette
+    bibliothèque centralise la garde pour que la prochaine rupture du core se corrige en un
+    seul endroit.
+
+Exposes:
+  @decode(text) — le seul @fn du module ; atteint par les importateurs sous `yd::decode(...)`
+    avec la convention `import "yaml_docs" as yd`.
+
+Accepts:
+  @text — @String, un ou plusieurs documents YAML séparés par `---` (rendu Handlebars compris).
+
+Returns:
+  Tableau des documents décodés dont le type est `map`, dans l'ordre du texte. Les documents
+    vides (`()`), scalaires, tableaux ou chaînes sont écartés. Texte vide ou ne contenant que
+    des séparateurs/commentaires → `[]`.
+
+Raises:
+  @throw (erreur Rhai `YamlError: …`) quand @yaml_decode_multi lève sur un YAML invalide —
+    la garde ne masque jamais une erreur de syntaxe.
+
+Handles:
+  Un document écarté est journalisé en @log_debug (jamais @log_warn : un document vide est
+    légitime) avec son type.
+
+Must:
+  Déléguer le décodage à @yaml_decode_multi ; ne pas réimplémenter de parseur.
+  Préserver l'ordre des documents.
+  Ne pas muter les cartes retournées.
+
+Must not:
+  Avaler une erreur de parse.
+  Écarter une carte au motif qu'elle n'a pas de `kind` — cette décision reste à
+    ./install_from_dir.rhai et aux appelants.
+
+Depends on:
+  API du moteur vynil-core 0.8.0 — @yaml_decode_multi, @type_of, @log_debug.
+
+Scenario: documents vides entre séparateurs ignorés
+  Given le texte `"---\n---\nkind: A\nmetadata: {name: a}\n---\n\n---\nkind: B\nmetadata: {name: b}\n"`
+  When @decode est appelé
+  Then le tableau contient exactement deux cartes, `kind` valant `A` puis `B`
+
+Scenario: texte vide ou commentaires seulement
+  Given `""`, `"---\n"` et `"# rien\n---\n# toujours rien\n"`
+  When @decode est appelé sur chacun
+  Then chaque appel retourne `[]` sans lever
+
+Scenario: document court mais valide conservé
+  Given le texte `"a: 1\n"`
+  When @decode est appelé
+  Then le tableau contient une carte `#{a: 1}`
+
+Scenario: documents non-carte écartés
+  Given le texte `"- 1\n- 2\n---\nplain\n---\nkind: A\n"`
+  When @decode est appelé
+  Then seul le document `kind: A` est retourné
+
+Scenario: YAML invalide
+  Given le texte `"kind: [unclosed\n"`
+  When @decode est appelé
+  Then l'interpréteur lève une erreur commençant par `YamlError:`
+
+Tasks:
+  [x] Écrire `yaml_docs.rhai` et ses tests dans `agent/tests/rhai_lib.rs` (un test par scénario,
+      préfixe `yaml_docs_`).
+  [x] Migrer les 7 scripts exposés (10 appels) vers `yd::decode` : service/install_crds,
+      system/install_crds, system/template_crds, service/init_from, tenant/init_from,
+      service/schedule_backup, tenant/schedule_backup ; leurs .sdd sont alignés.
+  [ ] Test de régression au niveau script (install_crds avec mock CRD + répertoire package) :
+      non fait, le mock demande un contexte complet ; les tests de la lib couvrent la garde.
