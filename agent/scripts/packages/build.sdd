@@ -2,12 +2,12 @@
 # /agent/src/package/build.sdd évalue : `import("build")` puis `build::run(args)`.
 # Sémantique du script seulement : la surface clap, le JSON de passage `args`,
 # l'échelle des codes de sortie et le sous-processus cosign lui-même relèvent de cette spec ; les cœurs
-# push/list/sign sont ceux de vynil-core `0.7.7`. Calibré sur le style ./../boxes/scan.sdd et
+# push/list/sign sont ceux de vynil-core `0.8.0`. Calibré sur le style ./../boxes/scan.sdd et
 # ./../lib/*.sdd. Tout l'observable après le snippet est ici.
 
 Spec: PackagesBuild
 
-Platform: script Rhai (moteur vynil-core 0.7.7 / rhai verrouillé)
+Platform: script Rhai (moteur vynil-core 0.8.0 / rhai verrouillé)
 
 Purpose:
   Porter tout le côté script de `agent package build` : mettre en staging l'arborescence
@@ -215,7 +215,7 @@ Depends on:
   ./../lib/package_yaml.rhai (./../lib/package_yaml.sdd) — importé comme `pck` ; @validate
     est le premier gate de @improve_package et possède ses huit textes de throw et ses
     warnings.
-  vynil-core `0.7.7` @Registry — les membres @push_image/@sign_image/@list_tags et la page
+  vynil-core `0.8.0` @Registry — les membres @push_image/@sign_image/@list_tags et la page
     de 100 tags, consommés comme API ; sémantiques @semver @Semver de bump/d'erreur
     (`inc_major`/`inc_minor`/`inc_patch` infaillibles, `inc_beta`/`inc_alpha` peuvent
     échouer sur un compteur mal formé).

@@ -3574,9 +3574,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-pki-types"
-version = "1.14.1"
+version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30a7197ae7eb376e574fe940d068c30fe0462554a3ddbe4eca7838e049c937a9"
+checksum = "2f4925028c7eb5d1fcdaf196971378ed9d2c1c4efc7dc5d011256f76c99c0a96"
 dependencies = [
  "web-time",
  "zeroize",
@@ -4666,9 +4666,9 @@ version = "0.7.10"
 
 [[package]]
 name = "vynil-core"
-version = "0.7.7"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0075c5ecbab4907a3895873503a16fc47bbcc2ce46cffc89d0ba28bd3cebf8d9"
+checksum = "9d39c16d96df2f4e6a385612a09ddf179944773f131ba72f923bbe08981bd51f"
 dependencies = [
  "argon2",
  "base64 0.23.1",
@@ -4683,7 +4683,6 @@ dependencies = [
  "jmespath 0.5.0",
  "k8s-openapi",
  "kube",
- "lazy_static",
  "object_store",
  "oci-client",
  "openssl",
@@ -4691,6 +4690,7 @@ dependencies = [
  "regex",
  "reqwest 0.12.28",
  "rhai",
+ "rustls-pki-types",
  "schemars",
  "semver",
  "serde",

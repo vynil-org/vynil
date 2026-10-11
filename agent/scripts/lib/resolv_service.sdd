@@ -1,6 +1,6 @@
 Spec: LibResolvService
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Résout les enregistrements de services publiés — les entrées de `context.cluster.services` et
@@ -110,7 +110,7 @@ Must:
     @get_tenant_package coexistant comme signatures distinctes (rhai dispatche par arité).
 
 Depends on:
-  API du moteur vynil-core `0.7.7` — @k8s_resource(kind, ns)`@get` sur la voie `K8sGeneric` de
+  API du moteur vynil-core `0.8.0` — @k8s_resource(kind, ns)`@get` sur la voie `K8sGeneric` de
     @k8sgeneric_rhai_register, @glob (helper `glob(text, pattern)` à la ./glob.rs), @log_warn,
     @json_encode, @base64_decode : la conversion d'erreur en chaîne est @rhai_err / @error_chain ;
     ownership hôte derrière l'assembly @/common/src/rhaihandler.sdd.

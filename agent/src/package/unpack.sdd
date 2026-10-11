@@ -50,7 +50,7 @@ Must:
     premier champ via @Vec::first et @pass le second champ brut via @Vec::get(1), les deux
     @unwrap_or_default vers `""`. Les identifiants issus de cette voie ignorent les
     flags username/password.
-  Garder la promotion des identifiants dans le @Registry::new épinglé (`vynil-core` `0.7.7`) :
+  Garder la promotion des identifiants dans le @Registry::new épinglé (`vynil-core` `0.8.0`) :
     @user ou @pass vide — une moitié quelconque, indépendamment — choisit
     @oci_client::secrets::RegistryAuth::Anonymous, une paire complète choisit @oci_client::secrets::RegistryAuth::Basic.
   Geler l'adressage du tirage dans le @Registry::pull_image épinglé : @oci_client::Reference::with_tag
@@ -83,7 +83,7 @@ Must not:
 
 Depends on:
   @common::ocihandler::Registry — ré-export du crate-root (per /common/src/lib.sdd) du
-    `@vynil_core::oci::Registry` de `vynil-core` `0.7.7` (`/common/Cargo.toml`) :
+    `@vynil_core::oci::Registry` de `vynil-core` `0.8.0` (`/common/Cargo.toml`) :
     @Registry::new et @Registry::pull_image avec les comportements gelés ci-dessus ; sous
     cette voie siègent `oci-client` `0.15.0`, `flate2` et `tar` `0.4.46` (`/Cargo.lock`).
   @common::rhaihandler::base64_decode — ré-export de
@@ -155,9 +155,9 @@ Tasks:
       deux-points (`user:pa:ss` authentifie pass `pa`), alors que les voies secret du core scindent
       avec `splitn(2, ':')` — deux politiques pour une forme `.dockerconfigjson`. Choisir la
       scission canonique et aligner un côté.
-  [?] Un auth base64 non vide malformé panique dans l'`unwrap` @base64_decode du core
-      épinglé, donc un secret monté corrompu avorte en panic au lieu de @Err et exit 4. Décider
-      si le core erre ou si cette feuille pré-valide.
+  [ ] Un auth base64 non vide malformé : depuis vynil-core 0.8.0, @base64_decode renvoie un
+      @Result (signature `&str`) ; l'erreur remonte par `?` en @Err @Error::Core / exit 4 au lieu
+      d'un panic. Couvert par le scénario « auth base64 malformé ».
   [?] @Registry::pull_image fait le pont sync-sur-async avec @block_in_place +
       @tokio::runtime::Handle::block_on. FACT VERIFIED (features `tokio` du workspace =
       `macros` + `rt-multi-thread`, `#[tokio::main]` nu) : ./../main.rs tient un runtime
@@ -188,6 +188,11 @@ Tasks:
 Done when:
   Chaque scénario ci-dessous porte un test passant mappé, les décisions ci-dessus sont
     consignées, et `cargo test -p agent` avec clippy et `cargo +nightly fmt --check` restent verts.
+
+Scenario: auth base64 malformé
+  Given un secret monté dont `auths.<registry>.auth` est une chaîne non vide qui n'est pas du base64 valide
+  When @run tourne avec la voie secret
+  Then @run renvoie @Err (jamais de panic) et aucun contact registre n'a lieu
 
 Scenario: le garde de destination frappe avant tout réseau
   Given `--destination /nope` absent, ou présent comme fichier régulier

@@ -194,8 +194,9 @@ fn security_filter_cosign_and_trivy_tags_no_error_log() {
     let base = env!("CARGO_MANIFEST_DIR");
     let (mut script, _) = make_scan_script(vec![]);
 
-    script.add_code(
-        r#"
+    script
+        .add_code(
+            r#"
         fn log_error(msg) { throw `unexpected error log: ${msg}`; }
         fn http_get_yaml(url, auth_type, credential) {
             if url.contains("index.yaml") {
@@ -212,7 +213,8 @@ fn security_filter_cosign_and_trivy_tags_no_error_log() {
             }
         }
         "#,
-    );
+        )
+        .unwrap();
     script.ctx.set_value("box", build_jukebox_http_mock());
     let args = serde_json::json!({"namespace": "test-ns"});
     script.set_dynamic("args", &args);
@@ -256,13 +258,15 @@ fn partial_filter_no_match_does_not_full_scan() {
     // Passes on fixed code: warns and returns [] without touching the registry.
     let base = env!("CARGO_MANIFEST_DIR");
     let (mut script, _) = make_scan_script(vec![]);
-    script.add_code(
-        r#"
+    script
+        .add_code(
+            r#"
         fn new_registry(reg, user, pass) {
             throw "unexpected registry call: fallback to full scan occurred";
         }
         "#,
-    );
+        )
+        .unwrap();
     let json = serde_json::json!({
         "kind": "JukeBox",
         "metadata": {"name": "test-box"},

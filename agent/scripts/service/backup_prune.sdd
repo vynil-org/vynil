@@ -1,6 +1,6 @@
 Spec: ServiceBackupPruneScript
 
-Platform: scripts Rhai (moteur vynil-core 0.7.7)
+Platform: scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Appliquer la rétention au dépôt : `restic forget` avec quatre flags keep-* pris des clés
@@ -36,7 +36,7 @@ Raises:
     `restic forget … --prune` (cf. Tasks). Non filtré par @import_run, il tuerait la lane en
     exit-4 (./backup.sdd) si l'étage était branché.
   Levées engine non gardées, comme les tiers ./backup_run.sdd : @shell_run ne lève que sur
-    spawn impossible et rend `0` à un process tué par signal (vynil-core 0.7.7
+    spawn impossible et rend `0` à un process tué par signal (vynil-core 0.8.0
     `src/shell.rs`) ; `context` non-map lève au premier `context.`.
   Absences sans throw : une carte sans les clés `max_*` fait tourner
     `--keep-daily "()"` littéral ; c'est alors le rc de restic — pas le module — qui décide,
@@ -70,7 +70,7 @@ Depends on:
   ./../lib/backup_context.sdd — producteur des six clés lues, dont le quartet `max_*` dont
     il est le SEUL consommateur de la lane.
   ./backup.sdd — gel du branchement (call commenté) et de la sortie exit-4 hypothétique.
-  API moteur vynil-core 0.7.7 — @import_run (version 2 args), @shell_run, @log_info
+  API moteur vynil-core 0.8.0 — @import_run (version 2 args), @shell_run, @log_info
     (registrars /common/src/rhaihandler.sdd).
 
 References:

@@ -46,7 +46,8 @@ fn backup_redis_nominal() {
         fn shell_output(cmd) { "my-dragonfly-0" }
         fn shell_run(cmd)    { 0 }
         "#,
-    );
+    )
+    .unwrap();
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(
         r#"import "backup_prepare_redis" as bk; bk::run({ctx});"#
@@ -68,7 +69,8 @@ fn backup_redis_pod_not_found_throws() {
         fn shell_output(cmd) { "" }
         fn shell_run(cmd)    { 0 }
         "#,
-    );
+    )
+    .unwrap();
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(
         r#"import "backup_prepare_redis" as bk; bk::run({ctx});"#
@@ -98,7 +100,8 @@ fn backup_redis_save_failure_throws() {
             else { 0 }
         }
         "#,
-    );
+    )
+    .unwrap();
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(
         r#"import "backup_prepare_redis" as bk; bk::run({ctx});"#
@@ -128,7 +131,8 @@ fn backup_redis_cp_failure_throws() {
             else { 0 }
         }
         "#,
-    );
+    )
+    .unwrap();
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(
         r#"import "backup_prepare_redis" as bk; bk::run({ctx});"#
@@ -170,7 +174,8 @@ fn restore_redis_statefulset_single_replica() {
         }
         fn shell_run(cmd) { 0 }
         "#,
-    );
+    )
+    .unwrap();
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_ok(), "Expected success, got: {:?}", result.err());
@@ -195,7 +200,8 @@ fn restore_redis_statefulset_multiple_replicas() {
         }
         fn shell_run(cmd) { 0 }
         "#,
-    );
+    )
+    .unwrap();
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_ok(), "Expected success, got: {:?}", result.err());
@@ -224,7 +230,8 @@ fn restore_redis_deployment_detected() {
             else { 0 }
         }
         "#,
-    );
+    )
+    .unwrap();
     let ctx = context("test-ns", &["myredis"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_ok(), "Expected success, got: {:?}", result.err());
@@ -247,7 +254,8 @@ fn restore_redis_pod_not_found_throws() {
         }
         fn shell_run(cmd) { 0 }
         "#,
-    );
+    )
+    .unwrap();
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_err(), "Expected throw when no pod found");
@@ -276,7 +284,8 @@ fn restore_redis_cp_failure_throws() {
             else { 0 }
         }
         "#,
-    );
+    )
+    .unwrap();
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_err(), "Expected throw when kubectl cp fails");
@@ -309,7 +318,8 @@ fn restore_redis_scale_down_required_for_multiple_replicas() {
             else { 0 }
         }
         "#,
-    );
+    )
+    .unwrap();
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_err(), "Expected throw when scale down fails");
@@ -346,7 +356,8 @@ fn restore_redis_resource_type_detection_uses_deployment() {
             else { 0 }
         }
         "#,
-    );
+    )
+    .unwrap();
     let ctx = context("test-ns", &["myredis"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(
@@ -377,7 +388,8 @@ fn restore_redis_rollout_restart_failure_throws() {
             else { 0 }
         }
         "#,
-    );
+    )
+    .unwrap();
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_err(), "Expected throw when rollout restart fails");

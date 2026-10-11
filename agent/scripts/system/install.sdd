@@ -1,6 +1,6 @@
 Spec: SystemInstallScript
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Orchestre l'install d'une @SystemInstance : dérouler les buckets de catégories du paquet dans un
@@ -129,7 +129,7 @@ Depends on:
     ./install_systems.rhai (./system_stages.sdd) — chacun pose son propre marqueur `set_status_*`,
     relève après son marqueur d'échec, et retourne la carte context (éventuellement fusionnée aux
     hooks).
-  API du moteur vynil-core 0.7.7 — le shim global @import_run à trois args injecté par @Script
+  API du moteur vynil-core 0.8.0 — le shim global @import_run à trois args injecté par @Script
     `add_common` (sémantique d'import optionnel, frontière skip-vs-re-throw citée dans Raises),
     @is_dir, @log_info/@log_debug et @update_k8s_crd_cache.
   /common/src/instancesystem.sdd — les bridges enregistrés utilisés comme méthode/global :

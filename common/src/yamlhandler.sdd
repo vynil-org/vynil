@@ -142,7 +142,7 @@ Depends on:
     `/common/Cargo.toml` ; @rust_yaml::Value, @rust_yaml::Yaml, @rust_yaml::YamlConfig,
     @rust_yaml::LoaderType et @rust_yaml::yaml::IndentConfig — le comportement load/emit
     décrit au-dessus est celui de ce build.
-  `vynil-core` `0.7.7` depuis crates.io (`/common/Cargo.toml`) — @vynil_core::yaml héberge les
+  `vynil-core` `0.8.0` depuis crates.io (`/common/Cargo.toml`) — @vynil_core::yaml héberge les
     trois fonctions ré-exportées ; son `yaml.rs` pilote @serde_yaml `0.9.34+deprecated`
     (backend unsafe-libyaml, `/Cargo.lock`) et mappe les échecs en @vynil_core::Error::YamlError
     portant le texte display de @serde_yaml.

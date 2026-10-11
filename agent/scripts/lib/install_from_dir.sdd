@@ -1,6 +1,6 @@
 Spec: LibInstallFromDir
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Rend, qualifie, ordonne et applique un répertoire empaqueté de manifests Kubernetes — l'unique
@@ -165,7 +165,7 @@ Must:
     valeurs non-chaînes, éléments non-cartes des tableaux) est filtré par les importers, pas coercé.
 
 Depends on:
-  L'API moteur de vynil-core 0.7.7 — @k8s_resource/@exist/@scope/@apply/@get_obj et la moitié K8sObject
+  L'API moteur de vynil-core 0.8.0 — @k8s_resource/@exist/@scope/@apply/@get_obj et la moitié K8sObject
     @delete/@wait_deleted/@original_kind du registrar core `k8sgeneric` ; @read_dir et @file_read du jeu
     de helpers core `fs` ; @yaml_decode_multi/@yaml_encode du registrar `yaml` ;
     @log_debug/@log_info/@log_warn/@log_error et @json_encode des helpers core-common ; @print/@type_of

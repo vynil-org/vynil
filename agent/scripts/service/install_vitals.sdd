@@ -1,6 +1,6 @@
 Spec: InstallationVitalsService
 
-Platform: scripts Rhai (moteur vynil-core 0.7.7)
+Platform: scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Spec propre du stage `vitals` de l'install service, ./install_vitals.rhai : même
@@ -89,7 +89,7 @@ Depends on:
     ./../lib/wait.sdd.
   /common/src/instanceservice.sdd et /common/src/instance_macros.sdd — @set_status_vitals
     (pluriel) et @set_status_vital_failed (singulier), patch de conditions et events.
-  L'API d'engine vynil-core 0.7.7 montée par @Script (/common/src/rhaihandler.sdd) :
+  L'API d'engine vynil-core 0.8.0 montée par @Script (/common/src/rhaihandler.sdd) :
     @import_run (frontière skip-absent gelée ./install.sdd), @type_of, @json_encode,
     @log_warn.
   ./context.rhai (+ ./../lib/build_context.rhai) — producteur de `package_dir` ; amont

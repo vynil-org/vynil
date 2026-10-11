@@ -1,6 +1,6 @@
 Spec: ServiceInitFromScript
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Amorce les vitals fraîchement créés d'une `ServiceInstance` depuis un backup restic existant
@@ -175,7 +175,7 @@ Depends on:
   /agent/templates/init_job.yaml.hbs (+ le template de pod imbriqué
     /agent/templates/restore.yaml.hbs) résolu via `context.template_dir` — la forme rendue
     elle-même est propriété du template, pas gelée ici.
-  API moteur vynil-core 0.7.7 — shim @import_run, @new_hbs, @register_partial_dir,
+  API moteur vynil-core 0.8.0 — shim @import_run, @new_hbs, @register_partial_dir,
     @render_from (nom de partiel = nom de fichier moins `.hbs`, écrasement silencieux de même
     nom ; /common/src/handlebarshandler.sdd), @is_dir, @yaml_decode_multi,
     @k8s_resource(kind, ns) + @exist, @list, @log_warn, @json_encode, @type_of.

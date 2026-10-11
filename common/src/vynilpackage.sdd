@@ -98,7 +98,7 @@ Must:
     sur une liste du plus récent au plus ancien — un @current vide ou non parsable qualifie tous
     les paquets donc la première entrée (la plus récente) est choisie, et une première entrée dont
     le minimum exclut @current retombe sur l'entrée (étape) suivante.
-  @Semver (re-export @vynil_core::Semver, verrouillé `0.7.7`) @parse retire exactement un `v` ASCII
+  @Semver (re-export @vynil_core::Semver, verrouillé `0.8.0`) @parse retire exactement un `v` ASCII
     initial puis délègue à @semver::Version::parse (verrouillé `1.0.28`, vérifié par sonde) :
     `1.2.3` accepté ; `v1.2.3` rejeté par le parseur interne (seul le wrapper le retire, `v`
     minuscule uniquement) ; `1.2`, `1.02.3` (zéro initial), `""`, `·1.2.3` (espace initial)
@@ -151,7 +151,7 @@ Depends on:
   @crate::Error, @crate::Result, @crate::RhaiRes, @crate::rhai_err dans /common/src/lib.rs — le
     contrat d'erreur ; @crate::Error::Core enveloppe @vynil_core::Failures tels que ses erreurs
     @Semver et Rhai.
-  @crate::Semver et @crate::k8sraw::K8sRaw — deux re-exports de `vynil-core` `0.7.7` verrouillé
+  @crate::Semver et @crate::k8sraw::K8sRaw — deux re-exports de `vynil-core` `0.8.0` verrouillé
     (`/common/Cargo.toml`), le wrapper semver et la récupération brute `/version` de l'api-server.
   @crate::SystemInstance, @crate::TenantInstance, @crate::ServiceInstance — les modèles d'instance
     lus comme ressources @kube::Api et via leurs helpers @get_all_services_names,

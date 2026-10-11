@@ -1,6 +1,6 @@
 Spec: SystemDeleteScript
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Orchestration du teardown d'un @SystemInstance : lancer les trois catégories de teardown du
@@ -139,7 +139,7 @@ Depends on:
     octet pour octet à ./../service/delete_crds.rhai : supprime les CRD enregistrés, skip avec
     warn les kinds qui listent encore des children. Rôles seulement cités ; leurs contrats leur
     appartiennent.
-  API d'engine vynil-core 0.7.7 — le shim global @import_run à 3 args injecté par
+  API d'engine vynil-core 0.8.0 — le shim global @import_run à 3 args injecté par
     @Script @add_common (la frontière skip-vs-rethrow citée dans Raises), @is_dir, @type_of ;
     monté par le constructeur de /common/src/rhaihandler.sdd.
   ./context.rhai (./context.sdd) + ./../lib/build_context.rhai — producteur de chaque clé de

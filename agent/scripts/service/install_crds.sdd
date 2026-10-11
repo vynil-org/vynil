@@ -1,6 +1,6 @@
 Spec: InstallationCrdsService
 
-Platform: scripts Rhai (moteur vynil-core 0.7.7)
+Platform: scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Spec propre du stage `crds` de l'install service, ./install_crds.rhai — seul stage du
@@ -120,7 +120,7 @@ Must not:
     stage ; l'oracle d'appartenance appartient au build_context, pas au post-apply.
 
 Depends on:
-  L'API d'engine vynil-core 0.7.7 montée par @Script (/common/src/rhaihandler.sdd) :
+  L'API d'engine vynil-core 0.8.0 montée par @Script (/common/src/rhaihandler.sdd) :
     @k8s_resource argument unique (cluster-scope) et les méthodes K8sGeneric
     @get_meta/@replace/@create/@exist/@list_meta/@delete du registrar `k8s` core ;
     @read_dir/@file_read, @yaml_decode_multi/@yaml_encode, @log_warn/@log_debug ;

@@ -1,6 +1,6 @@
 Spec: ServiceRestoreMysqlScript
 
-Platform: scripts Rhai (moteur vynil-core 0.7.7)
+Platform: scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Dernière jambe du ladder d'engines (ordre gelé secret → postgresql → mysql par
@@ -79,7 +79,7 @@ Depends on:
     drop-table inclus).
   ./restore.sdd — appelant, ordre du ladder, sémantique exit-5 du throw.
   ./restore_run.rhai — l'étage qui redépose les dumps sous `/backup`.
-  API moteur vynil-core 0.7.7 — @import_run, @shell_run (`src/shell.rs` : sortie héritée,
+  API moteur vynil-core 0.8.0 — @import_run, @shell_run (`src/shell.rs` : sortie héritée,
     rc `code().unwrap_or(0)`), @get_env, @is_file, @log_info (registrars
     /common/src/rhaihandler.sdd).
 

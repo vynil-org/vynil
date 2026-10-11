@@ -107,7 +107,7 @@ Depends on:
   @rhai `1.25.1` — @rhai::Engine, @rhai::Dynamic, @rhai::Map, @rhai::EvalAltResult,
     @rhai::serde::to_dynamic ; tout l'état est des cartes @Dynamic, appariées via tests de
     valeur @as_map_ref / @into_string / @into_array.
-  @vynil_core::k8s_mock::k8s_mock_rhai_register `0.7.7` (crates.io, `/common/Cargo.toml`)
+  @vynil_core::k8s_mock::k8s_mock_rhai_register `0.8.0` (crates.io, `/common/Cargo.toml`)
     — appelé en premier dans @k8smock_rhai_register avec le même Arc de mocks et `created` ;
     il installe les noms mock génériques/raw/workload, le type `DynamicObject` et la
     surcharge no-op de `update_k8s_crd_cache`.

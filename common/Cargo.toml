@@ -7,7 +7,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-vynil-core = { version = "0.7.7", features = ["k8s", "oci", "s3", "fs", "shell", "password"] }
+vynil-core = { version = "0.8.0", features = ["k8s", "oci", "s3", "fs", "shell", "password"] }
 k8s-openapi.workspace = true
 kube.workspace = true
 tracing.workspace = true

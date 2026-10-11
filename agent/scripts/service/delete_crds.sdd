@@ -1,6 +1,6 @@
 Spec: SuppressionCrdsService
 
-Platform: scripts Rhai (moteur vynil-core 0.7.7)
+Platform: scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Spec propre du stage `crds` de la suppression service, ./delete_crds.rhai — HORS du
@@ -103,7 +103,7 @@ Must:
     @list_meta a répondu ; la garde-enfants est le seul contrôle de pose : ce code ne
     supprime lui-même aucun enfant et n'en attend aucun.
   Supprimer via @get_obj puis la méthode d'objet @delete uniquement : l'engine (registrar
-    k8s de vynil-core 0.7.7, k8s.rs) envoie des DeleteParams `foreground()` — cascade
+    k8s de vynil-core 0.8.0, k8s.rs) envoie des DeleteParams `foreground()` — cascade
     premier plan posée par l'engine, aucun paramètre de propagation, de grâce ou
     d'arrière-plan fourni par ce fichier.
   N'attendre aucune disparition : zéro @wait_deleted, zéro import du module
@@ -138,7 +138,7 @@ Must not:
     ./install_crds.rhai est la moitié création.
 
 Depends on:
-  L'API d'engine vynil-core 0.7.7 montée par @Script (/common/src/rhaihandler.sdd) : le
+  L'API d'engine vynil-core 0.8.0 montée par @Script (/common/src/rhaihandler.sdd) : le
     shim @import_run à trois arguments (frontière skip-absent contre rethrow gelée dans
     ./delete.sdd), @k8s_resource forme argument unique cluster-scopée, les méthodes
     K8sGeneric @exist, @list_meta, @get_obj et la méthode d'objet @delete (DeleteParams

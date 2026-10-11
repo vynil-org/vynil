@@ -149,7 +149,7 @@ Returns:
     chacun dérive @schemars::JsonSchema et contribue donc aussi un schéma JSON.
 
 Depends on:
-  @vynil_core — épinglé `0.7.7` avec les features `k8s`, `oci`, `s3`, `fs`, `shell`, `password`
+  @vynil_core — épinglé `0.8.0` avec les features `k8s`, `oci`, `s3`, `fs`, `shell`, `password`
     directement dans /common/Cargo.toml (non hérité du workspace) : la surface de ré-export et la
     variante @Error::Core qu'elle rend transparente.
   Les crates de payload nommés par chaque variante wrappée — @kube, @tokio, @handlebars, @rhai, @reqwest,

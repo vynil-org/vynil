@@ -1,6 +1,6 @@
 Spec: TenantContextScript
 
-Platform: librairie de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: librairie de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   L'orchestrateur de contexte du kind tenant — jumeau structurel de ./../service/context.rhai
@@ -160,7 +160,7 @@ Depends on:
   /common/src/instancetenant.sdd — les bridges enregistrés `get_tenant_name` /
     `get_tenant_namespaces` que ce fichier appelle sur @instance (asymétrie raise-vs-`""`
     comprise, gelée dans ses Tasks).
-  La surface script de vynil-core 0.7.7 (@Script `add_common` derrière
+  La surface script de vynil-core 0.8.0 (@Script `add_common` derrière
     /common/src/rhaihandler.sdd) : @import_run/@import_template à trois arguments, @type_of,
     @k8s_resource(...).@list, @json_encode, @log_warn, résolution de noms par `import` de
     module simple.

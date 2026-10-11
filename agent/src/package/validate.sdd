@@ -62,7 +62,7 @@ Depends on:
     retour et la seule conversion d'erreur explicite.
   /common/src/vynilpackage.sdd — les noms script `read_package_yaml`, `validate_options` et
     l'acceptation @VynilPackageSource / @Schema qu'ils imposent.
-  /common/src/yamlhandler.sdd et `vynil-core` `0.7.7` — `yaml_decode` et `file_read` viennent
+  /common/src/yamlhandler.sdd et `vynil-core` `0.8.0` — `yaml_decode` et `file_read` viennent
     du jeu core générique installé par @Script::new (attribué selon rhaihandler.sdd),
     pas de ce fichier.
   @clap::Args, @serde::Serialize, @serde_json, @std::path::PathBuf — glue de flags et

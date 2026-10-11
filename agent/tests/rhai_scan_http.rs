@@ -20,6 +20,7 @@ const INDEX_TWO_ENTRIES: &str = "packages:\n  - category: db\n    name: pg\n    
 const DB_PG_PACKAGES: &str = "- registry: docker.io\n  image: myrepo/pg\n  tag: \"1.0.0\"\n  metadata:\n    name: pg\n    category: db\n    description: PostgreSQL\n    type: service\n    features: []\n  requirements: []\n";
 
 fn make_http_scan_script() -> (Script, Arc<Mutex<Vec<Dynamic>>>) {
+    common::set_client_name(common::get_client_name);
     let base = env!("CARGO_MANIFEST_DIR");
     let created = Arc::new(Mutex::new(vec![]));
     let mut script = Script::new_core(vec![

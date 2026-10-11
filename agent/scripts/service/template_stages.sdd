@@ -1,6 +1,6 @@
 Spec: EtapesTemplateService
 
-Platform: scripts Rhai (moteur vynil-core 0.7.7)
+Platform: scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Un seul contrat, cinq instances, pour les stages « émission » du rendu hors-sol
@@ -125,7 +125,7 @@ Depends on:
     jamais appelé ; la décision de suppression de cet import dormant est portée en [?] par
     ./../lib/wait.sdd (cite, ne re-tranche pas).
   ./context.sdd — producteur du `context` entrant, contrat amont non re-décrit.
-  L'API du moteur vynil-core 0.7.7 et les globaux montés par @Script
+  L'API du moteur vynil-core 0.8.0 et les globaux montés par @Script
     (/common/src/rhaihandler.sdd) : @import_template avec fallback `run` et @type_of ; la
     frontière skip-vs-relance est gelée ./template.sdd.
 

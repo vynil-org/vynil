@@ -1,6 +1,6 @@
 Spec: TenantInstallScript
 
-Platform: librairie de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: librairie de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Orchestrate l'install d'une `TenantInstance` : exécuter les buckets de catégorie du package dans un
@@ -165,7 +165,7 @@ Depends on:
     ./delete_backup.rhai — chacun pose son propre marqueur `set_status_*` / `set_status_*_failed` et
     se re-lève, et chacun retourne le contexte (peut-être fondu aux hooks). Les marqueurs d'étape
     tenant incluent les étapes `InitFrom` et `ScheduleBackup` portées par le tenant.
-  L'API du moteur vynil-core 0.7.7 — le shim global @import_run à trois args injecté par @Script
+  L'API du moteur vynil-core 0.8.0 — le shim global @import_run à trois args injecté par @Script
     `add_common` (sémantique d'import optionnel, frontière skip/re-throw citée dans Raises), @is_dir,
     @log_debug/@log_warn, @json_encode et @k8s_resource(...).@get.
   /common/src/instancetenant.sdd — les bridges enregistrés utilisés en méthodes/globals :

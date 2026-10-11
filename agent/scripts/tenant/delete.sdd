@@ -1,6 +1,6 @@
 Spec: TenantDeleteScript
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Orchestrer la démolition d'une @TenantInstance : exécuter les buckets de catégories du
@@ -190,7 +190,7 @@ Depends on:
     copies byte-identiques des jumeaux service ; ./delete_vitals.rhai n'ajoute qu'un bloc
     backup-final commenté. Leurs contrats internes leur appartiennent, cités ici seulement
     comme rôles de lanes.
-  API du moteur vynil-core 0.7.7 — le shim global @import_run à trois arguments injecté
+  API du moteur vynil-core 0.8.0 — le shim global @import_run à trois arguments injecté
     par @Script `add_common` (sémantique d'import optionnel, frontière skip-vs-rethrow
     citée dans Raises), @is_dir et @type_of.
   /common/src/rhaihandler.sdd — le constructeur @Script qui monte ce qui précède pour les

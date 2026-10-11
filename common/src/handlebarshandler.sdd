@@ -171,7 +171,7 @@ Depends on:
     (écrasement d'enregistrement, templates enregistrés utilisables comme partials),
     @handlebars::no_escape, et les sources de réexport @handlebars::Path et @handlebars::PathSeg et @handlebars::template::{@Parameter,
     @Template, @TemplateElement}.
-  `vynil-core` `0.7.7` de crates.io (`/common/Cargo.toml`, features requises
+  `vynil-core` `0.8.0` de crates.io (`/common/Cargo.toml`, features requises
     `k8s,oci,s3,fs,shell,password` sur les default `http,crypto,rhai,hbs,hbs-scripting`) —
     @vynil_core::hbs::HandleBars fournit le moteur de base,
     @vynil_core::hbs::CORE_HBS_HELPERS fournit la moitié core de @is_native_hbs_helper,

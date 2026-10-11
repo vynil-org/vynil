@@ -1,6 +1,6 @@
 Spec: LibBackupContext
 
-Platform: scripts Rhai (moteur vynil-core 0.7.7)
+Platform: scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Construit l'ENV et le CONTEXT de backup/restore restic consommés par les lanes
@@ -168,7 +168,7 @@ Must:
     la faute `dayly` correspond au nom d'env `RESTIC_MAX_DAYLY`).
 
 Depends on:
-  Les registrars Wynil-core 0.7.7 derrière le moteur live @Script::new
+  Les registrars Wynil-core 0.8.0 derrière le moteur live @Script::new
     (./../../../common/src/rhaihandler.sdd) et les moteurs de test @Script::new_mock — le
     script appelle juste les noms enregistrés : @get_env, @log_warn, @json_encode, @basename
     (`core_common_rhai_register`), @is_dir, @read_dir, @file_read (`fs_rhai_register`,

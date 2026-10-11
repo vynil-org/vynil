@@ -1,6 +1,6 @@
 Spec: SuppressionBackupTenant
 
-Platform: scripts Rhai (moteur vynil-core 0.7.7)
+Platform: scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Balaye les artefacts de backup planifié du kind tenant quand le backup se désactive ou

@@ -1,6 +1,6 @@
 Spec: LibCopyDir
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Projeter une arborescence de répertoires source dans une destination — peu profonde ou récursive,
@@ -75,7 +75,7 @@ Must:
     plafond de `512` niveaux d'appel du moteur.
 
 Depends on:
-  API du moteur vynil-core 0.7.7 — @create_dir, @read_dir, @basename, @is_file, @is_dir, @file_copy
+  API du moteur vynil-core 0.8.0 — @create_dir, @read_dir, @basename, @is_file, @is_dir, @file_copy
     (le registrar de la feature `fs`, surface de script assemblée derrière
     ./../../../common/src/rhaihandler.sdd) ; file_read, file_write et les noms shell_* ne sont PAS
     utilisés par ce fichier.

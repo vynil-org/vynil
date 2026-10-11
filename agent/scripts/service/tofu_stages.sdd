@@ -1,6 +1,6 @@
 Spec: PaliersTofuService
 
-Platform: scripts Rhai (moteur vynil-core 0.7.7)
+Platform: scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   La voie OpenTofu du kind service, avant et arrière, gelée en UNE spec :
@@ -136,7 +136,7 @@ Depends on:
     contrat et écrasements dans ./../lib/tofu_gen.sdd.
   ./../lib/tofu.rhai (import sous tf) — @run_init, @run_plan, @run_apply, @run_destroy,
     @get_output et leurs @throw verbatim ; contrat ./../lib/tofu.sdd.
-  API d'engine vynil-core 0.7.7 et globaux montés par @Script (/common/src/rhaihandler.sdd) :
+  API d'engine vynil-core 0.8.0 et globaux montés par @Script (/common/src/rhaihandler.sdd) :
     @import_run dont la frontière skip-absent contre rethrow-erreur est gelée dans
     ./install.sdd, @type_of, @file_write, @file_read, @is_file, @json_encode, @json_decode.
   /common/src/instanceservice.sdd et /common/src/instance_macros.sdd — enregistrement et

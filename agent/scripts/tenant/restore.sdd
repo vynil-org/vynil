@@ -1,6 +1,6 @@
 Spec: TenantRestoreScript
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Orchestre le restore restic immédiat (aucune branche de scheduling n'existe ici) d'un seul
@@ -205,7 +205,7 @@ Depends on:
     `mongo_list`, `--nsInclude` seulement pour un dbname non-`*`), ./restore_redis.rhai (piloté
     par kubectl par nom de `redis_list` : détection sts/deployment, scale-to-1, `kubectl cp` de
     `/backup/redis_${redis}.rdb`, rollout restart et attente, re-scale).
-  API moteur vynil-core 0.7.7 — le shim @import_run et ses deux marqueurs de skip, @is_file et
+  API moteur vynil-core 0.8.0 — le shim @import_run et ses deux marqueurs de skip, @is_file et
     @shell_run (code de retour int) ; registrars selon /common/src/rhaihandler.sdd. Ce niveau
     n'appelle aucun @log_info ni fonction de cluster.
 

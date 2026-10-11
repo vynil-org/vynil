@@ -1,6 +1,6 @@
 Spec: TenantRestoreMongodbScript
 
-Platform: scripts Rhai (moteur vynil-core 0.7.7)
+Platform: scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Ré-injecter dans MongoDB, pour chaque nom du `context.mongo_list`, l'archive `mongodump`
@@ -55,7 +55,7 @@ Raises:
   Ce @throw traverse @import_run (deux skip-markers seulement avalés) → exit-5 Rust
     (/agent/src/tenant/restore.sdd, ./restore.sdd le compte dans Raises).
   @shell_run ne lève que si le `sh -c` ne peut être lancé et rend `0` à un process tué par
-    signal (vynil-core 0.7.7 `src/shell.rs`) ; `context` non-map lève au premier `context.` ;
+    signal (vynil-core 0.8.0 `src/shell.rs`) ; `context` non-map lève au premier `context.` ;
     @get_env ne lève jamais (`""` si absent).
   Absences sans throw propre : `${mongo}_dbname` absente = `""` ≠ `"*"` → le gate passe et
     `--nsInclude=".*"` part en regex universel (cf. Handles et Tasks) ; host/user/password
@@ -106,7 +106,7 @@ Depends on:
     spec ./backup_prepare_mongodb.sdd).
   ./restore.sdd — appelante, ordre du ladder, sémantique exit-5 du @throw, gate `.sh` bare.
   ./restore_run.rhai — l'étage qui redépose `/backup` depuis le snapshot restic.
-  API moteur vynil-core 0.7.7 — @import_run, @shell_run (`src/shell.rs` : sortie héritée, rc
+  API moteur vynil-core 0.8.0 — @import_run, @shell_run (`src/shell.rs` : sortie héritée, rc
     `code().unwrap_or(0)`), @get_env, @log_info (registrars /common/src/rhaihandler.sdd).
 
 References:

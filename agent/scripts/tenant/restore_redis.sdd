@@ -1,6 +1,6 @@
 Spec: TenantRestoreRedisScript
 
-Platform: scripts Rhai (moteur vynil-core 0.7.7)
+Platform: scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Ré-injecter le RDB `/backup/redis_<redis>.rdb` dans le workload de chaque nom du
@@ -58,7 +58,7 @@ Raises:
     (skip-markers seuls avalés) → exit-5 Rust (/agent/src/tenant/restore.sdd, ./restore.sdd).
   Levées engine NON gardées, antérieures aux @throw (les DEUX sondes @shell_output —
     replicas et pod —). @shell_output jette si kubectl rend rc≠0 (`Command failed, rc=...`) ou si son stderr est non vide
-    (`Command had stderr : ...`, vynil-core 0.7.7 `src/shell.rs`) ; @parse_int d'une sortie vide ou non
+    (`Command had stderr : ...`, vynil-core 0.8.0 `src/shell.rs`) ; @parse_int d'une sortie vide ou non
     numérique jette (jamais de @throw à la place) ; @shell_run ne lève que si le `sh -c`
     n'est pas lançable, rend `0` à un process tué par signal. `context` non-map lève au
     premier `context.` — sur la ligne `let ns` déjà, liste vide comprise.
@@ -126,7 +126,7 @@ Depends on:
   ./restore.sdd — appelante, ordre du ladder, gate `.sh` bare, sémantique exit-5 du @throw.
   ./restore_run.rhai — l'étage qui redépose `/backup` depuis le snapshot.
   ./maintenance_windows.sdd — fenêtre no-op que cette jambe contourne par son self-scale.
-  API moteur vynil-core 0.7.7 — @import_run, @shell_run (rc, sortie héritée), @shell_output
+  API moteur vynil-core 0.8.0 — @import_run, @shell_run (rc, sortie héritée), @shell_output
     (rc≠0/stderr ⇒ jeté), @get_env, @parse_int, @log_info (registrars
     /common/src/rhaihandler.sdd).
 

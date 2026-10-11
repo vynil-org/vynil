@@ -1,6 +1,6 @@
 Spec: ServiceMaintenanceWindows
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Les deux pass-throughs de hooks de fenêtres de maintenance, `./maintenance_start.rhai` et

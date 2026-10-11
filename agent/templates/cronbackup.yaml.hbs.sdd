@@ -1,6 +1,6 @@
 Spec: CronBackupTemplate
 
-Platform: Handlebars (moteur hbs de l'agent Rust — crate vynil-core 0.7.7, handlebars 6.4.2 résolu, échappement HTML désactivé par @no_escape, partials enregistrés par @register_partial_dir ; workspace Rust edition 2024)
+Platform: Handlebars (moteur hbs de l'agent Rust — crate vynil-core 0.8.0, handlebars 6.4.2 résolu, échappement HTML désactivé par @no_escape, partials enregistrés par @register_partial_dir ; workspace Rust edition 2024)
 
 Purpose:
   Rendre la sauvegarde planifiée d'une instance (kind tenant ou service) : un texte YAML
@@ -124,7 +124,7 @@ Depends on:
     `envs`, `envs_from`, `volumes`, `mounts`, `service_account`, `backup_affinity`.
   /common/src/handlebarshandler.sdd + /common/src/handlebarshandler.rs — helper
     @selector_from_ctx (lit `instance.selector` et y ajoute le composant) ; @json_to_str et
-    @to_json génériques viennent de la crate registre vynil-core 0.7.7 (pas un chemin
+    @to_json génériques viennent de la crate registre vynil-core 0.8.0 (pas un chemin
     résoluble — texte ordinaire).
   /box/vynil/systems/rbac.yaml.hbs — ClusterRole cible `{namespace}:backups` (ligne 155) ; si
     `cluster.vynil_namespace` diffère du namespace où la box a été rendue, le binding pointe un
@@ -182,7 +182,7 @@ Done when:
 Scenario: rendu complet avec scripts de package
   Given `has_files` vrai, `files` contenant `{name: "backup.sh", content: "#!/bin/sh…"}`,
     `instance.appslug` `acme`, `cluster.vynil_namespace` `vynil-system` et `schedule` `0 1 * * *`
-  When @render_from rend `{{> cronbackup.yaml }}` sur le moteur vynil-core 0.7.7, puis
+  When @render_from rend `{{> cronbackup.yaml }}` sur le moteur vynil-core 0.8.0, puis
     @yaml_decode_multi décode le texte
   Then le texte rendu contient 4 documents dans l'ordre : ConfigMap `acme-backups-scripts`, ServiceAccount `acme-backup`,
     RoleBinding `acme-backup`, CronJob `acme-backups`

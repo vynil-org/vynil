@@ -1,6 +1,6 @@
 Spec: LibStorageClassEnrich
 
-Platform: librairie de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: librairie de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Transformer la liste brute des StorageClass d'un cluster en vocabulaire de stockage au

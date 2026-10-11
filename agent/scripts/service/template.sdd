@@ -1,6 +1,6 @@
 Spec: ServiceTemplateScript
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Orchestration du rendu offline de `agent template service` : déclencher le hook `install_pre`, puis
@@ -108,7 +108,7 @@ Depends on:
     @template(instance, context, `${package_dir}/<category>`) unique et retourne `context`.
   ./../lib/install_from_dir.rhai — atteint uniquement via ces émetteurs, propriétaire de l'ordre de
     buckets et du stdout `---` plus @yaml_encode (./../lib/install_from_dir.sdd).
-  API moteur vynil-core 0.7.7 — les shims @import_run et @import_template à 3 arg derrière @Script
+  API moteur vynil-core 0.8.0 — les shims @import_run et @import_template à 3 arg derrière @Script
     @add_common (frontière skip-vs-rethrow et fallback `run` de import_template), @is_dir,
     @type_of.
   ./context.rhai + ./context.sdd — producteur de la carte entrante.

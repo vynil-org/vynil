@@ -90,7 +90,7 @@ pub fn run(args: &Parameters) -> Result<()> {
                 .cloned()
                 .unwrap_or_default();
             let hash_str = hash.as_str().unwrap_or_default();
-            let user_pass = base64_decode(hash_str.to_string())?;
+            let user_pass = base64_decode(hash_str)?;
             let auth: Vec<&str> = user_pass.split(':').collect();
             let user = auth.first().copied().unwrap_or_default().to_string();
             let pass = auth.get(1).copied().unwrap_or_default().to_string();
@@ -101,5 +101,36 @@ pub fn run(args: &Parameters) -> Result<()> {
     } else {
         tracing::error!("{:?} is not a directory", &args.destination);
         Err(Error::MissingDestination(args.destination.clone()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Error, Parameters, run};
+    use std::path::PathBuf;
+
+    /// Scénario « auth base64 malformé » : un secret monté dont `auths.<registry>.auth`
+    /// n'est pas du base64 valide doit renvoyer une erreur `Core` sans panic, avant tout
+    /// contact registre (le décodage précède `Registry::pull_image`).
+    #[test]
+    fn auth_base64_malformé() {
+        let destination = tempfile::tempdir().expect("tempdir destination");
+        let secret_dir = tempfile::tempdir().expect("tempdir secret");
+        let secret = r#"{"auths":{"oci.solidite.fr":{"auth":"!!!pas-du-base64!!!"}}}"#;
+        std::fs::write(secret_dir.path().join(".dockerconfigjson"), secret).expect("write .dockerconfigjson");
+        let args = Parameters {
+            destination: PathBuf::from(destination.path()),
+            registry: "oci.solidite.fr".to_string(),
+            image: "my-app".to_string(),
+            tag: "1.0.0".to_string(),
+            username: String::new(),
+            password: String::new(),
+            pull_path: secret_dir.path().display().to_string(),
+        };
+        let result = run(&args);
+        assert!(
+            matches!(result, Err(Error::Core(_))),
+            "attendu Err(Core), obtenu {result:?}"
+        );
     }
 }

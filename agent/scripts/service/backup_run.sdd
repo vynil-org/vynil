@@ -1,6 +1,6 @@
 Spec: ServiceBackupRunScript
 
-Platform: scripts Rhai (moteur vynil-core 0.7.7)
+Platform: scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Prendre le snapshot lui-même : `restic backup /backup` taggé, l'étape pivot de la lane,
@@ -41,7 +41,7 @@ Raises:
     deux skip-markers) et tue la lane : exit-4 côté Rust (./backup.sdd,
     /agent/src/service/backup.sdd).
   Levées engine non gardées : @shell_run ne lève que si le `sh -c` ne peut être lancé, mais
-    rend `0` à un process tué par signal (vynil-core 0.7.7 `src/shell.rs`) ; `context`
+    rend `0` à un process tué par signal (vynil-core 0.8.0 `src/shell.rs`) ; `context`
     non-map lève au premier `context.`.
   Absences sans throw : clé scalaire absente = `()` interpolé littéral — une carte sans
     `restic_tags` fait tourner `--tag ""` et laisse le rc de restic décider.
@@ -69,7 +69,7 @@ Must:
 Depends on:
   ./../lib/backup_context.sdd — producteur des trois clés lues.
   ./backup.sdd — appelant, position dans la séquence, sémantique exit-4 du throw.
-  API moteur vynil-core 0.7.7 — @import_run (version 2 args), @shell_run, @log_info
+  API moteur vynil-core 0.8.0 — @import_run (version 2 args), @shell_run, @log_info
     (registrars /common/src/rhaihandler.sdd).
 
 References:

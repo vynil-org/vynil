@@ -1,6 +1,6 @@
 Spec: TenantTemplateScript
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
 
 Purpose:
   Orchestre le render hors-ligne de `agent template tenant` : déclencher le hook `install_pre`,
@@ -119,7 +119,7 @@ Depends on:
     @template(instance, context, `${package_dir}/<category>`) et retourne `context`.
   ./../lib/install_from_dir.rhai — atteint uniquement via ces emitters, possédant l'ordre des
     buckets et le stdout `---` plus @yaml_encode (./../lib/install_from_dir.sdd).
-  API du moteur vynil-core 0.7.7 — les shims @import_run et @import_template à 3 args derrière
+  API du moteur vynil-core 0.8.0 — les shims @import_run et @import_template à 3 args derrière
     @Script @add_common (frontière skip-vs-re-throw et fallback `run` de import_template), @is_dir,
     @type_of.
   ./context.rhai + ./context.sdd — producteur de la carte entrante, via sa lane @template.
