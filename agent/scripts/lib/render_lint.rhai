@@ -225,6 +225,12 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "dangling-ingress") {
             raw = run_check(raw, cfg, "dangling-ingress", network::dangling_ingress(obj, objs, ctx, param(cfg, "dangling-ingress")));
         }
+        if enabled(cfg, "dangling-networkpolicy") {
+            raw = run_check(raw, cfg, "dangling-networkpolicy", network::dangling_networkpolicy(obj, objs, ctx, param(cfg, "dangling-networkpolicy")));
+        }
+        if enabled(cfg, "dangling-networkpolicypeer-podselector") {
+            raw = run_check(raw, cfg, "dangling-networkpolicypeer-podselector", network::dangling_networkpolicypeer_podselector(obj, objs, ctx, param(cfg, "dangling-networkpolicypeer-podselector")));
+        }
         if enabled(cfg, "dangling-service") {
             raw = run_check(raw, cfg, "dangling-service", network::dangling_service(obj, objs, ctx, param(cfg, "dangling-service")));
         }
@@ -306,6 +312,9 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "no-rolling-update-strategy") {
             raw = run_check(raw, cfg, "no-rolling-update-strategy", workload::no_rolling_update_strategy(obj, objs, ctx, param(cfg, "no-rolling-update-strategy")));
         }
+        if enabled(cfg, "non-isolated-pod") {
+            raw = run_check(raw, cfg, "non-isolated-pod", network::non_isolated_pod(obj, objs, ctx, param(cfg, "non-isolated-pod")));
+        }
         if enabled(cfg, "pdb-max-unavailable") {
             raw = run_check(raw, cfg, "pdb-max-unavailable", workload::pdb_max_unavailable(obj, objs, ctx, param(cfg, "pdb-max-unavailable")));
         }
@@ -379,5 +388,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["dangling-horizontalpodautoscaler", "dangling-ingress", "dangling-service", "default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "exposed-services", "host-ipc", "host-network", "host-pid", "hpa-minimum-three-replicas", "invalid-target-ports", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-node-affinity", "no-read-only-root-fs", "no-readiness-probe", "no-rolling-update-strategy", "pdb-max-unavailable", "pdb-min-available", "pdb-unhealthy-pod-eviction-policy", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "required-annotation-email", "required-label-owner", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "use-namespace", "writable-host-mount"]
+    ["dangling-horizontalpodautoscaler", "dangling-ingress", "dangling-networkpolicy", "dangling-networkpolicypeer-podselector", "dangling-service", "default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "exposed-services", "host-ipc", "host-network", "host-pid", "hpa-minimum-three-replicas", "invalid-target-ports", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-node-affinity", "no-read-only-root-fs", "no-readiness-probe", "no-rolling-update-strategy", "non-isolated-pod", "pdb-max-unavailable", "pdb-min-available", "pdb-unhealthy-pod-eviction-policy", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "required-annotation-email", "required-label-owner", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "use-namespace", "writable-host-mount"]
 }

@@ -1930,6 +1930,9 @@ fn the_network_batch_does_not_raise_on_unexpected_shapes() {
         "exposed_services",
         "invalid_target_ports",
         "dangling_ingress",
+        "dangling_networkpolicy",
+        "dangling_networkpolicypeer_podselector",
+        "non_isolated_pod",
     ];
     let odd = vec![
         json!({ "apiVersion": "v1", "kind": "Service", "metadata": { "name": "a", "namespace": "app" }, "spec": "oops" }),
@@ -1946,6 +1949,10 @@ fn the_network_batch_does_not_raise_on_unexpected_shapes() {
         json!({ "apiVersion": "v1", "kind": "Pod", "metadata": { "name": "k", "namespace": "app" }, "spec": { "containers": [ { "name": "c", "ports": "oops" } ] } }),
         json!({ "apiVersion": "v1", "kind": "Pod", "metadata": { "name": "l", "namespace": "app" }, "spec": { "containers": [ { "name": "c", "ports": [ { "name": "Bad_Name", "containerPort": "80" } ] } ] } }),
         json!({ "apiVersion": "v1", "kind": "Service", "metadata": { "name": "m", "namespace": "app" }, "spec": { "ports": [ { "port": 80, "targetPort": { "x": 1 } } ] } }),
+        json!({ "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": { "name": "n", "namespace": "app" }, "spec": "x" }),
+        json!({ "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": { "name": "o", "namespace": "app" }, "spec": { "podSelector": { "matchExpressions": "x" }, "ingress": [ { "from": [ { "podSelector": { "matchLabels": { "app": 5 } } } ] } ] } }),
+        json!({ "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": { "name": "q", "namespace": "app" }, "spec": { "podSelector": {}, "egress": [ { "to": [ { "namespaceSelector": 3 } ] } ] } }),
+        json!({ "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": { "name": "r", "namespace": "app" }, "spec": { "podSelector": { "matchExpressions": [ { "key": "app", "operator": "In", "values": "web" } ] } } }),
     ];
     let mut rhai = lib_script();
     set_objs(&mut rhai, &Value::Array(odd));
@@ -2066,4 +2073,122 @@ fn dangling_ingress_resolves_like_kube_linter() {
         "Ingress/ko-tiers-svc",
     ];
     assert_eq!(got, want);
+}
+
+#[test]
+fn dangling_networkpolicy_resolves_like_kube_linter() {
+    // Sortie de kube-linter v0.8.3 sur la fixture dangling-networkpolicy : seules les NetworkPolicy
+    // networking.k8s.io/v1 sont examinées ; les cibles sont celles de dangling-service (Deployment
+    // apps et extensions, ReplicaSet et DaemonSet apps et extensions, StatefulSet apps, Job, CronJob,
+    // RC et Pod du noyau), le namespace est comparé, un sélecteur vide atteint toute cible de son
+    // namespace (labels absents compris) ; les opérateurs In, NotIn, Exists et DoesNotExist suivent
+    // les règles mesurées, un opérateur inconnu ne satisfait rien.
+    let objs = fixture_objects("dangling-networkpolicy");
+    let got = check_findings("dangling-networkpolicy", &objs, "#{}");
+    let want = vec![
+        "NetworkPolicy/ko-apps-job-group",
+        "NetworkPolicy/ko-core-dep",
+        "NetworkPolicy/ko-exists-values",
+        "NetworkPolicy/ko-expr-nomatch",
+        "NetworkPolicy/ko-ext-sts-group",
+        "NetworkPolicy/ko-in-novalues",
+        "NetworkPolicy/ko-labels-and-expression",
+        "NetworkPolicy/ko-metadata-only",
+        "NetworkPolicy/ko-nomatch",
+        "NetworkPolicy/ko-notin-novalues",
+        "NetworkPolicy/ko-other-nomatch",
+        "NetworkPolicy/ko-other-ns-target",
+        "NetworkPolicy/ko-solo-empty",
+        "NetworkPolicy/ko-superset",
+        "NetworkPolicy/ko-tiers-group",
+        "NetworkPolicy/ko-tiers-pod",
+        "NetworkPolicy/ko-two-expressions",
+        "NetworkPolicy/ko-unknown-operator",
+    ];
+    assert_eq!(got, want);
+}
+
+#[test]
+fn an_empty_selector_reaches_only_targets_of_its_own_namespace() {
+    // Mesuré : une NetworkPolicy à sélecteur vide dans un namespace sans cible est dangling, même si
+    // d'autres namespaces contiennent des cibles.
+    let pod = json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "p", "namespace": "app" },
+        "spec": { "containers": [ web_container() ] }
+    });
+    let np = json!({
+        "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+        "metadata": { "name": "np", "namespace": "solo" },
+        "spec": { "podSelector": {} }
+    });
+    let got = check_findings("dangling-networkpolicy", &[pod, np], "#{}");
+    assert_eq!(got, vec!["NetworkPolicy/np"]);
+}
+
+#[test]
+fn dangling_networkpolicypeer_podselector_resolves_like_kube_linter() {
+    // Sortie de kube-linter v0.8.3 sur la fixture dangling-networkpolicypeer-podselector : un constat
+    // par pair fautive, ingress (from) et egress (to) ; une pair avec namespaceSelector (même vide),
+    // une pair ipBlock, une pair sans podSelector ou une pair sans from/to ne sont pas examinées ;
+    // un podSelector vide atteint toute cible du namespace de la policy.
+    let objs = fixture_objects("dangling-networkpolicypeer-podselector");
+    let got = check_findings("dangling-networkpolicypeer-podselector", &objs, "#{}");
+    let want = vec![
+        "NetworkPolicy/ko-from-nomatch",
+        "NetworkPolicy/ko-metadata-only",
+        "NetworkPolicy/ko-operator",
+        "NetworkPolicy/ko-other-namespace-target",
+        "NetworkPolicy/ko-solo-empty-peer",
+        "NetworkPolicy/ko-tiers-group",
+        "NetworkPolicy/ko-two-ingress-peers",
+        "NetworkPolicy/ko-two-ingress-peers",
+        "NetworkPolicy/ko-two-ingress-peers",
+    ];
+    assert_eq!(got, want);
+}
+
+#[test]
+fn non_isolated_pod_resolves_like_kube_linter() {
+    // Sortie de kube-linter v0.8.3 sur la fixture non-isolated-pod : les genres examinés sont ceux de
+    // pod_templates (apps toutes versions hors extensions, batch, RC et Pod du noyau) ; le groupe
+    // extensions n'est PAS examiné ici, à la différence de dangling-service. Un workload est isolé par
+    // une NetworkPolicy networking.k8s.io/v1 de son namespace dont le sélecteur atteint ses labels de
+    // gabarit ; un sélecteur vide isole tout le namespace, y compris un pod sans labels.
+    let objs = fixture_objects("non-isolated-pod");
+    let got = check_findings("non-isolated-pod", &objs, "#{}");
+    let want = vec![
+        "CronJob/iso-cron",
+        "CronJob/open-cron",
+        "CronJob/open-cron-beta",
+        "DaemonSet/open-ds",
+        "Deployment/iso-meta",
+        "Deployment/open-beta",
+        "Deployment/open-dep",
+        "Job/open-job",
+        "Pod/open-bare",
+        "Pod/open-pod",
+        "ReplicaSet/open-rs",
+        "ReplicationController/open-rc",
+        "StatefulSet/open-sts",
+    ];
+    assert_eq!(got, want);
+}
+
+#[test]
+fn a_malformed_pod_is_not_a_selector_target_like_kube_linter() {
+    // Mesuré sur kube-linter v0.8.3 : un Pod dont les ports de conteneur sont mal typés est ignoré
+    // en entier ; un Service qui le vise est donc dangling.
+    let pod = json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "p", "namespace": "app", "labels": { "app": "x" } },
+        "spec": { "containers": [ { "name": "web", "image": "registry.example.test/web:1.4.2", "ports": "oops" } ] }
+    });
+    let svc = json!({
+        "apiVersion": "v1", "kind": "Service",
+        "metadata": { "name": "s", "namespace": "app" },
+        "spec": { "selector": { "app": "x" }, "ports": [ { "port": 80 } ] }
+    });
+    let got = check_findings("dangling-service", &[pod, svc], "#{}");
+    assert_eq!(got, vec!["Service/s"]);
 }

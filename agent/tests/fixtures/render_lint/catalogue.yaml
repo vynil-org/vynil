@@ -23,12 +23,10 @@ checks:
     status: ported
   - name: dangling-networkpolicy
     theme: network
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: dangling-networkpolicypeer-podselector
     theme: network
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: dangling-service
     theme: network
     status: ported
@@ -120,8 +118,7 @@ checks:
     reason: "dépend des objets ServiceAccount de la liste d'objets : à porter avec le lot rbac, une fois décidé si la liste du test les contient"
   - name: non-isolated-pod
     theme: network
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: pdb-max-unavailable
     theme: workload
     status: ported

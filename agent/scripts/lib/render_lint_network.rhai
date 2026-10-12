@@ -34,10 +34,12 @@ private fn name_of(obj) {
     text(field(field(obj, "metadata"), "name"))
 }
 
-// Labels d'une métadonnée, ou `()` si absents ou si une valeur n'est pas une chaîne (un labels
-// non conforme rend l'objet non décodable par l'outil, donc non sélectionnable).
+// Labels d'une métadonnée : `#{}` quand ils sont absents (un objet sans label est une cible pour
+// un sélecteur vide, mesuré), `()` quand une valeur n'est pas une chaîne (un labels non conforme
+// rend l'objet non décodable par l'outil, donc non sélectionnable).
 private fn labels_of(meta) {
     let labels = field(meta, "labels");
+    if labels == () { return #{}; }
     if type_of(labels) != "map" { return (); }
     for k in labels.keys() {
         if type_of(labels[k]) != "string" { return (); }
@@ -45,9 +47,10 @@ private fn labels_of(meta) {
     labels
 }
 
-// Labels d'un gabarit de pod (`template`), ou `()`.
+// Labels d'un gabarit de pod (`template`), ou `()` si le gabarit est absent ou mal formé.
 private fn template_labels(template) {
     if type_of(template) != "map" { return (); }
+    if !pod_decodable(template) { return (); }
     labels_of(field(template, "metadata"))
 }
 
@@ -59,7 +62,9 @@ private fn template_labels(template) {
 // `()` pour tout autre objet.
 private fn selectable_labels(obj) {
     let spec = field(obj, "spec");
+    if labels_of(field(obj, "metadata")) == () { return (); }
     if kind_of_group(obj, ["Pod"], "") {
+        if !pod_decodable(obj) { return (); }
         labels_of(field(obj, "metadata"))
     } else if kind_of_group(obj, ["Deployment", "ReplicaSet", "DaemonSet"], "apps")
         || kind_of_group(obj, ["Deployment", "ReplicaSet", "DaemonSet"], "extensions")
@@ -202,6 +207,32 @@ private fn container_ports_well_formed(c) {
     true
 }
 
+// Vrai quand un gabarit de pod se décode : labels de metadata valides, containers et
+// initContainers tableaux de cartes dont name et image sont des chaînes et dont les ports sont
+// valides. Mesuré : un port mal typé, une image entière ou des labels non chaînes rendent l'objet
+// ignoré par l'outil (non-isolated-pod, invalid-target-ports, cible d'un Service).
+private fn pod_decodable(pod) {
+    if type_of(pod) != "map" { return false; }
+    if labels_of(field(pod, "metadata")) == () { return false; }
+    let spec = field(pod, "spec");
+    if spec == () { return true; }
+    if type_of(spec) != "map" { return false; }
+    for key in ["containers", "initContainers"] {
+        let list = field(spec, key);
+        if list == () { continue; }
+        if type_of(list) != "array" { return false; }
+        for c in list {
+            if type_of(c) != "map" { return false; }
+            let n = field(c, "name");
+            if n != () && type_of(n) != "string" { return false; }
+            let im = field(c, "image");
+            if im != () && type_of(im) != "string" { return false; }
+            if !container_ports_well_formed(c) { return false; }
+        }
+    }
+    true
+}
+
 // Vérification invalid-target-ports : nom IANA invalide sur (a) le `targetPort` chaîne d'un
 // Service du noyau, et (b) le nom d'un port de conteneur ou d'init-conteneur d'un gabarit de pod
 // (Pod, apps toutes versions, batch, ReplicationController ; le groupe extensions est ignoré,
@@ -232,12 +263,10 @@ fn invalid_target_ports(obj, objs, ctx, params) {
         }
         return out;
     }
+    if labels_of(field(obj, "metadata")) == () { return []; }
     let entries = render_lint::pod_templates(obj);
     for entry in entries {
-        let containers = render_lint::containers(entry);
-        for c in containers {
-            if !container_ports_well_formed(c.container) { return []; }
-        }
+        if !pod_decodable(entry.pod) { return []; }
     }
     for entry in entries {
         for c in render_lint::containers(entry) {
@@ -376,4 +405,221 @@ fn dangling_ingress(obj, objs, ctx, params) {
         ));
     }
     out
+}
+
+// Kind NetworkPolicy du groupe networking.k8s.io, version v1 exactement (mesuré : v1beta1 ignoré).
+private fn is_network_policy(obj) {
+    text(field(obj, "apiVersion")) == "networking.k8s.io/v1" && text(field(obj, "kind")) == "NetworkPolicy"
+}
+
+// Vrai quand le sélecteur d'étiquettes (LabelSelector) est bien formé : absent, ou carte dont
+// matchLabels est une carte de chaînes et matchExpressions un tableau de cartes (key et operator
+// chaînes, values absent ou tableau de chaînes). Sinon l'outil ignore la NetworkPolicy (mesuré).
+private fn label_selector_well_formed(sel) {
+    if sel == () { return true; }
+    if type_of(sel) != "map" { return false; }
+    let ml = field(sel, "matchLabels");
+    if ml != () {
+        if type_of(ml) != "map" { return false; }
+        for k in ml.keys() {
+            if type_of(ml[k]) != "string" { return false; }
+        }
+    }
+    let me = field(sel, "matchExpressions");
+    if me != () {
+        if type_of(me) != "array" { return false; }
+        for e in me {
+            if type_of(e) != "map" { return false; }
+            let key = field(e, "key");
+            if key != () && type_of(key) != "string" { return false; }
+            let op = field(e, "operator");
+            if op != () && type_of(op) != "string" { return false; }
+            let vals = field(e, "values");
+            if vals != () {
+                if type_of(vals) != "array" { return false; }
+                for v in vals {
+                    if type_of(v) != "string" { return false; }
+                }
+            }
+        }
+    }
+    true
+}
+
+// Vrai quand une expression de sélecteur est satisfaite. Mesuré sur kube-linter v0.8.3 : In et
+// NotIn sans valeurs, Exists et DoesNotExist avec valeurs, et tout opérateur inconnu ne
+// satisfont rien. NotIn satisfait une clé absente ; DoesNotExist une clé présente ne satisfait rien.
+private fn expression_holds(e, labels) {
+    let key = text(field(e, "key"));
+    let op = text(field(e, "operator"));
+    let vals = field(e, "values");
+    let n = if type_of(vals) == "array" { vals.len() } else { 0 };
+    let present = key in labels;
+    if op == "In" {
+        n > 0 && present && (labels[key] in vals)
+    } else if op == "NotIn" {
+        n > 0 && !(present && (labels[key] in vals))
+    } else if op == "Exists" {
+        n == 0 && present
+    } else if op == "DoesNotExist" {
+        n == 0 && !present
+    } else {
+        false
+    }
+}
+
+// Vrai quand le sélecteur s'applique aux labels : matchLabels (sous-ensemble) puis matchExpressions
+// (ET logique). Un sélecteur absent ou vide s'applique à toute cible, labels absents compris.
+private fn label_selector_matches(sel, labels) {
+    if type_of(sel) != "map" { return true; }
+    let ml = field(sel, "matchLabels");
+    if type_of(ml) == "map" {
+        for k in ml.keys() {
+            if !(k in labels) || labels[k] != ml[k] { return false; }
+        }
+    }
+    let me = field(sel, "matchExpressions");
+    if type_of(me) == "array" {
+        for e in me {
+            if !expression_holds(e, labels) { return false; }
+        }
+    }
+    true
+}
+
+// Vrai quand une cible du namespace `ns` (même genre que pour dangling-service) est atteinte par le
+// sélecteur. Un sélecteur vide n'atteint que les cibles de son propre namespace (mesuré).
+private fn selector_reaches_target(sel, ns, objs) {
+    for o in objs {
+        if ns_of(o) != ns { continue; }
+        let labels = selectable_labels(o);
+        if labels == () { continue; }
+        if label_selector_matches(sel, labels) { return true; }
+    }
+    false
+}
+
+// Pairs `from` (ingress) et `to` (egress) de chaque règle, avec un `podSelector` et sans
+// `namespaceSelector` (mesuré : une pair avec namespaceSelector, même vide, n'est pas examinée).
+// `()` si la NetworkPolicy est mal formée à un endroit quelconque (l'outil l'ignore alors).
+private fn np_peers(spec) {
+    let out = [];
+    for dir in ["ingress", "egress"] {
+        let key = if dir == "ingress" { "from" } else { "to" };
+        let rules = field(spec, dir);
+        if rules == () { continue; }
+        if type_of(rules) != "array" { return (); }
+        let i = 0;
+        for r in rules {
+            if type_of(r) != "map" { return (); }
+            let peers = field(r, key);
+            if peers != () {
+                if type_of(peers) != "array" { return (); }
+                let j = 0;
+                for p in peers {
+                    if type_of(p) != "map" { return (); }
+                    let nss = field(p, "namespaceSelector");
+                    if !label_selector_well_formed(nss) { return (); }
+                    let sel = field(p, "podSelector");
+                    if !label_selector_well_formed(sel) { return (); }
+                    if sel != () && nss == () {
+                        out.push(#{ sel: sel, path: `spec.${dir}[${i}].${key}[${j}].podSelector` });
+                    }
+                    j += 1;
+                }
+            }
+            i += 1;
+        }
+    }
+    out
+}
+
+// Vrai quand la NetworkPolicy est bien formée (spec, podSelector, pairs). Une NetworkPolicy mal
+// formée n'isole rien et ne produit aucun constat (mesuré).
+private fn network_policy_well_formed(np) {
+    let spec = field(np, "spec");
+    if spec != () && type_of(spec) != "map" { return false; }
+    if !label_selector_well_formed(field(spec, "podSelector")) { return false; }
+    np_peers(spec) != ()
+}
+
+// NetworkPolicy dangling : son `spec.podSelector` n'atteint aucune cible du même namespace. Un
+// sélecteur vide ou absent atteint toute cible du namespace (labels absents compris). Seuls les
+// genres de selectable_labels sont cibles.
+fn dangling_networkpolicy(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !is_network_policy(obj) { return []; }
+    if !network_policy_well_formed(obj) { return []; }
+    let spec = field(obj, "spec");
+    let sel = field(spec, "podSelector");
+    let ns = ns_of(obj);
+    if selector_reaches_target(sel, ns, objs) { return []; }
+    let name = name_of(obj);
+    [render_lint::finding(
+        "dangling-networkpolicy",
+        "error",
+        obj,
+        "spec.podSelector",
+        `NetworkPolicy "${name}" : spec.podSelector n'atteint aucun gabarit de pod du namespace "${ns}" ; corriger le sélecteur ou créer la charge de travail visée`
+    )]
+}
+
+// Pair de NetworkPolicy dont le `podSelector` n'atteint aucune cible du même namespace. Un constat
+// par pair fautive (ingress et egress compris). Les pairs avec namespaceSelector ne sont pas
+// examinées.
+fn dangling_networkpolicypeer_podselector(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !is_network_policy(obj) { return []; }
+    if !network_policy_well_formed(obj) { return []; }
+    let ns = ns_of(obj);
+    let name = name_of(obj);
+    let out = [];
+    for p in np_peers(field(obj, "spec")) {
+        if selector_reaches_target(p.sel, ns, objs) { continue; }
+        out.push(render_lint::finding(
+            "dangling-networkpolicypeer-podselector",
+            "error",
+            obj,
+            p.path,
+            `NetworkPolicy "${name}" : la pair ${p.path} n'atteint aucun gabarit de pod du namespace "${ns}" ; corriger son podSelector ou créer la charge de travail visée`
+        ));
+    }
+    out
+}
+
+// Charge de travail (genres de pod_templates : apps toutes versions, batch, RC et Pod du noyau)
+// qu'aucune NetworkPolicy bien formée du même namespace n'isole. Un constat par objet. Le groupe
+// extensions et les groupes tiers sont ignorés (mesuré : un Deployment extensions/v1beta1 n'est pas
+// examiné par cette vérification, à la différence de dangling-service).
+fn non_isolated_pod(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if labels_of(field(obj, "metadata")) == () { return []; }
+    let entries = render_lint::pod_templates(obj);
+    if entries.len() == 0 { return []; }
+    let entry = entries[0];
+    if !pod_decodable(entry.pod) { return []; }
+    let labels = labels_of(field(entry.pod, "metadata"));
+    let ns = ns_of(obj);
+    for np in objs {
+        if !is_network_policy(np) { continue; }
+        if !network_policy_well_formed(np) { continue; }
+        if ns_of(np) != ns { continue; }
+        let sel = field(field(np, "spec"), "podSelector");
+        if label_selector_matches(sel, labels) { return []; }
+    }
+    let name = name_of(obj);
+    let base = text(entry.path);
+    let path = if base == "" { "metadata.labels" } else { base + ".metadata.labels" };
+    [render_lint::finding(
+        "non-isolated-pod",
+        "error",
+        obj,
+        path,
+        `${kind_name(obj)} "${name}" : aucune NetworkPolicy du namespace "${ns}" ne sélectionne ses pods ; ajouter une NetworkPolicy dont le podSelector vise ${path}`
+    )]
+}
+
+// Genre d'un objet pour un message (chaîne vide si absent).
+private fn kind_name(obj) {
+    text(field(obj, "kind"))
 }
