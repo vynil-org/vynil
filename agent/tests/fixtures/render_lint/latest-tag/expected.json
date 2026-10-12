@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "latest-tag",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "port-registre"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sans-tag"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "tag-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "init-latest"
+  }
+]

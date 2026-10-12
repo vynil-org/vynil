@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tag-latest
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: tag-latest}
+  template:
+    metadata:
+      labels: {app: tag-latest}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:latest
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sans-tag
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: sans-tag}
+  template:
+    metadata:
+      labels: {app: sans-tag}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-latest
+  namespace: app
+spec:
+  initContainers:
+    - name: prepare
+      image: busybox:latest
+  containers:
+    - name: main
+      image: busybox:1.36
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-latest
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: task
+              image: alpine:latest
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pas-un-workload
+  namespace: app
+data:
+  image: nginx:latest
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: port-registre
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: port-registre}
+  template:
+    metadata:
+      labels: {app: port-registre}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test:5000/web
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: port-registre-tague
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: registry.example.test:5000/web:2.0
