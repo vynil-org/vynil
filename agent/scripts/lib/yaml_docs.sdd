@@ -75,5 +75,8 @@ Tasks:
   [x] Migrer les 7 scripts exposés (10 appels) vers `yd::decode` : service/install_crds,
       system/install_crds, system/template_crds, service/init_from, tenant/init_from,
       service/schedule_backup, tenant/schedule_backup ; leurs .sdd sont alignés.
-  [ ] Test de régression au niveau script (install_crds avec mock CRD + répertoire package) :
-      non fait, le mock demande un contexte complet ; les tests de la lib couvrent la garde.
+  [x] Test de régression au niveau script (install_crds avec mock CRD + répertoire package) :
+      `install_crds_ignores_empty_rendered_document_and_applies_real_crd` dans
+      agent/tests/rhai_install_crds.rs exécute service/install_crds sur un package temporaire
+      (crds/ avec un `.yaml.hbs` rendant un document vide entre `---` à côté d'une CRD réelle) ;
+      vérifie l'absence d'erreur et que seule la CRD réelle est appliquée.

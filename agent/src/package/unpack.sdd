@@ -155,7 +155,7 @@ Tasks:
       deux-points (`user:pa:ss` authentifie pass `pa`), alors que les voies secret du core scindent
       avec `splitn(2, ':')` — deux politiques pour une forme `.dockerconfigjson`. Choisir la
       scission canonique et aligner un côté.
-  [ ] Un auth base64 non vide malformé : depuis vynil-core 0.8.0, @base64_decode renvoie un
+  [x] Un auth base64 non vide malformé : depuis vynil-core 0.8.0, @base64_decode renvoie un
       @Result (signature `&str`) ; l'erreur remonte par `?` en @Err @Error::Core / exit 4 au lieu
       d'un panic. Couvert par le scénario « auth base64 malformé ».
   [?] @Registry::pull_image fait le pont sync-sur-async avec @block_in_place +
