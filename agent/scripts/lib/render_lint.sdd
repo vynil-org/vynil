@@ -33,6 +33,14 @@ Exposes:
       carte constat : `rule`, `severity` (`"error"` ou `"warn"`), `object` (carte
       `apiVersion`, `kind`, `namespace` si présent, `name`), `message`, `path` si donné.
     @object_ref(obj) — la carte `object` d'un objet.
+    @api_group_of(api_version) — le groupe d'API d'une `apiVersion` : la partie avant `/`
+      (`apps` pour `apps/v1`), la chaîne vide pour `v1` (groupe du noyau), `()` pour une
+      `apiVersion` sans `/` autre que `v1` (`v1beta1` n'a pas de groupe). Toutes les versions
+      d'un même groupe sont équivalentes.
+    @kind_of_group(obj, kinds, group) — vrai quand `obj` a l'un des kinds de `kinds` dans le
+      groupe `group` (`""` pour le noyau) ; la seule façon pour une vérification de reconnaître
+      un objet, un kind seul ne suffit jamais. Sert aussi à résoudre une référence
+      (`configMapKeyRef`, `secretKeyRef`) vers un objet du seul groupe du noyau.
     @pod_templates(obj) — tableau de `#{ pod, path }` : `pod` est la carte du gabarit de pod
       (avec `metadata` et `spec`) et `path` son chemin dans l'objet (`spec.template`,
       `spec.jobTemplate.spec.template`, ou chaîne vide pour un `Pod`) ; tableau vide pour
