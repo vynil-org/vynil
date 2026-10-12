@@ -13,6 +13,11 @@ Purpose:
 Owns:
   ./patterns.rs
 
+Can modify:
+  /Cargo.toml: bloc `[workspace.dependencies]` uniquement, pour `regex`
+  /agent/Cargo.toml: dépendance `regex` de la crate
+  ./mod.rs: déclaration `pub mod patterns;`
+
 References:
   ./runner.sdd — enregistre cette fonction dans le moteur du script de lint.
   ./lint.sdd — la règle de pureté du script que cette fonction respecte.
