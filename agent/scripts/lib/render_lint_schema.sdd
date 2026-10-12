@@ -45,7 +45,7 @@ Handles:
     échouer le script.
 
 Tasks:
-  [ ] Couvrir chaque scénario par un test d'intégration portant le nom de sa ligne `Test @`.
+  [x] Couvrir chaque scénario par un test d'intégration portant le nom de sa ligne `Test @`.
 
 Done when:
   Chaque scénario a un test passant.

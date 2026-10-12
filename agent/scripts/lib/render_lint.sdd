@@ -84,9 +84,9 @@ Must not:
     qui ne reconnaît pas la structure retourne un tableau vide.
 
 Tasks:
-  [ ] Couvrir chaque scénario par un test d'intégration dans
+  [x] Couvrir chaque scénario par un test d'intégration dans
       `/agent/tests/render_lint.rs`, portant le nom de sa ligne `Test @`.
-  [ ] Assembler @all et @checks par une liste explicite écrite à la main dans ./render_lint.rhai :
+  [x] Assembler @all et @checks par une liste explicite écrite à la main dans ./render_lint.rhai :
       une suite d'appels `thème::nom_de_verification(obj, objs, ctx, params)` par thème, dans
       l'ordre alphabétique des noms. Décision : Rhai ne ré-exporte pas les fonctions d'un module
       importé et n'appelle pas une fonction par nom à travers un module ; la liste explicite est
