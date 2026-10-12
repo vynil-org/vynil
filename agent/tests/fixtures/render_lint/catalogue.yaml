@@ -203,8 +203,7 @@ checks:
     reason: "couvert par la bibliothèque render_lint_schema (schema_validate), composée séparément par la distribution, hors de @all"
   - name: sensitive-host-mounts
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: sorted-keys
     theme: workload
     status: deferred
@@ -219,12 +218,10 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: unsafe-proc-mount
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: unsafe-sysctls
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: unset-cpu-requirements
     theme: pod
     status: deferred

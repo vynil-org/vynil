@@ -227,6 +227,15 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "run-as-non-root") {
             raw = run_check(raw, cfg, "run-as-non-root", pod::run_as_non_root(obj, objs, ctx, param(cfg, "run-as-non-root")));
         }
+        if enabled(cfg, "sensitive-host-mounts") {
+            raw = run_check(raw, cfg, "sensitive-host-mounts", pod::sensitive_host_mounts(obj, objs, ctx, param(cfg, "sensitive-host-mounts")));
+        }
+        if enabled(cfg, "unsafe-proc-mount") {
+            raw = run_check(raw, cfg, "unsafe-proc-mount", pod::unsafe_proc_mount(obj, objs, ctx, param(cfg, "unsafe-proc-mount")));
+        }
+        if enabled(cfg, "unsafe-sysctls") {
+            raw = run_check(raw, cfg, "unsafe-sysctls", pod::unsafe_sysctls(obj, objs, ctx, param(cfg, "unsafe-sysctls")));
+        }
         if enabled(cfg, "latest-tag") {
             raw = run_check(raw, cfg, "latest-tag", pod::latest_tag(obj, objs, ctx, param(cfg, "latest-tag")));
         }
@@ -240,5 +249,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["docker-sock", "drop-net-raw-capability", "host-ipc", "host-network", "host-pid", "latest-tag", "no-read-only-root-fs", "privilege-escalation-container", "privileged-container", "run-as-non-root"]
+    ["docker-sock", "drop-net-raw-capability", "host-ipc", "host-network", "host-pid", "latest-tag", "no-read-only-root-fs", "privilege-escalation-container", "privileged-container", "run-as-non-root", "sensitive-host-mounts", "unsafe-proc-mount", "unsafe-sysctls"]
 }

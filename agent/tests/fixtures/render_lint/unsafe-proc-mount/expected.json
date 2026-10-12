@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "unsafe-proc-mount",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "proc-non-masque-cron"
+  },
+  {
+    "rule": "unsafe-proc-mount",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "casse-differente"
+  },
+  {
+    "rule": "unsafe-proc-mount",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "proc-non-masque"
+  },
+  {
+    "rule": "unsafe-proc-mount",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "un-conteneur-sur-deux"
+  },
+  {
+    "rule": "unsafe-proc-mount",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "proc-non-masque-init"
+  }
+]

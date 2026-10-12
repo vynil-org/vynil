@@ -1,0 +1,38 @@
+[
+  {
+    "rule": "unsafe-sysctls",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "reseau-cron"
+  },
+  {
+    "rule": "unsafe-sysctls",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "reseau-cron"
+  },
+  {
+    "rule": "unsafe-sysctls",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "mqueue"
+  },
+  {
+    "rule": "unsafe-sysctls",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "reseau-non-sur"
+  },
+  {
+    "rule": "unsafe-sysctls",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "noyau-deux-entrees"
+  },
+  {
+    "rule": "unsafe-sysctls",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "noyau-deux-entrees"
+  }
+]

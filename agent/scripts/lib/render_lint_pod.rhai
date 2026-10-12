@@ -161,6 +161,74 @@ fn drop_net_raw_capability(obj, objs, ctx, params) {
     findings
 }
 
+// Répertoire hôte sensible monté (`/`, `/etc`, `/proc`, ...), initialisation comprise. Les
+// motifs `dirs` sont ceux de kube-linter, ancrés : `^/etc$` ne vise pas `/etc/foo`.
+fn sensitive_host_mounts(obj, objs, ctx, params) {
+    host_mount_findings("sensitive-host-mounts", obj, list_param(params, "dirs", [
+        "^/$", "^/boot$", "^/dev$", "^/etc$", "^/lib$", "^/proc$", "^/sys$", "^/usr$"
+    ]))
+}
+
+// Conteneur (initialisation comprise) dont `procMount` vaut `Unmasked`, sans tenir compte de la
+// casse : kube-linter contourne alors le masquage /proc du runtime.
+fn unsafe_proc_mount(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            let proc_mount = field(field(c.container, "securityContext"), "procMount");
+            if type_of(proc_mount) == "string" && proc_mount.to_lower() == "unmasked" {
+                findings.push(render_lint::finding(
+                    "unsafe-proc-mount",
+                    "error",
+                    obj,
+                    c.path + ".securityContext.procMount",
+                    `conteneur "${field(c.container, "name")}" de ${kind} "${name}" : procMount "${proc_mount}" expose /proc sans masquage ; définir procMount: Default`
+                ));
+            }
+        }
+    }
+    findings
+}
+
+// Sysctl du pod dont le nom commence par un préfixe de `unsafeSysCtls` (préfixe brut, sensible
+// à la casse : `net` ne vise pas `net.core`, mais `net.` si). Un constat par entrée.
+fn unsafe_sysctls(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let prefixes = list_param(params, "unsafeSysCtls", [
+        "kernel.msg", "kernel.sem", "kernel.shm", "fs.mqueue.", "net."
+    ]);
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        let sysctls = field(field(field(field(entry, "pod"), "spec"), "securityContext"), "sysctls");
+        if type_of(sysctls) != "array" { continue; }
+        let i = 0;
+        for sysctl in sysctls {
+            let sname = field(sysctl, "name");
+            if type_of(sname) == "string" {
+                for prefix in prefixes {
+                    if type_of(prefix) == "string" && sname.starts_with(prefix) {
+                        findings.push(render_lint::finding(
+                            "unsafe-sysctls",
+                            "error",
+                            obj,
+                            `${pod_spec_path(entry)}.securityContext.sysctls[${i}]`,
+                            `${kind} "${name}" : sysctl "${sname}" non sûr (préfixe "${prefix}") ; le retirer de securityContext.sysctls`
+                        ));
+                        break;
+                    }
+                }
+            }
+            i += 1;
+        }
+    }
+    findings
+}
+
 // Namespace IPC de l'hôte partagé (`hostIPC: true`).
 fn host_ipc(obj, objs, ctx, params) {
     host_flag_findings("host-ipc", "hostIPC", "l'espace IPC de l'hôte", obj)

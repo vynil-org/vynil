@@ -783,3 +783,114 @@ fn pod_checks_of_this_batch_are_silent_on_non_workloads() {
         );
     }
 }
+
+#[test]
+fn sensitive_host_mounts_honours_a_custom_dirs_parameter_and_anchors_patterns() {
+    let mut rhai = lib_script();
+    let etc = pod_with_host_mount("/etc");
+    assert_eq!(
+        rules(&pod_findings(&mut rhai, "sensitive_host_mounts", &etc, "#{}")),
+        vec!["sensitive-host-mounts"]
+    );
+    // Motif ancré : `^/etc$` ne vise pas `/etc/foo`.
+    let etc_sub = pod_with_host_mount("/etc/foo");
+    assert_eq!(
+        pod_findings(&mut rhai, "sensitive_host_mounts", &etc_sub, "#{}"),
+        json!([])
+    );
+    // Paramètre personnalisé : `/etc` n'est plus sensible, `/opt` l'est.
+    assert_eq!(
+        pod_findings(&mut rhai, "sensitive_host_mounts", &etc, r#"#{dirs: ["^/opt$"]}"#),
+        json!([])
+    );
+    let opt = pod_with_host_mount("/opt");
+    assert_eq!(
+        rules(&pod_findings(
+            &mut rhai,
+            "sensitive_host_mounts",
+            &opt,
+            r#"#{dirs: ["^/opt$"]}"#
+        )),
+        vec!["sensitive-host-mounts"]
+    );
+}
+
+#[test]
+fn sensitive_host_mounts_flags_an_init_container_mount() {
+    let mut rhai = lib_script();
+    let obj = json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "init", "namespace": "app" },
+        "spec": {
+            "volumes": [ { "name": "proc", "hostPath": { "path": "/proc" } } ],
+            "initContainers": [ { "name": "prepare", "image": "x:1",
+                "volumeMounts": [ { "name": "proc", "mountPath": "/host-proc" } ] } ],
+            "containers": [ { "name": "web", "image": "x:1" } ]
+        }
+    });
+    let found = pod_findings(&mut rhai, "sensitive_host_mounts", &obj, "#{}");
+    assert_eq!(rules(&found), vec!["sensitive-host-mounts"]);
+    assert_eq!(found[0]["path"], json!("spec.initContainers[0].volumeMounts"));
+}
+
+#[test]
+fn unsafe_proc_mount_ignores_default_and_matches_unmasked_without_case() {
+    let mut rhai = lib_script();
+    let with = |value: &str| {
+        json!({
+            "apiVersion": "v1", "kind": "Pod",
+            "metadata": { "name": "proc", "namespace": "app" },
+            "spec": { "containers": [ { "name": "web", "image": "x:1",
+                "securityContext": { "procMount": value } } ] }
+        })
+    };
+    assert_eq!(
+        pod_findings(&mut rhai, "unsafe_proc_mount", &with("Default"), "#{}"),
+        json!([])
+    );
+    let found = pod_findings(&mut rhai, "unsafe_proc_mount", &with("UnMasked"), "#{}");
+    assert_eq!(rules(&found), vec!["unsafe-proc-mount"]);
+    assert_eq!(
+        found[0]["path"],
+        json!("spec.containers[0].securityContext.procMount")
+    );
+}
+
+#[test]
+fn unsafe_sysctls_honours_a_custom_list_and_reports_each_entry_path() {
+    let mut rhai = lib_script();
+    let obj = json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "sysctl", "namespace": "app" },
+        "spec": {
+            "securityContext": { "sysctls": [
+                { "name": "net.core.somaxconn", "value": "1024" },
+                { "name": "vm.max_map_count", "value": "262144" }
+            ] },
+            "containers": [ { "name": "web", "image": "x:1" } ]
+        }
+    });
+    let found = pod_findings(&mut rhai, "unsafe_sysctls", &obj, "#{}");
+    assert_eq!(rules(&found), vec!["unsafe-sysctls"]);
+    assert_eq!(found[0]["path"], json!("spec.securityContext.sysctls[0]"));
+    let custom = pod_findings(&mut rhai, "unsafe_sysctls", &obj, r#"#{unsafeSysCtls: ["vm."]}"#);
+    assert_eq!(rules(&custom), vec!["unsafe-sysctls"]);
+    assert_eq!(custom[0]["path"], json!("spec.securityContext.sysctls[1]"));
+}
+
+#[test]
+fn sysctl_and_proc_mount_checks_are_silent_on_non_workloads() {
+    let mut rhai = lib_script();
+    let configmap = json!({
+        "apiVersion": "v1", "kind": "ConfigMap",
+        "metadata": { "name": "cm", "namespace": "app" },
+        "data": { "procMount": "Unmasked", "sysctls": "net.core.somaxconn", "dirs": "/etc" }
+    });
+    for function in ["sensitive_host_mounts", "unsafe_proc_mount", "unsafe_sysctls"] {
+        assert_eq!(
+            pod_findings(&mut rhai, function, &configmap, "#{}"),
+            json!([]),
+            "{function}"
+        );
+    }
+}
