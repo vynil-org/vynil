@@ -1,0 +1,50 @@
+[
+  {
+    "rule": "minimum-three-replicas",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "beta-dep"
+  },
+  {
+    "rule": "minimum-three-replicas",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "default-dep"
+  },
+  {
+    "rule": "minimum-three-replicas",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "one-dep"
+  },
+  {
+    "rule": "minimum-three-replicas",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "two-dep"
+  },
+  {
+    "rule": "minimum-three-replicas",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "zero-dep"
+  },
+  {
+    "rule": "minimum-three-replicas",
+    "kind": "ReplicaSet",
+    "namespace": "app",
+    "name": "rs-one"
+  },
+  {
+    "rule": "minimum-three-replicas",
+    "kind": "ReplicationController",
+    "namespace": "app",
+    "name": "rc-two"
+  },
+  {
+    "rule": "minimum-three-replicas",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "db-sts"
+  }
+]

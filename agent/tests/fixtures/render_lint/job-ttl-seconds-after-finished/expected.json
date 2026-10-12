@@ -1,0 +1,26 @@
+[
+  {
+    "rule": "job-ttl-seconds-after-finished",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-ttl"
+  },
+  {
+    "rule": "job-ttl-seconds-after-finished",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-ttl0"
+  },
+  {
+    "rule": "job-ttl-seconds-after-finished",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-nottl"
+  },
+  {
+    "rule": "job-ttl-seconds-after-finished",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-ttlnull"
+  }
+]

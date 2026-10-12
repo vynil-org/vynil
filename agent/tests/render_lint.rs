@@ -1400,3 +1400,92 @@ fn the_pod_batch_does_not_raise_on_unexpected_shapes() {
         );
     }
 }
+
+// ===== render_lint_workload.sdd (vérifications de workload portées en C2a) =====
+
+/// Objets du manifeste de la fixture `name` (multi-documents, sans les documents vides).
+fn fixture_objects(name: &str) -> Vec<Value> {
+    use serde::Deserialize as _;
+    let path = format!(
+        "{}/tests/fixtures/render_lint/{name}/manifests.yaml",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let text = std::fs::read_to_string(&path).expect("manifestes lisibles");
+    serde_yaml::Deserializer::from_str(&text)
+        .map(|doc| Value::deserialize(doc).expect("manifeste YAML valide"))
+        .filter(|value: &Value| !value.is_null())
+        .collect()
+}
+
+/// Constats de la vérification `check` sur `objs`, avec la carte de paramètres `params`
+/// (expression Rhai), par le point d'entrée `render_lint::all`.
+fn check_findings(check: &str, objs: &[Value], params: &str) -> Vec<String> {
+    let mut rhai = lib_script();
+    set_objs(&mut rhai, &Value::Array(objs.to_vec()));
+    let found = eval_json(
+        &mut rhai,
+        &format!(
+            r#"import "render_lint" as render_lint;
+               render_lint::all(objs, #{{}}, #{{only: ["{check}"], params: #{{"{check}": {params}}}}})"#
+        ),
+    );
+    let mut names: Vec<String> = found
+        .as_array()
+        .expect("tableau de constats")
+        .iter()
+        .map(|f| {
+            format!(
+                "{}/{}",
+                f["object"]["kind"].as_str().unwrap_or_default(),
+                f["object"]["name"].as_str().unwrap_or_default()
+            )
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+fn single_replica_deployment() -> Value {
+    json!({
+        "apiVersion": "apps/v1", "kind": "Deployment",
+        "metadata": { "name": "web", "namespace": "app" },
+        "spec": {
+            "replicas": 1,
+            "selector": { "matchLabels": { "app": "web" } },
+            "template": { "metadata": { "labels": { "app": "web" } }, "spec": { "containers": [ web_container() ] } }
+        }
+    })
+}
+
+#[test]
+fn single_replica_deployment_is_reported() {
+    let obj = single_replica_deployment();
+    let mut rhai = lib_script();
+    set_obj(&mut rhai, &obj);
+    let found = eval_json(
+        &mut rhai,
+        "import \"render_lint_workload\" as workload; workload::minimum_three_replicas(obj, [obj], #{}, #{})",
+    );
+    assert_eq!(rules(&found), vec!["minimum-three-replicas".to_string()]);
+    assert_eq!(found[0]["object"]["name"], "web");
+    assert_eq!(found[0]["object"]["kind"], "Deployment");
+}
+
+#[test]
+fn minimum_three_replicas_honours_min_replicas_like_kube_linter() {
+    // Paramètre non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
+    // `{minReplicas: 2}` sur la fixture minimum-three-replicas : `two-dep` et `rc-two` (deux
+    // réplicas) ne sont plus signalés ; `one-dep`, `default-dep`, `zero-dep`, `db-sts`, `rs-one`
+    // et `beta-dep` le sont encore.
+    let objs = fixture_objects("minimum-three-replicas");
+    let got = check_findings("minimum-three-replicas", &objs, r"#{minReplicas: 2}");
+    let want = vec![
+        "Deployment/beta-dep",
+        "Deployment/default-dep",
+        "Deployment/one-dep",
+        "Deployment/zero-dep",
+        "ReplicaSet/rs-one",
+        "StatefulSet/db-sts",
+    ];
+    assert_eq!(got, want);
+}

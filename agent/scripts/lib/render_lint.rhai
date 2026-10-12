@@ -198,6 +198,7 @@ fn all(objs, ctx) { all(objs, ctx, #{}) }
 
 fn all(objs, ctx, opts) {
     import "render_lint_pod" as pod;
+    import "render_lint_workload" as workload;
     // Les lots suivants ajoutent ici un `import` par thème et un appel par vérification, dans
     // l'ordre alphabétique global des noms (voir `checks`).
     let cfg = settings(opts);
@@ -205,6 +206,9 @@ fn all(objs, ctx, opts) {
     for obj in objs {
         if enabled(cfg, "default-service-account") {
             raw = run_check(raw, cfg, "default-service-account", pod::default_service_account(obj, objs, ctx, param(cfg, "default-service-account")));
+        }
+        if enabled(cfg, "deprecated-service-account-field") {
+            raw = run_check(raw, cfg, "deprecated-service-account-field", workload::deprecated_service_account_field(obj, objs, ctx, param(cfg, "deprecated-service-account-field")));
         }
         if enabled(cfg, "dnsconfig-options") {
             raw = run_check(raw, cfg, "dnsconfig-options", pod::dnsconfig_options(obj, objs, ctx, param(cfg, "dnsconfig-options")));
@@ -233,11 +237,17 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "host-pid") {
             raw = run_check(raw, cfg, "host-pid", pod::host_pid(obj, objs, ctx, param(cfg, "host-pid")));
         }
+        if enabled(cfg, "job-ttl-seconds-after-finished") {
+            raw = run_check(raw, cfg, "job-ttl-seconds-after-finished", workload::job_ttl_seconds_after_finished(obj, objs, ctx, param(cfg, "job-ttl-seconds-after-finished")));
+        }
         if enabled(cfg, "latest-tag") {
             raw = run_check(raw, cfg, "latest-tag", pod::latest_tag(obj, objs, ctx, param(cfg, "latest-tag")));
         }
         if enabled(cfg, "liveness-port") {
             raw = run_check(raw, cfg, "liveness-port", pod::liveness_port(obj, objs, ctx, param(cfg, "liveness-port")));
+        }
+        if enabled(cfg, "minimum-three-replicas") {
+            raw = run_check(raw, cfg, "minimum-three-replicas", workload::minimum_three_replicas(obj, objs, ctx, param(cfg, "minimum-three-replicas")));
         }
         if enabled(cfg, "no-liveness-probe") {
             raw = run_check(raw, cfg, "no-liveness-probe", pod::no_liveness_probe(obj, objs, ctx, param(cfg, "no-liveness-probe")));
@@ -303,5 +313,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["default-service-account", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "host-ipc", "host-network", "host-pid", "latest-tag", "liveness-port", "no-liveness-probe", "no-read-only-root-fs", "no-readiness-probe", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "writable-host-mount"]
+    ["default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "host-ipc", "host-network", "host-pid", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "no-liveness-probe", "no-read-only-root-fs", "no-readiness-probe", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "writable-host-mount"]
 }

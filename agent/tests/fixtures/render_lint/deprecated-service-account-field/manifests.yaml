@@ -1,0 +1,134 @@
+# Conforme : serviceAccountName seul.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-name, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-name}}
+  template:
+    metadata: {labels: {app: ok-name}}
+    spec: {serviceAccountName: web-sa, containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : aucun compte de service renseigné.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-none, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-none}}
+  template:
+    metadata: {labels: {app: ok-none}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : serviceAccount vide, sans valeur.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-empty, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-empty}}
+  template:
+    metadata: {labels: {app: ok-empty}}
+    spec: {serviceAccount: "", serviceAccountName: "", containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : les deux champs ont la même valeur.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-same, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-same}}
+  template:
+    metadata: {labels: {app: ok-same}}
+    spec: {serviceAccount: web-sa, serviceAccountName: web-sa, containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : serviceAccount déprécié seul.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dep-only, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: dep-only}}
+  template:
+    metadata: {labels: {app: dep-only}}
+    spec: {serviceAccount: old-sa, containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : serviceAccount et serviceAccountName ont des valeurs différentes.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dep-mismatch, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: dep-mismatch}}
+  template:
+    metadata: {labels: {app: dep-mismatch}}
+    spec: {serviceAccount: old-sa, serviceAccountName: new-sa, containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : serviceAccountName vide à côté du champ déprécié.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dep-name-empty, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: dep-name-empty}}
+  template:
+    metadata: {labels: {app: dep-name-empty}}
+    spec: {serviceAccount: old-sa, serviceAccountName: "", containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : StatefulSet avec le champ déprécié.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: db-sts, namespace: app}
+spec:
+  replicas: 3
+  serviceName: db
+  selector: {matchLabels: {app: db-sts}}
+  template:
+    metadata: {labels: {app: db-sts}}
+    spec: {serviceAccount: old-sa, containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+# Non conforme : Pod nu avec le champ déprécié dans sa spec.
+apiVersion: v1
+kind: Pod
+metadata: {name: pod-old, namespace: app}
+spec:
+  serviceAccount: old-sa
+  containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Non conforme : Job avec le champ déprécié dans son gabarit.
+apiVersion: batch/v1
+kind: Job
+metadata: {name: job-old, namespace: app}
+spec:
+  template:
+    metadata: {labels: {app: job-old}}
+    spec: {serviceAccount: old-sa, restartPolicy: Never, containers: [{name: migrate, image: "registry.example.test/migrate:3.1.0"}]}
+---
+# Non conforme : CronJob avec le champ déprécié dans le gabarit de son Job.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: cron-old, namespace: app}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: cron-old}}
+        spec: {serviceAccount: old-sa, restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+# Hors scope : groupe extensions/v1beta1.
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: legacy-ext, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: legacy-ext}}
+  template:
+    metadata: {labels: {app: legacy-ext}}
+    spec: {serviceAccount: old-sa, containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Hors scope : un ConfigMap n'a pas de spec de pod.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: app-config, namespace: app}
+data: {serviceAccount: old-sa}

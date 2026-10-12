@@ -44,8 +44,7 @@ checks:
     status: ported
   - name: deprecated-service-account-field
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: dnsconfig-options
     theme: pod
     status: ported
@@ -87,8 +86,7 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: job-ttl-seconds-after-finished
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: latest-tag
     theme: pod
     status: ported
@@ -97,8 +95,7 @@ checks:
     status: ported
   - name: minimum-three-replicas
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: mismatching-selector
     theme: workload
     status: deferred
