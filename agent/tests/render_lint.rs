@@ -416,3 +416,190 @@ fn non_strict_accepts_a_field_the_schema_does_not_declare() {
     );
     assert_eq!(findings, json!([]));
 }
+
+// ===== render_lint_pod.sdd (vérifications de pod portées en C1a) =====
+
+/// Constats de la fonction `function` du thème pod sur `obj`, avec les paramètres `params`
+/// (expression Rhai, par exemple `#{}`).
+fn pod_findings(rhai: &mut Script, function: &str, obj: &Value, params: &str) -> Value {
+    set_obj(rhai, obj);
+    eval_json(
+        rhai,
+        &format!(r#"import "render_lint_pod" as pod; pod::{function}(obj, [obj], #{{}}, {params})"#),
+    )
+}
+
+/// Pod nu avec un volume hostPath `path` monté dans le conteneur principal.
+fn pod_with_host_mount(path: &str) -> Value {
+    json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "hote", "namespace": "app" },
+        "spec": {
+            "volumes": [ { "name": "hote", "hostPath": { "path": path } } ],
+            "containers": [ {
+                "name": "web", "image": "registry.example.test/web:1.4.2",
+                "volumeMounts": [ { "name": "hote", "mountPath": "/hote" } ]
+            } ]
+        }
+    })
+}
+
+/// Pod nu dont le conteneur d'initialisation porte les capacités `add` / `drop`.
+fn pod_with_init_capabilities(add: &[&str], drop: &[&str]) -> Value {
+    json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "init", "namespace": "app" },
+        "spec": {
+            "initContainers": [ {
+                "name": "prepare", "image": "registry.example.test/tools:2.0.0",
+                "securityContext": { "capabilities": { "add": add, "drop": drop } }
+            } ],
+            "containers": [ { "name": "web", "image": "registry.example.test/web:1.4.2" } ]
+        }
+    })
+}
+
+/// Objet de charge `kind` avec `hostIPC` / `hostNetwork` ou sans, selon `flag`.
+fn host_flag_object(kind: &str, flag: &str, value: bool) -> Value {
+    let pod_spec = json!({ flag: value, "containers": [ { "name": "web", "image": "registry.example.test/web:1.4.2" } ] });
+    match kind {
+        "CronJob" => json!({
+            "apiVersion": "batch/v1", "kind": "CronJob",
+            "metadata": { "name": "cron", "namespace": "app" },
+            "spec": { "schedule": "0 3 * * *", "jobTemplate": { "spec": { "template": {
+                "spec": pod_spec
+            } } } }
+        }),
+        _ => json!({
+            "apiVersion": "apps/v1", "kind": kind,
+            "metadata": { "name": "charge", "namespace": "app" },
+            "spec": { "selector": { "matchLabels": { "app": "charge" } }, "template": {
+                "metadata": { "labels": { "app": "charge" } }, "spec": pod_spec
+            } }
+        }),
+    }
+}
+
+#[test]
+fn docker_sock_honours_a_custom_dirs_parameter() {
+    let mut rhai = lib_script();
+    let obj = pod_with_host_mount("/var/run/docker.sock");
+    assert_eq!(rules(&pod_findings(&mut rhai, "docker_sock", &obj, "#{}")), vec![
+        "docker-sock"
+    ]);
+    let custom = pod_findings(&mut rhai, "docker_sock", &obj, r#"#{dirs: ["^/custom$"]}"#);
+    assert_eq!(custom, json!([]));
+    let on_custom = pod_with_host_mount("/custom");
+    let found = pod_findings(&mut rhai, "docker_sock", &on_custom, r#"#{dirs: ["^/custom$"]}"#);
+    assert_eq!(rules(&found), vec!["docker-sock"]);
+}
+
+#[test]
+fn docker_sock_flags_a_mount_in_an_init_container() {
+    let mut rhai = lib_script();
+    let obj = json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "init", "namespace": "app" },
+        "spec": {
+            "volumes": [ { "name": "docker", "hostPath": { "path": "/var/run/docker.sock" } } ],
+            "initContainers": [ { "name": "prepare", "image": "x:1",
+                "volumeMounts": [ { "name": "docker", "mountPath": "/var/run/docker.sock" } ] } ],
+            "containers": [ { "name": "web", "image": "x:1" } ]
+        }
+    });
+    let found = pod_findings(&mut rhai, "docker_sock", &obj, "#{}");
+    assert_eq!(rules(&found), vec!["docker-sock"]);
+    assert_eq!(found[0]["path"], json!("spec.initContainers[0].volumeMounts"));
+}
+
+#[test]
+fn drop_net_raw_honours_a_custom_forbidden_capabilities_parameter() {
+    let mut rhai = lib_script();
+    let obj = pod_with_init_capabilities(&["NET_RAW", "SYS_ADMIN"], &["ALL"]);
+    let found = pod_findings(
+        &mut rhai,
+        "drop_net_raw_capability",
+        &obj,
+        r#"#{forbiddenCapabilities: ["SYS_ADMIN"]}"#,
+    );
+    assert_eq!(rules(&found), vec!["drop-net-raw-capability"]);
+    assert!(
+        found[0]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("SYS_ADMIN")
+    );
+}
+
+#[test]
+fn drop_net_raw_checks_an_init_container_like_a_container() {
+    let mut rhai = lib_script();
+    let obj = pod_with_init_capabilities(&["NET_RAW"], &[]);
+    let found = pod_findings(&mut rhai, "drop_net_raw_capability", &obj, "#{}");
+    // Une capacité ajoutée interdite et un retrait absent : deux constats, tous deux sur l'init.
+    assert_eq!(found.as_array().map(Vec::len), Some(2));
+    for f in found.as_array().into_iter().flatten() {
+        assert!(
+            f["path"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("spec.initContainers[0]")
+        );
+    }
+}
+
+#[test]
+fn host_ipc_and_host_network_flag_the_pod_spec_of_a_cronjob() {
+    let mut rhai = lib_script();
+    let cron_ipc = host_flag_object("CronJob", "hostIPC", true);
+    let found = pod_findings(&mut rhai, "host_ipc", &cron_ipc, "#{}");
+    assert_eq!(rules(&found), vec!["host-ipc"]);
+    assert_eq!(
+        found[0]["path"],
+        json!("spec.jobTemplate.spec.template.spec.hostIPC")
+    );
+    let cron_net = host_flag_object("CronJob", "hostNetwork", true);
+    let found = pod_findings(&mut rhai, "host_network", &cron_net, "#{}");
+    assert_eq!(rules(&found), vec!["host-network"]);
+    assert_eq!(
+        found[0]["path"],
+        json!("spec.jobTemplate.spec.template.spec.hostNetwork")
+    );
+}
+
+#[test]
+fn host_flags_set_to_false_are_silent() {
+    let mut rhai = lib_script();
+    let off = host_flag_object("Deployment", "hostIPC", false);
+    assert_eq!(pod_findings(&mut rhai, "host_ipc", &off, "#{}"), json!([]));
+    let off = host_flag_object("Deployment", "hostNetwork", false);
+    assert_eq!(pod_findings(&mut rhai, "host_network", &off, "#{}"), json!([]));
+}
+
+#[test]
+fn host_checks_are_silent_on_non_workloads() {
+    let mut rhai = lib_script();
+    let service = json!({
+        "apiVersion": "v1", "kind": "Service",
+        "metadata": { "name": "svc", "namespace": "app" },
+        "spec": { "hostIPC": true, "hostNetwork": true, "ports": [ { "port": 80 } ] }
+    });
+    assert_eq!(pod_findings(&mut rhai, "host_ipc", &service, "#{}"), json!([]));
+    assert_eq!(
+        pod_findings(&mut rhai, "host_network", &service, "#{}"),
+        json!([])
+    );
+    let configmap = json!({
+        "apiVersion": "v1", "kind": "ConfigMap",
+        "metadata": { "name": "cm", "namespace": "app" },
+        "data": { "hostIPC": "true" }
+    });
+    assert_eq!(
+        pod_findings(&mut rhai, "drop_net_raw_capability", &configmap, "#{}"),
+        json!([])
+    );
+    assert_eq!(
+        pod_findings(&mut rhai, "docker_sock", &configmap, "#{}"),
+        json!([])
+    );
+}

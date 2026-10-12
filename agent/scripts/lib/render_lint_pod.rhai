@@ -8,13 +8,162 @@ private fn field(m, key) {
     if type_of(m) == "map" && key in m { m[key] } else { () }
 }
 
-// Vrai quand `image` correspond à au moins un motif de `block` (expressions régulières, via
-// `regex_is_match`, comme le BlockList de kube-linter).
-private fn blocked(image, block) {
-    for pattern in block {
-        if regex_is_match(pattern, image) { return true; }
+// Chaîne, ou chaîne vide si la valeur n'en est pas une.
+private fn text(v) {
+    if type_of(v) == "string" { v } else { "" }
+}
+
+// Vrai quand `value` correspond à au moins un motif de `patterns` (expressions régulières, via
+// `regex_is_match`, comme les listes de motifs de kube-linter : BlockList, dirs).
+private fn matches_any(value, patterns) {
+    for pattern in patterns {
+        if type_of(pattern) == "string" && regex_is_match(pattern, value) { return true; }
     }
     false
+}
+
+// Liste du paramètre `key`, ou `fallback` si le paramètre est absent ou n'est pas un tableau.
+private fn list_param(params, key, fallback) {
+    let v = field(params, key);
+    if type_of(v) == "array" { v } else { fallback }
+}
+
+// Chemin de la spec du pod d'une entrée de `pod_templates` : `spec` ou `spec.template.spec`.
+private fn pod_spec_path(entry) {
+    let base = text(field(entry, "path"));
+    if base == "" { "spec" } else { base + ".spec" }
+}
+
+// Vrai quand la liste de capacités `drops` retire `cap` : `ALL`, ou une entrée qui contient `cap`
+// (kube-linter compare par inclusion : `CAP_NET_RAW` vaut `NET_RAW`).
+private fn drops_capability(drops, cap) {
+    if type_of(drops) != "array" { return false; }
+    for d in drops {
+        if type_of(d) == "string" && (d == "ALL" || d.contains(cap)) { return true; }
+    }
+    false
+}
+
+// Constats « pod partagé avec l'hôte » : le champ booléen `field_name` de la spec du pod vaut
+// `true`. Un constat par objet.
+private fn host_flag_findings(rule, field_name, what, obj) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        let spec = field(field(entry, "pod"), "spec");
+        if field(spec, field_name) == true {
+            findings.push(render_lint::finding(
+                rule,
+                "error",
+                obj,
+                pod_spec_path(entry) + "." + field_name,
+                `${kind} "${name}" : ${what} est partagé avec l'hôte (${field_name}: true) ; définir ${field_name} à false ou l'omettre`
+            ));
+        }
+    }
+    findings
+}
+
+// Constats « montage d'un répertoire hôte sensible » : pour chaque conteneur (initialisation
+// comprise) et chaque montage qui référence un volume `hostPath` dont le chemin correspond à
+// `dirs`. Un constat par montage.
+private fn host_mount_findings(rule, obj, dirs) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        let hostpaths = #{};
+        let volumes = field(field(field(entry, "pod"), "spec"), "volumes");
+        if type_of(volumes) == "array" {
+            for v in volumes {
+                let vname = field(v, "name");
+                let path = field(field(v, "hostPath"), "path");
+                if type_of(vname) == "string" && type_of(path) == "string" && matches_any(path, dirs) {
+                    hostpaths[vname] = path;
+                }
+            }
+        }
+        for c in render_lint::containers(entry) {
+            let mounts = field(c.container, "volumeMounts");
+            if type_of(mounts) != "array" { continue; }
+            for m in mounts {
+                let vname = field(m, "name");
+                if type_of(vname) == "string" && vname in hostpaths {
+                    findings.push(render_lint::finding(
+                        rule,
+                        "error",
+                        obj,
+                        c.path + ".volumeMounts",
+                        `conteneur "${field(c.container, "name")}" de ${kind} "${name}" : le répertoire hôte "${hostpaths[vname]}" est monté (volume "${vname}") ; retirer ce volume hostPath et son montage`
+                    ));
+                }
+            }
+        }
+    }
+    findings
+}
+
+// Socket du démon Docker monté dans un conteneur (initialisation comprise).
+fn docker_sock(obj, objs, ctx, params) {
+    host_mount_findings("docker-sock", obj, list_param(params, "dirs", ["docker.sock$"]))
+}
+
+// Capacités NET_RAW : un conteneur qui ajoute une capacité interdite (ou `ALL`) produit un
+// constat par entrée ; un conteneur dont `capabilities` est renseigné sans retirer la capacité
+// interdite (ni `ALL`) produit un constat de retrait. Sans `securityContext.capabilities`, rien.
+fn drop_net_raw_capability(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let forbidden = list_param(params, "forbiddenCapabilities", ["NET_RAW"]);
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            let caps = field(field(c.container, "securityContext"), "capabilities");
+            if type_of(caps) != "map" { continue; }
+            let cname = field(c.container, "name");
+            for cap in forbidden {
+                if type_of(cap) != "string" { continue; }
+                let adds = field(caps, "add");
+                if type_of(adds) == "array" {
+                    for a in adds {
+                        if type_of(a) == "string" && (a == "ALL" || a.contains(cap)) {
+                            findings.push(render_lint::finding(
+                                "drop-net-raw-capability",
+                                "error",
+                                obj,
+                                c.path + ".securityContext.capabilities.add",
+                                `conteneur "${cname}" de ${kind} "${name}" : capacité ajoutée "${a}" interdite (${cap}) ; retirer cette capacité de securityContext.capabilities.add`
+                            ));
+                        }
+                    }
+                }
+                if !drops_capability(field(caps, "drop"), cap) {
+                    findings.push(render_lint::finding(
+                        "drop-net-raw-capability",
+                        "error",
+                        obj,
+                        c.path + ".securityContext.capabilities.drop",
+                        `conteneur "${cname}" de ${kind} "${name}" : capacités retirées ${field(caps, "drop")} sans "${cap}" ; ajouter "${cap}" ou "ALL" à securityContext.capabilities.drop`
+                    ));
+                }
+            }
+        }
+    }
+    findings
+}
+
+// Namespace IPC de l'hôte partagé (`hostIPC: true`).
+fn host_ipc(obj, objs, ctx, params) {
+    host_flag_findings("host-ipc", "hostIPC", "l'espace IPC de l'hôte", obj)
+}
+
+// Namespace réseau de l'hôte partagé (`hostNetwork: true`).
+fn host_network(obj, objs, ctx, params) {
+    host_flag_findings("host-network", "hostNetwork", "l'espace réseau de l'hôte", obj)
 }
 
 // Image d'un conteneur d'un objet qui utilise un tag `latest` ou pas de tag.
@@ -32,7 +181,7 @@ fn latest_tag(obj, objs, ctx, params) {
         for c in render_lint::containers(entry) {
             let image = field(c.container, "image");
             if type_of(image) != "string" { continue; }
-            if blocked(image, block) {
+            if matches_any(image, block) {
                 findings.push(render_lint::finding(
                     "latest-tag",
                     "error",

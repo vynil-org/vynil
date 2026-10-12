@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "docker-sock",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "socket-alternatif"
+  },
+  {
+    "rule": "docker-sock",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "socket-deux-conteneurs"
+  },
+  {
+    "rule": "docker-sock",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "socket-deux-conteneurs"
+  },
+  {
+    "rule": "docker-sock",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "socket-monte"
+  },
+  {
+    "rule": "docker-sock",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "socket-init"
+  }
+]

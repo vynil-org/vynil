@@ -1,0 +1,131 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ipc-desactive
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: ipc-desactive}
+  template:
+    metadata:
+      labels: {app: ipc-desactive}
+    spec:
+      hostIPC: false
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ipc-partage
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: ipc-partage}
+  template:
+    metadata:
+      labels: {app: ipc-partage}
+    spec:
+      hostIPC: true
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ipc-partage-sts
+  namespace: app
+spec:
+  serviceName: ipc-partage-sts
+  replicas: 1
+  selector:
+    matchLabels: {app: ipc-partage-sts}
+  template:
+    metadata:
+      labels: {app: ipc-partage-sts}
+    spec:
+      hostIPC: true
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ipc-partage-job
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      hostIPC: true
+      containers:
+        - name: tache
+          image: registry.example.test/tache:1.0.0
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ipc-partage-cron
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          hostIPC: true
+          containers:
+            - name: tache
+              image: registry.example.test/tache:1.0.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ipc-partage-pod
+  namespace: app
+spec:
+  hostIPC: true
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pas-un-workload
+  namespace: app
+spec:
+  hostIPC: true
+  ports:
+    - port: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pas-un-workload-cm
+  namespace: app
+data:
+  hostIPC: "true"

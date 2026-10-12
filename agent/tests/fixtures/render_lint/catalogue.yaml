@@ -53,12 +53,10 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: docker-sock
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: drop-net-raw-capability
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: duplicate-env-var
     theme: pod
     status: deferred
@@ -77,12 +75,10 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: host-ipc
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: host-network
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: host-pid
     theme: pod
     status: deferred

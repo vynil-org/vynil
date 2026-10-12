@@ -203,6 +203,18 @@ fn all(objs, ctx, opts) {
     let cfg = settings(opts);
     let raw = [];
     for obj in objs {
+        if enabled(cfg, "docker-sock") {
+            raw = run_check(raw, cfg, "docker-sock", pod::docker_sock(obj, objs, ctx, param(cfg, "docker-sock")));
+        }
+        if enabled(cfg, "drop-net-raw-capability") {
+            raw = run_check(raw, cfg, "drop-net-raw-capability", pod::drop_net_raw_capability(obj, objs, ctx, param(cfg, "drop-net-raw-capability")));
+        }
+        if enabled(cfg, "host-ipc") {
+            raw = run_check(raw, cfg, "host-ipc", pod::host_ipc(obj, objs, ctx, param(cfg, "host-ipc")));
+        }
+        if enabled(cfg, "host-network") {
+            raw = run_check(raw, cfg, "host-network", pod::host_network(obj, objs, ctx, param(cfg, "host-network")));
+        }
         if enabled(cfg, "latest-tag") {
             raw = run_check(raw, cfg, "latest-tag", pod::latest_tag(obj, objs, ctx, param(cfg, "latest-tag")));
         }
@@ -216,5 +228,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["latest-tag", "no-read-only-root-fs"]
+    ["docker-sock", "drop-net-raw-capability", "host-ipc", "host-network", "latest-tag", "no-read-only-root-fs"]
 }
