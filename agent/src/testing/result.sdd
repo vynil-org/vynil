@@ -173,7 +173,7 @@ Must not:
     print-then-err figée.
 
 Tasks:
-  [ ] Couvrir les scénarios d'inventaire de suppressions ci-dessous par des tests de même nom.
+  [x] Couvrir les scénarios d'inventaire de suppressions ci-dessous par des tests de même nom.
   [ ] Cartographier les scenarios sans test ci-dessous vers des tests du même nom, en étendant les six
       existants : zero-assert-record-vacuously-passes, text-shape-desc-parens-blank-lines-and-fixed-decimals
       (un contrôle de chaîne complète là où to_text_contains_results_summary ne fait que du contains),

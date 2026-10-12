@@ -17,15 +17,52 @@ where
     s.serialize_f64(d.as_secs_f64())
 }
 
+/// Un contrôle volontairement écarté par une règle de lint, consigné pour relecture.
+#[derive(Clone, Debug, Serialize)]
+pub struct Suppression {
+    pub test: String,
+    pub rule: String,
+    pub kind: String,
+    pub namespace: Option<String>,
+    pub name: String,
+    pub path: Option<String>,
+    pub reason: Option<String>,
+    pub origin: Option<String>,
+}
+
+impl Suppression {
+    /// `{kind} {namespace}/{name}`, ou `{kind} {name}` pour un objet sans namespace.
+    fn object_label(&self) -> String {
+        self.namespace.as_ref().map_or_else(
+            || format!("{} {}", self.kind, self.name),
+            |ns| format!("{} {ns}/{}", self.kind, self.name),
+        )
+    }
+
+    /// Détail d'une suppression (règle, objet, `raison`), partagé par le texte et `JUnit`.
+    fn detail(&self) -> String {
+        format!(
+            "{} {}: {}",
+            self.rule,
+            self.object_label(),
+            self.reason.as_deref().unwrap_or("(no reason)")
+        )
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TestResultCollector {
     results: Vec<TestResult>,
+    suppressions: Vec<Suppression>,
 }
 
 impl TestResultCollector {
     #[must_use]
     pub const fn new() -> Self {
-        Self { results: Vec::new() }
+        Self {
+            results: Vec::new(),
+            suppressions: Vec::new(),
+        }
     }
 
     pub fn add(&mut self, test_name: String, asserts: Vec<VynilAssertResult>, duration: std::time::Duration) {
@@ -34,6 +71,20 @@ impl TestResultCollector {
             asserts,
             duration,
         });
+    }
+
+    pub fn add_suppressions(&mut self, suppressions: Vec<Suppression>) {
+        self.suppressions.extend(suppressions);
+    }
+
+    #[must_use]
+    pub fn suppressions(&self) -> &[Suppression] {
+        &self.suppressions
+    }
+
+    #[must_use]
+    pub const fn total_suppressed(&self) -> usize {
+        self.suppressions.len()
     }
 
     #[must_use]
@@ -100,12 +151,18 @@ impl TestResultCollector {
             self.total_failed(),
             self.total_asserts()
         );
+        if !self.suppressions.is_empty() {
+            let _ = writeln!(out, "Suppressed: {}", self.total_suppressed());
+            for s in &self.suppressions {
+                let _ = writeln!(out, "  [SKIP] {}: {}", s.test, s.detail());
+            }
+        }
         out
     }
 
     #[must_use]
     pub fn to_json(&self) -> String {
-        let output = serde_json::json!({
+        let mut output = serde_json::json!({
             "tests": self.results,
             "summary": {
                 "total_tests": self.total_tests(),
@@ -114,6 +171,14 @@ impl TestResultCollector {
                 "failed": self.total_failed()
             }
         });
+        if !self.suppressions.is_empty()
+            && let Some(object) = output.as_object_mut()
+        {
+            object.insert(
+                "suppressions".to_string(),
+                serde_json::to_value(&self.suppressions).unwrap_or_default(),
+            );
+        }
         serde_json::to_string_pretty(&output).unwrap_or_default()
     }
 
@@ -139,6 +204,15 @@ impl TestResultCollector {
                     TestCase::failure(&a.name, tc_dur, "assertion", &a.message)
                 };
                 suite.add_testcase(tc);
+            }
+            let lines: Vec<String> = self
+                .suppressions
+                .iter()
+                .filter(|s| s.test == result.test_name)
+                .map(|s| format!("[SKIP] {}", s.detail()))
+                .collect();
+            if !lines.is_empty() {
+                suite.set_system_out(&lines.join("\n"));
             }
             report_builder.add_testsuite(suite.build());
         }
@@ -232,6 +306,113 @@ mod tests {
         );
         assert_eq!(c.total_failed(), 2);
         assert_eq!(c.total_passed(), 1);
+    }
+
+    fn suppression(test: &str) -> Suppression {
+        Suppression {
+            test: test.to_string(),
+            rule: "latest-tag".to_string(),
+            kind: "Deployment".to_string(),
+            namespace: Some("app".to_string()),
+            name: "web".to_string(),
+            path: None,
+            reason: Some("legacy image".to_string()),
+            origin: None,
+        }
+    }
+
+    #[test]
+    fn suppressions_do_not_touch_the_verdict() {
+        let mut c = TestResultCollector::new();
+        c.add(
+            "t1".to_string(),
+            vec![passing_assert("a"), passing_assert("b")],
+            std::time::Duration::ZERO,
+        );
+        c.add_suppressions(vec![suppression("t1")]);
+        assert!(c.all_passed());
+        assert_eq!(c.total_passed(), 2);
+        assert_eq!(c.total_failed(), 0);
+        assert_eq!(c.total_asserts(), 2);
+        assert_eq!(c.total_suppressed(), 1);
+    }
+
+    /// Strips the `timestamp` attribute, the only field that varies between two renders.
+    fn without_timestamp(xml: &str) -> String {
+        const KEY: &str = " timestamp=\"";
+        let Some(start) = xml.find(KEY) else {
+            return xml.to_string();
+        };
+        let value_start = start + KEY.len();
+        let Some(rel_end) = xml[value_start..].find('"') else {
+            return xml.to_string();
+        };
+        format!("{}{}", &xml[..start], &xml[value_start + rel_end + 1..])
+    }
+
+    #[test]
+    fn forms_unchanged_without_suppressions() {
+        let mut c = TestResultCollector::new();
+        c.add(
+            "t1".to_string(),
+            vec![passing_assert("a"), failing_assert("b")],
+            std::time::Duration::ZERO,
+        );
+        assert_eq!(
+            c.to_text(),
+            "Test: t1 (0.000s)\n  [PASS] a: ok\n  [FAIL] b: no match\n\nResults: 1 passed, 1 failed, 2 total\n"
+        );
+        assert_eq!(
+            c.to_json(),
+            concat!(
+                "{\n  \"tests\": [\n    {\n      \"test_name\": \"t1\",\n      \"asserts\": [\n        {\n",
+                "          \"name\": \"a\",\n          \"description\": null,\n          \"passed\": true,\n",
+                "          \"message\": \"ok\"\n        },\n        {\n          \"name\": \"b\",\n",
+                "          \"description\": null,\n          \"passed\": false,\n          \"message\": \"no match\"\n",
+                "        }\n      ],\n      \"duration\": 0.0\n    }\n  ],\n  \"summary\": {\n    \"total_tests\": 1,\n",
+                "    \"total_asserts\": 2,\n    \"passed\": 1,\n    \"failed\": 1\n  }\n}"
+            )
+        );
+        assert!(!c.to_json().contains("suppressions"));
+        assert_eq!(
+            without_timestamp(&c.to_junit()),
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite id=\"0\" name=\"t1\" \
+             package=\"testsuite/t1\" tests=\"2\" errors=\"0\" failures=\"1\" hostname=\"localhost\" \
+             time=\"0\"><testcase name=\"a\" time=\"0\"/><testcase name=\"b\" time=\"0\"><failure \
+             type=\"assertion\" message=\"no match\"/></testcase></testsuite></testsuites>"
+        );
+        assert!(!c.to_junit().contains("system-out"));
+    }
+
+    #[test]
+    fn suppressions_rendered_in_three_forms() {
+        let mut c = TestResultCollector::new();
+        c.add(
+            "t1".to_string(),
+            vec![passing_assert("a")],
+            std::time::Duration::ZERO,
+        );
+        c.add_suppressions(vec![suppression("t1")]);
+
+        let text = c.to_text();
+        assert!(text.contains("Suppressed: 1\n"));
+        assert!(text.contains("  [SKIP] t1: latest-tag Deployment app/web: legacy image\n"));
+
+        let json: serde_json::Value = serde_json::from_str(&c.to_json()).unwrap();
+        let entries = json["suppressions"].as_array().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["test"], "t1");
+        assert_eq!(entries[0]["rule"], "latest-tag");
+        assert_eq!(entries[0]["kind"], "Deployment");
+        assert_eq!(entries[0]["namespace"], "app");
+        assert_eq!(entries[0]["name"], "web");
+        assert!(entries[0]["path"].is_null());
+        assert_eq!(entries[0]["reason"], "legacy image");
+        assert!(entries[0]["origin"].is_null());
+
+        let junit = c.to_junit();
+        assert_eq!(junit.matches("<system-out>").count(), 1);
+        assert!(junit.contains("latest-tag"));
     }
 
     #[test]
