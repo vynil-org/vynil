@@ -5,7 +5,7 @@
 
 Spec: LibRenderLint
 
-Platform: librairie de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: librairie de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Fournir au script de lint d'une distribution les briques communes pour écrire et composer

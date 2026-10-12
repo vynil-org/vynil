@@ -4,7 +4,7 @@
 
 Spec: LibRenderLintPod
 
-Platform: librairie de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: librairie de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Les vérifications dont le sujet est un conteneur ou la spec d'un pod : contexte de

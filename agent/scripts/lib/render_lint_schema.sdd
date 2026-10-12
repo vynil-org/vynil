@@ -3,7 +3,7 @@
 
 Spec: LibRenderLintSchema
 
-Platform: librairie de scripts Rhai (moteur vynil-core 0.7.7)
+Platform: librairie de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Transformer le résultat de `schema_validate` (liste brute d'erreurs, fourni par le moteur,
