@@ -1989,7 +1989,7 @@ fn ingress_without_backend_service_is_dangling() {
 }
 
 #[test]
-fn a_named_target_port_missing_from_the_containers_is_not_reported_like_kube_linter() {
+fn a_named_target_port_absent_from_the_containers_is_not_reported() {
     // Le scénario « named target port must exist » de render_lint_network.sdd ne décrit pas
     // l'outil : kube-linter v0.8.3 ne vérifie pas qu'un targetPort nommé existe dans les
     // conteneurs (mesuré : targetPort "nope" absent du gabarit, aucun constat). Seul le format IANA
@@ -2006,6 +2006,31 @@ fn a_named_target_port_missing_from_the_containers_is_not_reported_like_kube_lin
     });
     let got = check_findings("invalid-target-ports", &[dep, svc], "#{}");
     assert!(got.is_empty(), "targetPort absent des conteneurs : {got:?}");
+}
+
+#[test]
+fn a_target_port_name_must_follow_the_iana_rules() {
+    // Scénario « a target port name must follow the IANA rules » : un constat par règle
+    // enfreinte, et non un seul constat par nom. `-AB--cd-efghijklmnop` (20 caractères, majuscules,
+    // tiret en tête, deux tirets consécutifs) enfreint quatre règles. Mesuré sur kube-linter
+    // v0.8.3 : quatre constats (longueur, caractères, tirets consécutifs, tiret en tête).
+    let svc = json!({
+        "apiVersion": "v1", "kind": "Service",
+        "metadata": { "name": "t-multi", "namespace": "app" },
+        "spec": { "selector": { "app": "web" }, "ports": [ { "port": 80, "targetPort": "-AB--cd-efghijklmnop" } ] }
+    });
+    let mut rhai = lib_script();
+    set_objs(&mut rhai, &json!([svc]));
+    let found = eval_json(
+        &mut rhai,
+        r#"import "render_lint" as render_lint;
+           render_lint::all(objs, #{}, #{only: ["invalid-target-ports"]})"#,
+    );
+    let found = found.as_array().expect("tableau de constats");
+    assert_eq!(found.len(), 4, "un constat par règle IANA enfreinte : {found:?}");
+    assert!(found.iter().all(|f| f["object"]["name"] == "t-multi"));
+    let messages: Vec<&str> = found.iter().filter_map(|f| f["message"].as_str()).collect();
+    assert!(messages.iter().all(|m| m.contains("-AB--cd-efghijklmnop")));
 }
 
 #[test]
