@@ -2,6 +2,7 @@ use super::{
     lint::{
         context::{build_suite_context, build_test_context},
         runner::LintRunner,
+        sections::Sections,
     },
     result::{Suppression, TestResultCollector},
     schema::registry::SchemaRegistry,
@@ -197,6 +198,14 @@ fn instance_already_mocked(
             == Some(instance.namespace.as_str());
         name_ok && ns_ok
     })
+}
+
+/// Lit le `status` de l'instance mockée du test, tel que l'installation l'a persisté dans la
+/// base de mocks (`fun_name` : `get_<usage>_instance`). `()` si la lecture échoue : le lint
+/// tourne alors avec toutes les sections vides.
+fn instance_status(rhai: &mut Script, fun_name: &str) -> Dynamic {
+    rhai.eval(&format!("{fun_name}(args.namespace, args.instance).status"))
+        .unwrap_or_default()
 }
 
 /// Builds the virtual instance mock (`Dynamic`) for the tested instance.
@@ -660,7 +669,9 @@ impl TestHandler {
                 .and_then(|loaded| loaded.testSets.clone())
                 .unwrap_or_default();
             let ctx = build_test_context(&self.package, &test, &refs);
-            let outcome = lint.run_test(&ctx, &created);
+            let status = instance_status(&mut rhai, fun_name);
+            let sections = Sections::from_status(&created, &status);
+            let outcome = lint.run_test(&ctx, &sections);
             asserts.extend(outcome.rows);
             suppressions.extend(outcome.suppressions);
         }
@@ -777,7 +788,7 @@ mod tests {
     /// Lint qui signale une erreur par objet reçu.
     const LINT_ERROR_PER_OBJECT: &str = r#"fn lint(objs, ctx) {
     let out = [];
-    for obj in objs {
+    for obj in objs.all {
         out.push(#{
             rule: "no-web", severity: "error",
             object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
@@ -900,7 +911,7 @@ mod tests {
     [#{
         rule: "count", severity: "warn",
         object: #{ apiVersion: "v1", kind: "Count", name: "all" },
-        message: "objects=" + objs.len()
+        message: "objects=" + objs.all.len()
     }]
 }
 "#,
@@ -991,5 +1002,55 @@ mod tests {
         let mut h = handler(&fx);
         h.run_suite_lint();
         assert_eq!(report(&h)["tests"].as_array().map(Vec::len), Some(0));
+    }
+    /// Installation qui crée un `Deployment`, un `ConfigMap` et un `Secret` ; seuls les deux
+    /// premiers sont déclarés par `set_status_scalables` et `set_status_befores`.
+    const INSTALL_SECTIONED: &str = r#"fn run(instance, context) {
+    let deploys = k8s_resource("deployments", "app");
+    deploys.create(#{ apiVersion: "apps/v1", kind: "Deployment", metadata: #{ name: "web", namespace: "app" } });
+    let cms = k8s_resource("configmaps", "app");
+    cms.create(#{ apiVersion: "v1", kind: "ConfigMap", metadata: #{ name: "cfg", namespace: "app" } });
+    let secrets = k8s_resource("secrets", "app");
+    secrets.create(#{ apiVersion: "v1", kind: "Secret", metadata: #{ name: "loose", namespace: "app" } });
+    instance.set_status_scalables([#{ apiVersion: "apps/v1", kind: "Deployment", name: "web", namespace: "app" }]);
+    instance.set_status_befores([#{ apiVersion: "v1", kind: "ConfigMap", name: "cfg", namespace: "app" }]);
+}
+"#;
+
+    /// Lint qui constate chaque objet de `objs.scalables` puis chaque objet de `objs.unsectioned`.
+    const LINT_SCALABLES_AND_UNSECTIONED: &str = r#"fn lint(objs, ctx) {
+    let out = [];
+    for obj in objs.scalables {
+        out.push(#{
+            rule: "scalable", severity: "error",
+            object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
+            message: "scalable seen"
+        });
+    }
+    for obj in objs.unsectioned {
+        out.push(#{
+            rule: "unsectioned", severity: "error",
+            object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
+            message: "unsectioned seen"
+        });
+    }
+    out
+}
+"#;
+
+    #[test]
+    fn lint_sections_follow_what_the_package_declared() {
+        let fx = fixture(
+            &[("default.yaml", plain_test("default"))],
+            INSTALL_SECTIONED,
+            Some(LINT_SCALABLES_AND_UNSECTIONED),
+        );
+        let mut h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        h.run_test("default", &sink());
+        let doc = report(&h);
+        let test = &doc["tests"][0];
+        assert_eq!(assert_names(test), ["lint:scalable", "lint:unsectioned"]);
+        assert_eq!(test["asserts"][0]["description"], "Deployment app/web");
+        assert_eq!(test["asserts"][1]["description"], "Secret app/loose");
     }
 }

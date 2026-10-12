@@ -1,7 +1,10 @@
 //! Exécution du script de lint de la distribution (spec : `runner.sdd`).
 
 use crate::testing::{
-    lint::finding::{parse_findings, to_rows, to_suppressions},
+    lint::{
+        finding::{parse_findings, to_rows, to_suppressions},
+        sections::Sections,
+    },
     result::Suppression,
     schema::{registry::SchemaRegistry, rhai::schema_rhai_register},
     vyniltestset::VynilAssertResult,
@@ -123,7 +126,7 @@ impl LintRunner {
     }
 
     #[must_use]
-    pub fn run_test(&self, ctx: &serde_json::Value, objects: &[Dynamic]) -> LintOutcome {
+    pub fn run_test(&self, ctx: &serde_json::Value, objects: &Sections) -> LintOutcome {
         if !self.has_test_hook {
             return LintOutcome::default();
         }
@@ -131,8 +134,7 @@ impl LintRunner {
             .pointer("/test/name")
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default();
-        let objs = Dynamic::from_array(objects.to_vec());
-        match self.call(TEST_HOOK, ctx, Some(objs)) {
+        match self.call(TEST_HOOK, ctx, Some(objects.to_dynamic())) {
             Ok(value) => Self::outcome(TEST_HOOK, &value, test_name),
             Err(message) => execution_outcome(message),
         }
@@ -218,6 +220,15 @@ mod tests {
         (fx, runner)
     }
 
+    fn configmap(name: &str) -> Dynamic {
+        common::rhaihandler::to_dynamic(json!({
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {"name": name, "namespace": "app"},
+        }))
+        .expect("objet Rhai")
+    }
+
     fn deployment(name: &str) -> Dynamic {
         common::rhaihandler::to_dynamic(json!({
             "apiVersion": "apps/v1",
@@ -225,6 +236,15 @@ mod tests {
             "metadata": {"name": name, "namespace": "app"},
         }))
         .expect("objet Rhai")
+    }
+
+    /// Sections dont seul `all` (et donc `unsectioned`) porte les objets : le cas simple.
+    fn plain(objects: Vec<Dynamic>) -> Sections {
+        Sections {
+            all: objects.clone(),
+            unsectioned: objects,
+            ..Sections::default()
+        }
     }
 
     fn test_ctx(name: &str) -> serde_json::Value {
@@ -235,7 +255,7 @@ mod tests {
     const ONE_ERROR_PER_OBJECT: &str = r#"
         fn lint(objs, ctx) {
             let out = [];
-            for obj in objs {
+            for obj in objs.all {
                 out.push(#{
                     rule: "latest-tag", severity: "error",
                     object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
@@ -260,7 +280,7 @@ mod tests {
     fn script_returning_findings_yields_rows() {
         let (_fx, runner) = runner(ONE_ERROR_PER_OBJECT);
         let objects = vec![deployment("web"), deployment("api")];
-        let outcome = runner.run_test(&test_ctx("default"), &objects);
+        let outcome = runner.run_test(&test_ctx("default"), &plain(objects));
         assert_eq!(outcome.rows.len(), 2);
         assert_eq!(outcome.rows[0].name, "lint:latest-tag");
         assert_eq!(outcome.rows[0].description.as_deref(), Some("Deployment app/web"));
@@ -269,9 +289,38 @@ mod tests {
     }
 
     #[test]
+    fn the_script_sees_every_section() {
+        // Le script signale, par clé de `objs` non vide, une ligne ; une clé absente donne `missing`.
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) {
+                let out = [];
+                for key in ["all", "crds", "systems", "befores", "vitals", "scalables", "others", "posts", "unsectioned"] {
+                    if !objs.contains(key) {
+                        out.push(#{ rule: "missing", severity: "error", object: #{ apiVersion: "v1", kind: "Key", name: key }, message: "absente" });
+                    } else if objs[key].len() > 0 {
+                        out.push(#{ rule: key, severity: "error", object: #{ apiVersion: "v1", kind: "Key", name: key }, message: "remplie" });
+                    }
+                }
+                out
+            }
+            "#,
+        );
+        let sections = Sections {
+            all: vec![deployment("web"), configmap("cfg")],
+            scalables: vec![deployment("web")],
+            befores: vec![configmap("cfg")],
+            ..Sections::default()
+        };
+        let outcome = runner.run_test(&test_ctx("default"), &sections);
+        let names: Vec<&str> = outcome.rows.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["lint:all", "lint:befores", "lint:scalables"]);
+    }
+
+    #[test]
     fn a_throwing_script_becomes_one_failed_row() {
         let (_fx, runner) = runner(r#"fn lint(objs, ctx) { throw "boom from the rule"; }"#);
-        let outcome = runner.run_test(&test_ctx("default"), &[deployment("web")]);
+        let outcome = runner.run_test(&test_ctx("default"), &plain(vec![deployment("web")]));
         assert_eq!(outcome.rows.len(), 1);
         assert_eq!(outcome.rows[0].name, "lint:execution");
         assert!(!outcome.rows[0].passed);
@@ -285,7 +334,7 @@ mod tests {
     #[test]
     fn a_script_that_touches_the_cluster_fails() {
         let (_fx, runner) = runner(r#"fn lint(objs, ctx) { k8s_resource("Deployment", "web", "app"); [] }"#);
-        let outcome = runner.run_test(&test_ctx("default"), &[]);
+        let outcome = runner.run_test(&test_ctx("default"), &Sections::default());
         assert_eq!(outcome.rows.len(), 1);
         assert_eq!(outcome.rows[0].name, "lint:execution");
         assert!(!outcome.rows[0].passed);
@@ -299,7 +348,7 @@ mod tests {
     #[test]
     fn a_non_array_return_is_a_failed_row() {
         let (_fx, runner) = runner(r#"fn lint(objs, ctx) { #{ rule: "x" } }"#);
-        let outcome = runner.run_test(&test_ctx("default"), &[]);
+        let outcome = runner.run_test(&test_ctx("default"), &Sections::default());
         assert_eq!(outcome.rows.len(), 1);
         assert_eq!(outcome.rows[0].name, "lint:execution");
         assert!(!outcome.rows[0].passed);
@@ -333,7 +382,7 @@ mod tests {
     #[test]
     fn an_endless_loop_is_cut_by_the_operations_limit() {
         let (_fx, runner) = runner(r"fn lint(objs, ctx) { loop {} }");
-        let outcome = runner.run_test(&test_ctx("default"), &[]);
+        let outcome = runner.run_test(&test_ctx("default"), &Sections::default());
         assert_eq!(outcome.rows.len(), 1);
         assert_eq!(outcome.rows[0].name, "lint:execution");
         assert!(!outcome.rows[0].passed);
