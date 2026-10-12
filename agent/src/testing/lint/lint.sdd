@@ -65,5 +65,5 @@ Done when:
     `cargo test -p agent`, clippy et `cargo +nightly fmt --check` sont verts.
 
 Tasks:
-  [ ] Publier la page de référence `render-lint.md` (contrat `lint`/`lint_suite`, forme de
+  [x] Publier la page de référence `render-lint.md` (contrat `lint`/`lint_suite`, forme de
       `ctx`, forme d'un constat, suppressions) avec son miroir français.

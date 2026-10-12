@@ -204,8 +204,13 @@ fn instance_already_mocked(
 /// base de mocks (`fun_name` : `get_<usage>_instance`). `()` si la lecture échoue : le lint
 /// tourne alors avec toutes les sections vides.
 fn instance_status(rhai: &mut Script, fun_name: &str) -> Dynamic {
-    rhai.eval(&format!("{fun_name}(args.namespace, args.instance).status"))
-        .unwrap_or_default()
+    match rhai.eval(&format!("{fun_name}(args.namespace, args.instance).status")) {
+        Ok(status) => status,
+        Err(e) => {
+            tracing::warn!("lint sections unavailable, every object is left unsectioned: {e}");
+            Dynamic::UNIT
+        }
+    }
 }
 
 /// Builds the virtual instance mock (`Dynamic`) for the tested instance.
