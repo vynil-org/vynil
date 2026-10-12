@@ -8,7 +8,7 @@
 
 Spec: PackagesValidate
 
-Platform: script Rhai (moteur vynil-core 0.8.0 / rhai verrouillé)
+Platform: script Rhai (moteur vynil-core / rhai verrouillé)
 
 Purpose:
   Posséder le côté script de `agent package validate` : lire
@@ -136,7 +136,7 @@ Depends on:
   /agent/src/package/validate.sdd — seul appelant : répertoires de
     résolution, injection d'`args`, rejet du résultat de l'extrait, et la
     conversion texte-d'erreur/exit-4 ; ce fichier ne décide rien côté CLI.
-  vynil-core `0.8.0` @file_read + @yaml_decode — lecture texte et parse YAML
+  vynil-core @file_read + @yaml_decode — lecture texte et parse YAML
     mono-document.
   @read_package_yaml + @validate_options (/common/src/vynilpackage.sdd) — la
     relecture stricte et le gate de forme des options ; de fait la véritable

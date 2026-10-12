@@ -8,7 +8,7 @@
 
 Spec: PackagesTest
 
-Platform: script Rhai (moteur vynil-core 0.8.0 / rhai verrouillé)
+Platform: script Rhai (moteur vynil-core / rhai verrouillé)
 
 Purpose:
   Faire la générale de l'install sur tout moteur qui l'importe : poser les sources du paquet dans

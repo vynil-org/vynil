@@ -1,6 +1,6 @@
 Spec: ScriptsAgent
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Registre directeur des 120 scripts Rhai embarqués de ./ — contrat de couverture

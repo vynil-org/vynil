@@ -72,7 +72,7 @@ Depends on:
     `1.48.0` demandé dans `/Cargo.toml`, `1.52.3` verrouillé dans `/Cargo.lock` ; les textes
     de panic de Raises appartiennent à cette build, dont le @block_in_place laisse passer un
     thread ordinaire et refuse les contextes de scheduler non multi-thread.
-  `vynil-core` `0.8.0` verrouillé dans `/Cargo.lock` avec la feature `k8s` — les cinq hooks
+  `vynil-core` verrouillé dans `/Cargo.lock` avec la feature `k8s` — les cinq hooks
     d'injection @std::sync::OnceLock où @wire_core_k8s s'enregistre.
   @serde_json — le porteur @serde_json::Value des objets owner et labels.
   @std::env — @std::env::current_exe pour l'identité du binaire et @std::env::var pour

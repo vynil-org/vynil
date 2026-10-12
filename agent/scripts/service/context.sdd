@@ -1,6 +1,6 @@
 Spec: ServiceContextScript
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core)
 
 Purpose:
   L'orchestrateur de contexte du kind service : un niveau au-dessus de @build_context, il
@@ -143,7 +143,7 @@ Depends on:
   ./../lib/build_context.rhai — toute la délégation (gelée dans
     ./../lib/build_context.sdd ; seule la couture — un appel, par lane, en premier — est le
     contrat de ce fichier).
-  Surface script vynil-core 0.8.0 (@Script `add_common` derrière
+  Surface script vynil-core (@Script `add_common` derrière
     /common/src/rhaihandler.sdd) : @import_run et @import_template à trois arguments avec
     la famille à quatre overloads (2/3/4 args ; ce fichier bind toujours le 3-args),
     @type_of, résolution de noms par `import` de module simple.

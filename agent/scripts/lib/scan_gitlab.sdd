@@ -1,6 +1,6 @@
 Spec: LibScanGitlab
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Lister tous les dépôts de conteneur-registry d'un projet GitLab — la variante `gitlab` d'une
@@ -41,7 +41,7 @@ Depends on:
   ./secret_dockerconfigjson.rhai (./secret_dockerconfigjson.sdd) — décodeur @get_auth_from ; cette
     voie n'en consomme que le champ `pass` et hérite de la posture de split au premier deux-points
     laissée ouverte là-bas.
-  Surface http de vynil-core 0.8.0 — @new_http_client, @add_header_bearer, @RestClient.@get
+  Surface http de vynil-core — @new_http_client, @add_header_bearer, @RestClient.@get
     (carte de résultat `code`/`headers`/`body`/`json`, `json` un objet vide sur un corps non-JSON),
     @headers_get (insensible à la casse, `()` quand absent), atteints comme noms de script via
     @http_rhai_register dans l'assembly /common/src/rhaihandler.sdd ; plus les builtins @rhai

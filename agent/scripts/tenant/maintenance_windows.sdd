@@ -1,6 +1,6 @@
 Spec: FenetresMaintenanceTenant
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Les deux passe-plats de fenêtre de maintenance du kind tenant, `./maintenance_start.rhai`

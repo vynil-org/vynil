@@ -1,6 +1,6 @@
 Spec: RenduCrdsSysteme
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Spec propre de ./template_crds.rhai, l'émetteur `crds` du rendu `agent template
@@ -120,7 +120,7 @@ Depends on:
   /common/src/handlebarshandler.sdd — @new_hbs, @register_partial_dir,
     @register_helper_dir, @render_named et leurs sémantiques de rendu (strict mode,
     no-escape, réenregistrement) qui ne sont pas re-décrites ici.
-  L'API d'engine vynil-core 0.8.0 montée par @Script (/common/src/rhaihandler.sdd) :
+  L'API d'engine vynil-core montée par @Script (/common/src/rhaihandler.sdd) :
     @import_template avec fallback `run`, @read_dir, @file_read, @yd::decode,
     @yaml_encode, @type_of, @log_warn, @log_debug et le print hook vers stdout ; la
     frontière skip-absent contre relance-erreur est gelée dans ./template.sdd.

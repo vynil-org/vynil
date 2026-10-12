@@ -41,6 +41,8 @@ Must:
     de `serde_json` sur tout le graphe du workspace, donc aucun chemin de ce crate ne trie les clés.
   Ré-exporter les moteurs génériques de `vynil-core` derrière des newtypes Vynil pour que les
     consommateurs ne sélectionnent pas la couche moteur eux-mêmes.
+  Épingler `vynil-core` à la version `0.8.0` dans ./Cargo.toml. Cette spec est la seule du dépôt à
+    en nommer la version : les autres écrivent `vynil-core` sans version et lisent ./Cargo.toml.
 
 Must not:
   Dépendre de `agent`, `operator`, ou `server`.

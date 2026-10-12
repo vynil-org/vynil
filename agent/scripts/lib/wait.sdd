@@ -1,6 +1,6 @@
 Spec: LibWait
 
-Platform: librairie de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: librairie de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Bloquer la lane install/restore appelante jusqu'à ce que les objets fraîchement appliqués
@@ -95,7 +95,7 @@ Must:
     lane peut `import "wait"` sans jamais l'appeler (voir Tasks).
 
 Depends on:
-  La surface de script vynil-core 0.8.0 montée par `/common/src/rhaihandler.sdd`
+  La surface de script vynil-core montée par `/common/src/rhaihandler.sdd`
     @Script::new / @Script::new_mock : @k8s_resource + @get_obj, les waits @K8sObject
     @wait_condition/@wait_status/@wait_status_prop, les getters workload typés et leurs waits
     @wait_available/@wait_done, et @log_info — ce fichier n'ajoute ni état ni timeout propre.

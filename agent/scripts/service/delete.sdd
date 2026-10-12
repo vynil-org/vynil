@@ -1,6 +1,6 @@
 Spec: ServiceDeleteScript
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Orchestre la démolition d'une `ServiceInstance` : exécuter les buckets de catégories du
@@ -159,7 +159,7 @@ Depends on:
     ./delete_crds.rhai — supprime les CRDs enregistrées mais écarte en warning celles dont le
     kind liste encore des enfants (cette CRD survit silencieusement). Leurs contrats internes
     leur appartiennent, cités ici seulement comme rôles de lanes.
-  API moteur vynil-core 0.8.0 — le shim global @import_run à trois arguments injecté par
+  API moteur vynil-core — le shim global @import_run à trois arguments injecté par
     @Script `add_common` (sémantique optional-import, frontière skip-contre-ré-levée citée
     dans Raises), @is_dir et @type_of.
   /common/src/rhaihandler.sdd — le constructeur @Script qui monte ce qui précède pour les

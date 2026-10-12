@@ -1,6 +1,6 @@
 Spec: GabaritRestorePod
 
-Platform: Handlebars 6.4.2 (moteur crate `vynil-core` 0.8.0 via @new_hbs en mode strict + @handlebars::no_escape, partials via @register_partial_dir)
+Platform: Handlebars 6.4.2 (moteur crate `vynil-core` via @new_hbs en mode strict + @handlebars::no_escape, partials via @register_partial_dir)
 
 Purpose:
   Donner au `Job` `init-restore` — premier install d'une instance depuis un snapshot restic —
@@ -19,7 +19,7 @@ Depends on:
     @selector_from_ctx : lit `instance.selector` sur `this` en `.get()` Rust seulement, donc
     un `selector` absent retombe sur la carte vide `{}` enrichie `app.kubernetes.io/component`
     sans lever le mode strict.
-  crate `vynil-core` 0.8.0 (dépendance /common/Cargo.toml) — helpers vendored @json_to_str et
+  crate `vynil-core` (dépendance /common/Cargo.toml) — helpers vendored @json_to_str et
     @to_json (module `hbs_json`) : @to_json(`format="yaml"`) relit le bloc rendu en YAML
     (`serde_yaml`) puis écrit un JSON pretty (`@serde_json::to_string_pretty`).
   /agent/scripts/lib/backup_context.sdd — productrice de @bctx::run et de la forme réelle de
@@ -155,7 +155,7 @@ Tasks:
     casse le YAML interne du bloc fait échouer tout le rendu) et absence de garde sur les
     valeurs `()` mutées (`"image": null`, args `[null, "restore"]` produits sans signal) —
     assert côté gabarit, garde côté lane, ou confiance aux producteurs ? décider plus tard.
-  [x] Orthographe du moteur : la crate est `vynil-core` 0.8.0 (/common/Cargo.toml ligne 10,
+  [x] Orthographe du moteur : la crate est `vynil-core` (/common/Cargo.toml ligne 10,
     Cargo.lock) — la graphie fautive « wynil-core » répandue dans la famille de specs a été
     corrigée en masse (pass sed sur tout le corpus @.sdd).
   [x] Désaccord de specs arbitré à la source : @handlebars_misc_helpers 0.17.0 src/lib.rs:41

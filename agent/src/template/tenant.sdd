@@ -18,7 +18,7 @@ Depends on:
     resolver, la conversion @crate::Result de @Script::eval, @Script::set_dynamic via
     Deref, et le comportement de skip de module absent des helpers de script
     `import_run` / `import_template`. Le contenu du moteur est attribué à ce build et
-    à `vynil-core` `0.8.0`.
+    à `vynil-core`.
   /common/src/handlebarshandler.sdd — la surface de script `new_hbs` /
     `register_partial_dir` / `register_helper_dir` / `render_named` qu'utilise la
     phase de rendu ; la sémantique du rendu (mode strict, pas d'échappement,

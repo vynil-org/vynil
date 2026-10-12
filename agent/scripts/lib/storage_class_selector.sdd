@@ -1,6 +1,6 @@
 Spec: LibStorageClassSelector
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Désigner l'unique entrée StorageClass que doit utiliser une famille de workloads — PVC

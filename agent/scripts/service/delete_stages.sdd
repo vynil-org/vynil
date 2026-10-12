@@ -1,6 +1,6 @@
 Spec: EtapesSuppressionService
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Un seul contrat, cinq instances, pour les stages « bucket » de la suppression service.
@@ -107,7 +107,7 @@ Must not:
     recopier un gate (réflexe des squelettes install) dé-synchroniserait le contrat.
 
 Depends on:
-  L'API d'engine vynil-core 0.8.0 et les globaux montés par @Script
+  L'API d'engine vynil-core et les globaux montés par @Script
     (/common/src/rhaihandler.sdd) : le shim @import_run à trois arguments (skip
     absent-module/absent-`run` contre rethrow-erreur, frontière gelée dans
     ./delete.sdd), @k8s_resource et @api.exist, les méthodes K8sObject @get_obj,

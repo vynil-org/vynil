@@ -151,7 +151,7 @@ Depends on:
   @crate::Error, @crate::Result, @crate::RhaiRes, @crate::rhai_err dans /common/src/lib.rs — le
     contrat d'erreur ; @crate::Error::Core enveloppe @vynil_core::Failures tels que ses erreurs
     @Semver et Rhai.
-  @crate::Semver et @crate::k8sraw::K8sRaw — deux re-exports de `vynil-core` `0.8.0` verrouillé
+  @crate::Semver et @crate::k8sraw::K8sRaw — deux re-exports de `vynil-core` verrouillé
     (`/common/Cargo.toml`), le wrapper semver et la récupération brute `/version` de l'api-server.
   @crate::SystemInstance, @crate::TenantInstance, @crate::ServiceInstance — les modèles d'instance
     lus comme ressources @kube::Api et via leurs helpers @get_all_services_names,

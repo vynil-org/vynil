@@ -1,6 +1,6 @@
 Spec: ServiceContextServiceScript
 
-Platform: librairie de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: librairie de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Le slot `context_service` de ./context.sdd s'exécute juste après le mint de la carte
@@ -97,7 +97,7 @@ Must not:
   Lire l'état cluster sur le chemin @template (la lane offline doit rester sans appel moteur).
 
 Depends on:
-  surface script vynil-core 0.8.0 (enregistrée derrière /common/src/rhaihandler.sdd) :
+  surface script vynil-core (enregistrée derrière /common/src/rhaihandler.sdd) :
     @k8s_resource + @K8sGeneric @get (portée cluster, un argument), @json_decode/@json_encode,
     @type_of, @log_warn, @filter sur array, @keys sur map, @starts_with sur string et le
     @remove de sous-chaîne de `string_more`.

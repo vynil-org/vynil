@@ -1,6 +1,6 @@
 Spec: SystemTemplateScript
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Orchestration du rendu offline de `agent template system` : déclencher le hook `install_pre` via
@@ -104,7 +104,7 @@ Depends on:
     kind qui ne garde que les documents `CustomResourceDefinition`, `install_crds_pre`/`_post` autour),
     l'émetteur systems est la passe @template bucketisée partagée de ./../lib/install_from_dir.rhai avec
     `install_systems_pre` et pas de slot post. Rôles cités seulement ; leurs contrats leur appartiennent.
-  API moteur vynil-core 0.8.0 — les shims @import_run et @import_template à 3 arg derrière @Script
+  API moteur vynil-core — les shims @import_run et @import_template à 3 arg derrière @Script
     @add_common (frontière skip-vs-rethrow, le fallback `run` de import_template), @is_dir, @type_of.
   ./context.rhai (./context.sdd) + ./../lib/build_context.rhai — producteur de la carte entrante ; le
     contrat de clés appartient à ./../lib/build_context.sdd.

@@ -1,6 +1,6 @@
 Spec: ServiceScheduleBackupScript
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Garder appliqué le schedule de backup restic périodique d'un `ServiceInstance` : appelé depuis
@@ -170,7 +170,7 @@ Depends on:
   /agent/templates/cronbackup.yaml.hbs (+ le template de Pod imbriqué
     /agent/templates/backup.yaml.hbs) résolu via `context.template_dir` — la forme des manifests
     rendus est propriété du template, pas gelée ici.
-  API moteur vynil-core 0.8.0 — le shim @import_run, @new_hbs + @register_partial_dir +
+  API moteur vynil-core — le shim @import_run, @new_hbs + @register_partial_dir +
     @render_from du type `"HandleBars"` (/common/src/handlebarshandler.sdd, helpers
     `json_to_str`/`selector_from_ctx`/`to_json` surfant sur le même moteur), @is_dir,
     @yd::decode, @type_of, @json_encode ; les branches `switch type_of(e)` sont du rhai

@@ -1,6 +1,6 @@
 Spec: ServiceBackupInitScript
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Vérifier que le dépôt restic du backup existe et le créer quand il manque — premier étage
@@ -37,7 +37,7 @@ Returns:
 Raises:
   Zéro @throw littéral. Levées engine possibles, non gardées :
     - @shell_run ne lève que si le `sh -c` ne peut être lancé ; un restic tué par signal lui
-      rend rc `0` (statut non chiffré remplacé par `0`, vynil-core 0.8.0 `src/shell.rs`) ;
+      rend rc `0` (statut non chiffré remplacé par `0`, vynil-core `src/shell.rs`) ;
     - `context` non-map lève sur le premier `context.` (propriété sur `()`).
   Absences avalées par le langage, pas par le code : clé scalaire absente = `()` interpolé
     littéral dans la commande (`export RESTIC_REPOSITORY="()"`…), sans throw.
@@ -70,7 +70,7 @@ Must:
 Depends on:
   ./../lib/backup_context.sdd — producteur des seules clés lues (`s3_url`, `restic_args`).
   ./backup.sdd — appelant, position dans la séquence, discipline des skip-markers.
-  API moteur vynil-core 0.8.0 — @import_run (version 2 args), @shell_run (rc int64 brut),
+  API moteur vynil-core — @import_run (version 2 args), @shell_run (rc int64 brut),
     @log_info (registrars /common/src/rhaihandler.sdd).
 
 References:

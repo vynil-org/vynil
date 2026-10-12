@@ -1,6 +1,6 @@
 Spec: GabaritJukeBoxVynil
 
-Platform: Handlebars (moteur vynil-core 0.7.7, rendu par @get_objects de /agent/scripts/lib/install_from_dir.rhai)
+Platform: Handlebars (moteur vynil-core, rendu par @get_objects de /agent/scripts/lib/install_from_dir.rhai)
 
 Purpose:
   Faire du paquet système `vynil` le propriétaire du `@JukeBox` nommé `vynil` : l'objet

@@ -4,7 +4,7 @@
 
 Spec: LibPackageYaml
 
-Platform: Bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: Bibliothèque de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Donner aux lanes build et update du package un gate partagé pour le `package.yaml`
@@ -112,7 +112,7 @@ Must:
     @log_warn est la seule surface moteur que ce fichier appelle.
 
 Depends on:
-  API du moteur vynil-core 0.8.0 — @log_warn du registrar du moteur core, les helpers
+  API du moteur vynil-core — @log_warn du registrar du moteur core, les helpers
     script installés par le socle de @Script::new_core
     (./../../../common/src/rhaihandler.sdd) ; les builtins rhai (@type_of, `switch`,
     indexage map/tableau, `in`) arrivent avec le moteur et rien d'autre n'est atteint.

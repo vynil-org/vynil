@@ -1,6 +1,6 @@
 Spec: LibApps
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Construit des poignées @RestClient pré-armées et authentifiées pour trois apps in-cluster
@@ -102,7 +102,7 @@ Must:
     Secrets ni clients, un client neuf par appel.
 
 Depends on:
-  APIs enregistrées de vynil-core 0.8.0, par registrar : `k8s` @k8sgeneric_rhai_register
+  APIs enregistrées de vynil-core, par registrar : `k8s` @k8sgeneric_rhai_register
     (constructeurs @k8s_resource, @K8sGeneric.get — k8s.rs), `http` @http_rhai_register
     (@new_http_client, les cinq mutateurs @RestClient utilisés ici, la carte de réponse
     @RestClient.get — http.rs), et l'helper @base64_decode du moteur (engine.rs).

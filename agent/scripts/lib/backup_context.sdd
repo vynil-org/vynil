@@ -1,6 +1,6 @@
 Spec: LibBackupContext
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Construit l'ENV et le CONTEXT de backup/restore restic consommés par les lanes

@@ -168,7 +168,7 @@ Tasks:
       dans les tests tant que la voie dormante n'est pas réveillée.
   [x] Orthographe de la crate dans la famille : la graphie fautive « wynil-core » était
       répandue dans ./cronbackup.yaml.hbs.sdd, ./backup.yaml.hbs.sdd, ./init_job.yaml.hbs.sdd
-      et les specs de scripts ; la crate réelle est `vynil-core` 0.8.0 (common/Cargo.toml
+      et les specs de scripts ; la crate réelle est `vynil-core` (common/Cargo.toml
       ligne 10, entrée registry de Cargo.lock). Corrigée en masse par pass sed sur le corpus.
   [ ] Tests : zéro test ni code vivant ne référence `manualbackup.yaml` (grep dépôt = le bloc
       commenté + les specs) ; les Scenario ci-dessous ne deviennent testables que si le site

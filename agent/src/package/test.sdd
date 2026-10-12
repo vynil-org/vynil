@@ -38,7 +38,7 @@ References:
     @Error::YamlError et @Error::Core avec son encapsulation transparente des erreurs
     `vynil-core`.
   /common/src/yamlhandler.sdd — @yaml_all_serialize_to_string, le sérialiseur YAML
-    multi-documents `vynil-core` `0.8.0` utilisé par le vidage de sortie template.
+    multi-documents `vynil-core` utilisé par le vidage de sortie template.
   /common/src/rhaihandler.sdd — @Dynamic, le type de valeur que porte le collecteur
     d'objets créés.
   /common/src/vynilpackage.sdd — @read_package_yaml et l'inférence de type de

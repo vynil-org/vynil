@@ -3,7 +3,7 @@
 
 Spec: TenantBackupScript
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Orchestre le backup restic immédiat (aucune branche de schedule n'existe ici) d'un package
@@ -195,7 +195,7 @@ Depends on:
     (redis-cli SAVE + kubectl cp de `dump.rdb` par entrée `redis_list`), ./backup_run.rhai
     (restic backup /backup avec --tag ${context.restic_tags}), ./maintenance_stop.rhai,
     ./backup_check.rhai (+ ./backup_prune.rhai, livré et non câblé).
-  API du moteur vynil-core 0.8.0 — le shim @import_run avec ses deux marqueurs skip,
+  API du moteur vynil-core — le shim @import_run avec ses deux marqueurs skip,
     @is_file, @shell_run (code de retour int), @log_info (registrars selon
     /common/src/rhaihandler.sdd).
 

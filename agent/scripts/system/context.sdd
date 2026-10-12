@@ -1,6 +1,6 @@
 Spec: SystemContextScript
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core)
 
 Purpose:
   L'orchestrateur de contexte du kind system — jumeau structurel de ./../service/context.rhai
@@ -146,7 +146,7 @@ Depends on:
     le contrat de ce fichier).
   ./context_system.rhai — le seul slot de hook livré ; position du slot seule ici,
     l'identité elle-même dans ./context_system.sdd.
-  La surface script de vynil-core 0.8.0 (@Script `add_common` derrière
+  La surface script de vynil-core (@Script `add_common` derrière
     /common/src/rhaihandler.sdd) : @import_run et @import_template à trois arguments avec
     la famille de quatre surcharges et le fallback-run en l'absence de `template`,
     @type_of, la résolution de nom d'`import` de module plat.

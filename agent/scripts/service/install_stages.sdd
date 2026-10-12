@@ -1,6 +1,6 @@
 Spec: EtapesInstallService
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Un seul contrat, quatre instances, pour les stages « bucket » de l'install service.
@@ -132,7 +132,7 @@ Depends on:
   /common/src/instanceservice.sdd et /common/src/instance_macros.sdd — enregistrement et corps
     des méthodes `set_status_<bucket>` et `set_status_<singulier>_failed` (patch de conditions,
     events, troncature de la raison à 1023 caractères).
-  L'API d'engine vynil-core 0.8.0 et les globaux montés par @Script
+  L'API d'engine vynil-core et les globaux montés par @Script
     (/common/src/rhaihandler.sdd) : @import_run dont la frontière skip-absent contre
     rethrow-erreur est gelée dans ./install.sdd — ici seulement le relancement à cru —
     @type_of, @json_encode.

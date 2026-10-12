@@ -2,14 +2,14 @@
 # /agent/src/package/update.sdd évalue : `import("update")` puis `update::run(args)`.
 # Sémantique de script seulement : la surface clap, le JSON de `args`, l'ordre des
 # répertoires de résolution et le piège exit-2 appartiennent à cette spec ; les coeurs
-# yaml/semver/registry/fs sont ceux de vynil-core 0.8.0 et les jambes d'indexeur @YamlDoc
+# yaml/semver/registry/fs sont ceux de vynil-core et les jambes d'indexeur @YamlDoc
 # celles de /common/src/yamlhandler.sdd. Calibré sur ./build.sdd et
 # ./../lib/package_yaml.sdd. Le comportement ci-dessous a été exercé de bout en bout sur le
 # @YamlDoc réel et le rhai verrouillé avec un registry stub (voir Tasks).
 
 Spec: PackagesUpdate
 
-Platform: script Rhai (moteur vynil-core 0.8.0 / rhai verrouillé 1.25.1)
+Platform: script Rhai (moteur vynil-core / rhai verrouillé 1.25.1)
 
 Purpose:
   Posséder tout le côté script de `agent package update` : lister les tags du registry de
@@ -184,7 +184,7 @@ Depends on:
     décodage ordonné sur lesquels la persistance de cette voie roule ; porte le wording périmé
     du clone `idx_get` qui n'écrit jamais en travers, que l'exécution de cette spec contredit
     (Tasks).
-  vynil-core 0.8.0 — auth anonyme @Registry + page de 100 tags, parse/compare/@to_string de
+  vynil-core — auth anonyme @Registry + page de 100 tags, parse/compare/@to_string de
     @Semver, `fs` @file_read/@file_write, @json_encode, les shims communs @import_run/@assert,
     les @log_* branchés sur tracing ; la propagation de re-paramétrage en chaîne et le repli
     point→indexeur du rhai verrouillé 1.25.1 sont la mécanique sur laquelle repose la posture

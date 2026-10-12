@@ -1,6 +1,6 @@
 Spec: EtapesSysteme
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Un seul contrat, trois instances, pour le pattern « bucket `systems` » des trois
@@ -162,7 +162,7 @@ Depends on:
   /common/src/instancesystem.sdd et /common/src/instance_macros.sdd — enregistrement et
     corps de @set_status_systems/@set_status_system_failed (conditions, events,
     troncature de raison).
-  L'API d'engine vynil-core 0.8.0 et les globaux montés par @Script
+  L'API d'engine vynil-core et les globaux montés par @Script
     (/common/src/rhaihandler.sdd) : @import_run, @import_template (lane rendu seule),
     @k8s_resource et les méthodes d'objet @get_obj, @delete, @original_kind,
     @wait_deleted, @type_of, @json_encode, @log_info, @log_warn ; la frontière

@@ -1,6 +1,6 @@
 Spec: ServiceRestoreRunScript
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Le restic-restore lui-même : snapshot `context.snapshot` restauré sous `/` du Pod de
@@ -71,7 +71,7 @@ Must:
 Depends on:
   ./../lib/backup_context.sdd — producteur des trois clés lues.
   ./restore.sdd — appelant, position dans l'ordre gelé, sémantique exit-5 du throw.
-  API moteur vynil-core 0.8.0 — @import_run (version 2 args), @shell_run, @log_info
+  API moteur vynil-core — @import_run (version 2 args), @shell_run, @log_info
     (registrars /common/src/rhaihandler.sdd ; sémantique rc dans le `src/shell.rs` du crate).
 
 References:

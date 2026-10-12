@@ -25,7 +25,7 @@ Depends on:
   /common/src/rhaihandler.sdd — l'assemblage @Script::new et la sémantique d'ordre du
     resolver, la conversion @Script::eval @crate::Result, le @Script::set_dynamic
     Deref'd et le skip de module absent des helpers script `import_run` /
-    `import_template`. Le contenu du moteur est attribué à ce build et à `vynil-core` `0.8.0`.
+    `import_template`. Le contenu du moteur est attribué à ce build et à `vynil-core`.
   /common/src/handlebarshandler.sdd — la surface script `new_hbs` / `register_partial_dir` /
     `register_helper_dir` / `render_named` utilisée par la phase de rendu ; la sémantique
     de rendu (mode strict, pas d'échappement, écrasement des ré-enregistrements de même

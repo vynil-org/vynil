@@ -1,6 +1,6 @@
 Spec: ServiceBackupPreparePostgresqlScript
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Dumper chaque cible du `context.pg_list` dans SON fichier unique `/backup/postgresql_<pg>.sql` —
@@ -45,7 +45,7 @@ Raises:
     n'avale que ses deux skip-markers) et tue la lane : exit-4 côté Rust (./backup.sdd,
     /agent/src/service/backup.sdd).
   Levées engine non gardées : @shell_run ne lève que si le `sh -c` ne peut être lancé, mais rend
-    `0` à un process tué par signal (vynil-core 0.8.0 `src/shell.rs`) ; `context` non-map lève au
+    `0` à un process tué par signal (vynil-core `src/shell.rs`) ; `context` non-map lève au
     premier `context.` ; @get_env ne lève jamais (`""` si absent).
 
 Handles:
@@ -90,7 +90,7 @@ Depends on:
   ./../lib/backup_context.sdd — producteur de `pg_list` et du quatuor d'envs par cible.
   ./backup.sdd — appelant, gate `.sh` de remplacement, sémantique exit-4 du @throw.
   ./maintenance_windows.sdd — fenêtre figée no-op autour de la ladder.
-  vynil-core 0.8.0 engine API — @import_run (shim 2 args), @shell_run, @get_env, @log_info
+  vynil-core engine API — @import_run (shim 2 args), @shell_run, @get_env, @log_info
     (registrars /common/src/rhaihandler.sdd).
 
 References:

@@ -50,7 +50,7 @@ Must:
     premier champ via @Vec::first et @pass le second champ brut via @Vec::get(1), les deux
     @unwrap_or_default vers `""`. Les identifiants issus de cette voie ignorent les
     flags username/password.
-  Garder la promotion des identifiants dans le @Registry::new épinglé (`vynil-core` `0.8.0`) :
+  Garder la promotion des identifiants dans le @Registry::new épinglé (`vynil-core`) :
     @user ou @pass vide — une moitié quelconque, indépendamment — choisit
     @oci_client::secrets::RegistryAuth::Anonymous, une paire complète choisit @oci_client::secrets::RegistryAuth::Basic.
   Geler l'adressage du tirage dans le @Registry::pull_image épinglé : @oci_client::Reference::with_tag
@@ -83,7 +83,7 @@ Must not:
 
 Depends on:
   @common::ocihandler::Registry — ré-export du crate-root (per /common/src/lib.sdd) du
-    `@vynil_core::oci::Registry` de `vynil-core` `0.8.0` (`/common/Cargo.toml`) :
+    `@vynil_core::oci::Registry` de `vynil-core` (`/common/Cargo.toml`) :
     @Registry::new et @Registry::pull_image avec les comportements gelés ci-dessus ; sous
     cette voie siègent `oci-client` `0.15.0`, `flate2` et `tar` `0.4.46` (`/Cargo.lock`).
   @common::rhaihandler::base64_decode — ré-export de

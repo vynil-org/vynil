@@ -31,7 +31,7 @@ Must:
     @vynil_core::engine::Script::new_bare(@resolver_path), qui pour le jeu de fonctionnalités
     `/common/Cargo.toml` `k8s,oci,s3,fs,shell,password` plus les défauts core
     `http,crypto,rhai,hbs,hbs-scripting` construit le moteur générique attribué à ce
-    `vynil-core` `0.8.0` de crates.io — un @vynil_core::engine::FileModuleResolver par entrée
+    `vynil-core` de crates.io — un @vynil_core::engine::FileModuleResolver par entrée
     `resolver_path` dans l'ordre donné, profondeurs d'expression `256`/`128`, niveaux d'appel
     `512`, et le jeu d'aides génériques qui donne à chaque constructeur ses pouvoirs de script
     au niveau hôte (`get_env`, lecture/écriture/copie/liste du système de fichiers,
@@ -110,7 +110,7 @@ Must:
     les fichiers instance et JukeBox et ./k8smock.rs.
 
 Depends on:
-  `vynil-core` `0.8.0` de crates.io (`/common/Cargo.toml`) — @vynil_core::engine::Script est le type
+  `vynil-core` de crates.io (`/common/Cargo.toml`) — @vynil_core::engine::Script est le type
     enveloppé et fournit @vynil_core::engine::Script::new_bare ainsi que tout corps d'exécution ;
     @vynil_core::Error convertit via @Into::into ; @vynil_core::oci_mock et les réexportations
     @vynil_core::engine de @Dynamic, @Map, @to_dynamic et l'aide base64 sont consommés directement.

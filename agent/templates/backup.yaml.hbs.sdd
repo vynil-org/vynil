@@ -1,6 +1,6 @@
 Spec: GabaritPodBackup
 
-Platform: Handlebars (moteur vynil-core 0.8.0 / hbs du crate `agent` via @new_hbs, partials via @register_partial_dir)
+Platform: Handlebars (moteur vynil-core / hbs du crate `agent` via @new_hbs, partials via @register_partial_dir)
 
 Purpose:
   Rendre le pod template des jobs de backup : partial `backup.yaml` injecté après la ligne

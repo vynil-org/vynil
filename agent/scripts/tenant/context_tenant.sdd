@@ -1,6 +1,6 @@
 Spec: ContextTenantScript
 
-Platform: Bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: Bibliothèque de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Le slot livré `context_tenant` de ./context.rhai : transforme la carte `tenant` tout
@@ -85,7 +85,7 @@ Must not:
 
 Depends on:
   ./context.rhai — seul appelant (contrat du slot dans ./context.sdd).
-  Surface script vynil-core 0.8.0 (registrars derrière /common/src/rhaihandler.sdd) :
+  Surface script vynil-core (registrars derrière /common/src/rhaihandler.sdd) :
     @k8s_resource("Namespace").@get, @json_decode, @json_encode, @log_warn, @type_of,
     @keys()/@starts_with/@remove sur string.
 

@@ -1,6 +1,6 @@
 Spec: GabaritInitJob
 
-Platform: Handlebars (moteur vynil-core 0.8.0 / hbs du crate `agent` via @new_hbs, partials via @register_partial_dir)
+Platform: Handlebars (moteur vynil-core / hbs du crate `agent` via @new_hbs, partials via @register_partial_dir)
 
 Purpose:
   Rendre le faisceau de documents `init-restore` qui amorce le premier install d'une instance

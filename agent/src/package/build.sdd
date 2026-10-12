@@ -85,7 +85,7 @@ Must:
     `fr.solidite.vynil.value_script` quand présentes et non vides ; `created`, la couche gzip
     unique de tout le contenu de `{temp}`, `rootfs.diff_ids`, `os linux`, l'architecture `None`,
     le répertoire de travail `/` et l'entrée d'historique `created_by: "vynil"` / `comment: "vynil.build"`
-    sont horodatés dans le `vynil-core` `0.8.0` @Registry::push_image du core, pas ici ni dans le
+    sont horodatés dans le `vynil-core` @Registry::push_image du core, pas ici ni dans le
     script.
   Garder la lane d'authentification limitée aux flags : `new_registry(registry, username, password)` —
     la moitié vide, l'une ou l'autre, donne @RegistryAuth::Anonymous, la règle gelée dans ./unpack.sdd ;
@@ -112,7 +112,7 @@ Depends on:
   Les derives @clap::Args et @clap::ValueEnum ; @serde/@serde_json `Serialize` pour l'handoff.
   /agent/scripts/packages/build.rhai (via les répertoires de résolution, pas une dépendance Rust) — le
     module `build` : staging, résolution de version, poussée, signature, affichage.
-  `vynil-core` `0.8.0` `@vynil_core::oci::Registry` — @push_image (annotations de manifest,
+  `vynil-core` `@vynil_core::oci::Registry` — @push_image (annotations de manifest,
     couche gzip, horodatages `Utc::now()`, retour du digest), @sign_image (sous-processus cosign),
     @rhai_list_tags (page de `100` tags au max).
   ./mod.sdd — le seul appelant de @run.

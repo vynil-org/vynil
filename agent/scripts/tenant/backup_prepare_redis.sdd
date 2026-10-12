@@ -1,6 +1,6 @@
 Spec: TenantBackupPrepareRedisScript
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Snapshooter puis exfiltrer, par cible du `context.redis_list` (@Dragonfly / @RedisCluster /
@@ -59,7 +59,7 @@ Raises:
     /agent/src/tenant/backup.sdd) — ./backup.sdd gèle déjà la propagation du premier.
   Levées engine NON gardées sur la sonde : @shell_output jette AVANT la garde `pod == ""`
     dès que kubectl rend rc≠0 (`Command failed, rc=...`) ou un stderr non vide
-    (`Command had stderr : ...`, vynil-core 0.8.0 `src/shell.rs`) — namespace absent, RBAC
+    (`Command had stderr : ...`, vynil-core `src/shell.rs`) — namespace absent, RBAC
     refusé, jsonpath en erreur : le message verbatim `No running pod found...` ne remonte
     alors pas. La garde ne couvre que le kubectl silencieux à rc `0` et sortie vide ; quel
     destin un vrai kubectl rend pour `.items[0]` sur liste vide n'est pas décidé par ce code
@@ -119,7 +119,7 @@ Depends on:
   ./backup.sdd — appelant, gate `.sh` de remplacement, sémantique exit-4 du @throw.
   ./maintenance_windows.sdd — fenêtre figée no-op autour de la ladder (le SAVE bloquant part
     sous une fenêtre qui ne scale rien).
-  vynil-core 0.8.0 engine API — @import_run (shim 2 args), @shell_run (rc, sortie héritée),
+  vynil-core engine API — @import_run (shim 2 args), @shell_run (rc, sortie héritée),
     @shell_output (rc≠0 ou stderr ⇒ jeté, sinon stdout), @get_env, @log_info (registrars
     /common/src/rhaihandler.sdd).
 

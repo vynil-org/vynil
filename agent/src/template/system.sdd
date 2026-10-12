@@ -31,7 +31,7 @@ Depends on:
     et comportement des helpers script `import_run` / `import_template` : module absent
     sauté avec l'unité, module présent sans fonction `template` retombe sur son `run`, et
     les deux absents sautent. Le contenu du moteur est attribué à ce build et à
-    `vynil-core` `0.8.0`. C'est le fallback qui fait du `context_system` livré (qui ne
+    `vynil-core`. C'est le fallback qui fait du `context_system` livré (qui ne
     définit que `run`) une identité dans la lane template.
   /common/src/handlebarshandler.sdd — la surface script `new_hbs` / `register_partial_dir`
     / `register_helper_dir` / `render_named` qu'utilise la phase de rendu ; la sémantique

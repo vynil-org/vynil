@@ -1,6 +1,6 @@
 Spec: ContextSystemScript
 
-Platform: Bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: Bibliothèque de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Le défaut system-kind livré du slot de hook `context_system` : un placeholder de
@@ -52,7 +52,7 @@ Depends on:
   ./context.rhai — seul importeur et propriétaire du slot (sites d'appel gelés dans
     ./context.sdd ; la couture live/offline est le contrat de cette spec, pas du
     présent fichier).
-  Surface script vynil-core 0.8.0 derrière /common/src/rhaihandler.sdd — le fallback
+  Surface script vynil-core derrière /common/src/rhaihandler.sdd — le fallback
     @import_template vers `run`, possédé et gelé là-bas, réaffirmé comme requis par
     /agent/src/template/system.sdd.
 

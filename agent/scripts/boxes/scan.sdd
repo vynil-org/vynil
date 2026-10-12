@@ -5,7 +5,7 @@
 
 Spec: BoxesScan
 
-Platform: script Rhai (moteur vynil-core 0.8.0 / rhai verrouillé)
+Platform: script Rhai (moteur vynil-core / rhai verrouillé)
 
 Purpose:
   Porter tout l'inventaire du box-scan que les deux lanes `agent box` ne font que lancer : lire
@@ -174,7 +174,7 @@ Must not:
     depuis les annotations de manifeste.
 
 Depends on:
-  La surface moteur vynil-core 0.8.0 consommée comme globales/membres de script (rien ici
+  La surface moteur vynil-core consommée comme globales/membres de script (rien ici
     n'enregistre quoi que ce soit) : @new_registry(host, user, pass) plus les membres `Registry`
     `list_tags(repository)` et `get_manifest(repository, tag).annotations` (vrais clients sur
     @Script::new / @Script::new_file_scan, les substitutions `OciRegistryMock` sous

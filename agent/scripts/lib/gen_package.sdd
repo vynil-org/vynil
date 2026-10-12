@@ -1,6 +1,6 @@
 Spec: LibGenPackage
 
-Platform: bibliothèque de scripts Rhai (moteur vynil-core 0.8.0)
+Platform: bibliothèque de scripts Rhai (moteur vynil-core)
 
 Purpose:
   Transforme un jeu de manifests rendus (typiquement `@yaml_decode_multi` d'un run `helm template`)
@@ -379,7 +379,7 @@ Must:
     image/env du moteur sont ici simplement inutilisées.
 
 Depends on:
-  APIs enregistrées de vynil-core 0.8.0, par registrar : `fs` (@file_read, @file_write,
+  APIs enregistrées de vynil-core, par registrar : `fs` (@file_read, @file_write,
     @create_dir, @read_dir, @is_file, @is_dir — engine.rs), `yaml` (@yaml_encode, @yaml_decode —
     yaml.rs ; PAS la surface ordered-YamlDoc de ./../../../common/src/yamlhandler.sdd, que seul
     le flux update externe utilise), et `shell` (@shell_output — shell.rs) ; tout le reste est

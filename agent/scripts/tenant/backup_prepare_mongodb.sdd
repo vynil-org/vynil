@@ -1,6 +1,6 @@
 Spec: TenantBackupPrepareMongodbScript
 
-Platform: scripts Rhai (moteur vynil-core 0.8.0)
+Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
   Dumper chaque cible du `context.mongo_list` dans SON archive unique
@@ -58,7 +58,7 @@ Raises:
     skip-markers) et tue la lane : exit-4 côté Rust (./backup.sdd,
     /agent/src/tenant/backup.sdd).
   Levées engine non gardées : @shell_run ne lève que si le `sh -c` ne peut être lancé, mais
-    rend `0` à un process tué par signal (vynil-core 0.8.0 `src/shell.rs`,
+    rend `0` à un process tué par signal (vynil-core `src/shell.rs`,
     `code().unwrap_or(0)`) ; `context` non-map lève au premier `context.` ; @get_env ne lève
     jamais (`""` si absent). Aucun @shell_output ici : contrairement à la jambe redis,
     aucune sortie n'est capturée ni jetée.
@@ -118,7 +118,7 @@ Depends on:
   ./../lib/backup_context.sdd — producteur de `mongo_list` et du quatuor d'envs par cible.
   ./backup.sdd — appelant, gate `.sh` de remplacement, sémantique exit-4 du @throw.
   ./maintenance_windows.sdd — fenêtre figée no-op autour de la ladder.
-  vynil-core 0.8.0 engine API — @import_run (shim 2 args), @shell_run, @get_env, @log_info,
+  vynil-core engine API — @import_run (shim 2 args), @shell_run, @get_env, @log_info,
     @log_warn (registrars /common/src/rhaihandler.sdd).
 
 References:

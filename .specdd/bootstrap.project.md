@@ -24,6 +24,14 @@ more specific than the framework defaults, they win.
 - Directory and crate specs stay coarse: purpose, immediate child roles, boundary
   constraints, and `References` to child specs. They must not restate file behaviour.
 
+## Dependency versions
+
+- A version that changes with every bump of a dependency is named in exactly one spec: the
+  one owning the manifest that pins it (for `vynil-core`, `common/common.sdd`). Every other
+  spec names the dependency without a version and points to that manifest.
+- A version stays in a spec only where it *is* the information: behaviour that changed
+  starting from a given release, or a bug fixed in a given release.
+
 ## Test-driven specification (TTD)
 
 - No product code change ships without tests derived from the owning spec's `Scenario`
