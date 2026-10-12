@@ -49,7 +49,7 @@ Handles:
     le schéma n'existe plus dans la version Kubernetes ciblée.
 
 Tasks:
-  [ ] Couvrir chaque scénario par un test de même nom.
+  [x] Couvrir chaque scénario par un test de même nom.
   [?] Étendre la table aux autres ressources de `k8s-openapi` (`resource.k8s.io`,
       `flowcontrol.apiserver.k8s.io`, `certificates.k8s.io`, …) ou la générer par macro à
       partir des modules ; décider selon l'usage réel des packages de la distribution.
