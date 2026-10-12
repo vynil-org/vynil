@@ -47,7 +47,8 @@ Exposes:
     @apply_suppressions(findings, objs, opts) — le tableau de constats où chaque constat dont
       l'objet porte l'annotation de suppression est marqué `suppressed: true`, avec `reason`
       (si non vide) et `origin` (`annotation:{prefix}{rule}`).
-    @all(objs, ctx, opts) — le tableau de constats de toutes les vérifications activées sur
+    @all(objs, ctx, opts) — `objs` est la liste plate (`objs.all` de l'argument du `lint` de la
+      distribution) ; le tableau de constats de toutes les vérifications activées sur
       tous les objets, suppressions appliquées.
     @checks() — le tableau trié des noms de vérifications portées (noms kube-linter, tirets).
 

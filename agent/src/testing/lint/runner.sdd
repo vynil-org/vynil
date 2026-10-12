@@ -22,9 +22,10 @@ References:
 Exposes:
   @LintRunner — `new(lint_dir: &Path, script_dir: &Path, schemas: SchemaRegistry)
     -> common::Result<Self>`,
-    `run_test(&self, ctx: &serde_json::Value, objects: &[Dynamic]) -> LintOutcome`,
+    `run_test(&self, ctx: &serde_json::Value, objects: &Sections) -> LintOutcome`,
     `run_suite(&self, ctx: &serde_json::Value) -> LintOutcome`.
   @LintOutcome — `{ rows: Vec<VynilAssertResult>, suppressions: Vec<Suppression> }`.
+  @Sections — défini par ./sections.sdd, importé ici.
 
 Accepts:
   @lint_dir : un répertoire contenant `lint.rhai`, point d'entrée fixe, plus les modules que
@@ -41,8 +42,10 @@ Must:
     fonctions de manipulation de données du moteur de base et les fonctions `schema_*` :
     aucune fonction k8s, http, s3, shell ni fichier n'y est enregistrée, si bien qu'un script
     qui les appelle échoue sur fonction inconnue.
-  Appeler `lint(objs, ctx)` avec `objs` la copie, en ordre de création, des objets du test et
-    `ctx` le contexte de test ; appeler `lint_suite(ctx)` avec le contexte de suite. Une
+  Appeler `lint(objs, ctx)` avec `objs` la carte de @Sections::to_dynamic — `all` (copie, en
+    ordre de création, des objets du test) et une clé par section du paquet (`crds`, `systems`,
+    `befores`, `vitals`, `scalables`, `others`, `posts`) plus `unsectioned`, toutes toujours
+    présentes — et `ctx` le contexte de test ; appeler `lint_suite(ctx)` avec le contexte de suite. Une
     fonction non définie par le script est sautée : un script peut ne fournir que l'une des
     deux.
   Replier toute erreur d'exécution Rhai, tout dépassement de la limite d'opérations et tout
@@ -106,3 +109,11 @@ Scenario: suite hook runs once
   When @run_suite s'exécute avec un contexte de suite
   Then les constats retournés deviennent des lignes et `lint` n'est pas appelé
   Test @suite-hook-runs-once
+
+Scenario: the script sees every section
+  Given un script `lint.rhai` qui retourne un constat par clé de `objs` dont le tableau n'est
+    pas vide, et des @Sections où `scalables` contient un Deployment et `befores` un ConfigMap
+  When @run_test s'exécute
+  Then le script voit `objs.all`, `objs.scalables` et `objs.befores` remplies et les autres
+    clés présentes mais vides
+  Test @the-script-sees-every-section

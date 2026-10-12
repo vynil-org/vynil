@@ -186,7 +186,9 @@ Must:
     voie d'exécution est inchangée.
   Exécuter le lint de test à l'intérieur de @run_test_inner — donc dans la voie all comme dans
     la voie test unique, avant que le sink soit lâché — après le snippet d'install et après
-    @VynilTest::run_asserts : copie sous verrou (poison récupéré) des objets du sink, contexte
+    @VynilTest::run_asserts : copie sous verrou (poison récupéré) des objets du sink, lecture du
+    `status` de l'instance mockée (que les `set_status_<section>` du paquet ont rempli et persisté),
+    classement par @Sections::from_status, contexte
     par @build_test_context depuis le test résolu et les références `testSets` chargées du
     test, appel @LintRunner::run_test ; les lignes obtenues sont ajoutées en fin du vecteur
     d'asserts (ordre final : ligne `value_script` éventuelle, asserts, lignes de lint) et les
@@ -429,3 +431,12 @@ Scenario: suite hook adds one suite record
   When @run_suite_lint s'exécute après la suite
   Then @results porte un enregistrement `(suite)` avec une ligne `lint:{règle}` en échec
   Test @suite-hook-adds-one-suite-record
+
+Scenario: lint sections follow what the package declared
+  Given un handler configuré par @with_lint, un paquet dont l'installation applique un
+    Deployment par `set_status_scalables` et un ConfigMap par `set_status_befores`, et un script
+    de lint qui constate chaque objet de `objs.scalables`
+  When le test s'exécute
+  Then le constat porte sur le Deployment et pas sur le ConfigMap, et un objet créé hors de
+    toute section ne figure que dans `objs.all` et `objs.unsectioned`
+  Test @lint-sections-follow-what-the-package-declared

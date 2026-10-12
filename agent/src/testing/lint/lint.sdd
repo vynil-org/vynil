@@ -8,7 +8,8 @@ Platform: Rust
 
 Purpose:
   Exécuter, à la fin de chaque test de `agent package test`, le script de lint de la
-    distribution sur la liste des objets que le test a produits, et replier ses constats
+    distribution sur les objets que le test a produits, par section du paquet et en liste
+    complète, et replier ses constats
     dans le verdict ordinaire du test. C'est le point où une distribution fait appliquer ses
     règles métier à un package sans que vynil en connaisse aucune : le moteur est neutre, le
     script est la politique.
@@ -17,6 +18,8 @@ Structure:
   ./finding.rs: le type d'un constat, son analyse depuis Rhai, sa conversion en lignes de
     résultat et en inventaire de suppressions (./finding.sdd)
   ./context.rs: construction du contexte en lecture seule passé au script (./context.sdd)
+  ./sections.rs: classement des objets du test par section du paquet, d'après les
+    `set_status_<section>` que le paquet a appelés (./sections.sdd)
   ./runner.rs: chargement du script de la distribution, appel des points d'entrée, repli des
     erreurs (./runner.sdd)
   ./mod.rs: déclaration des modules et ré-exports — shim sans spec de fichier
