@@ -215,6 +215,15 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "drop-net-raw-capability") {
             raw = run_check(raw, cfg, "drop-net-raw-capability", pod::drop_net_raw_capability(obj, objs, ctx, param(cfg, "drop-net-raw-capability")));
         }
+        if enabled(cfg, "duplicate-env-var") {
+            raw = run_check(raw, cfg, "duplicate-env-var", pod::duplicate_env_var(obj, objs, ctx, param(cfg, "duplicate-env-var")));
+        }
+        if enabled(cfg, "env-value-from") {
+            raw = run_check(raw, cfg, "env-value-from", pod::env_value_from(obj, objs, ctx, param(cfg, "env-value-from")));
+        }
+        if enabled(cfg, "env-var-secret") {
+            raw = run_check(raw, cfg, "env-var-secret", pod::env_var_secret(obj, objs, ctx, param(cfg, "env-var-secret")));
+        }
         if enabled(cfg, "host-ipc") {
             raw = run_check(raw, cfg, "host-ipc", pod::host_ipc(obj, objs, ctx, param(cfg, "host-ipc")));
         }
@@ -250,6 +259,9 @@ fn all(objs, ctx, opts) {
         }
         if enabled(cfg, "privileged-ports") {
             raw = run_check(raw, cfg, "privileged-ports", pod::privileged_ports(obj, objs, ctx, param(cfg, "privileged-ports")));
+        }
+        if enabled(cfg, "read-secret-from-env-var") {
+            raw = run_check(raw, cfg, "read-secret-from-env-var", pod::read_secret_from_env_var(obj, objs, ctx, param(cfg, "read-secret-from-env-var")));
         }
         if enabled(cfg, "readiness-port") {
             raw = run_check(raw, cfg, "readiness-port", pod::readiness_port(obj, objs, ctx, param(cfg, "readiness-port")));
@@ -291,5 +303,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["default-service-account", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "host-ipc", "host-network", "host-pid", "latest-tag", "liveness-port", "no-liveness-probe", "no-read-only-root-fs", "no-readiness-probe", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "writable-host-mount"]
+    ["default-service-account", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "host-ipc", "host-network", "host-pid", "latest-tag", "liveness-port", "no-liveness-probe", "no-read-only-root-fs", "no-readiness-probe", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "writable-host-mount"]
 }

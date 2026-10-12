@@ -1263,13 +1263,108 @@ fn priority_class_name_honours_a_custom_accepted_list_like_kube_linter() {
 }
 
 #[test]
+fn env_var_secret_honours_a_custom_name_and_value_pattern_like_kube_linter() {
+    // Paramètres non par défaut. Sortie de kube-linter v0.8.3 avec `{name: "^DB_", value: "^s"}` :
+    // `DB_TOKEN_STORE` (conteneur web) et `DB_KEY` (conteneur side) sont signalés. `DB_PASSWORD`
+    // (valeur « p »), `db_secret` (casse), `XDB_SECRET` (nom) et `DB_EMPTY_SECRET` (vide) ne le sont pas.
+    let objs = vec![deployment_with_pod_spec(
+        "env-db",
+        &json!({
+            "containers": [
+                { "name": "web", "image": "registry.example.test/web:1.4.2", "env": [
+                    { "name": "DB_PASSWORD", "value": "p" },
+                    { "name": "DB_TOKEN_STORE", "value": "s1" },
+                    { "name": "db_secret", "value": "s" },
+                    { "name": "XDB_SECRET", "value": "t" },
+                    { "name": "DB_EMPTY_SECRET", "value": "" },
+                    { "name": "DB_SECRETREF", "valueFrom": { "secretKeyRef": { "name": "x", "key": "k" } } }
+                ] },
+                { "name": "side", "image": "registry.example.test/side:1.0.0", "env": [
+                    { "name": "DB_KEY", "value": "s2" }
+                ] }
+            ]
+        }),
+    )];
+    let mut rhai = lib_script();
+    let got = pod_pairs_in_list(
+        &mut rhai,
+        "env_var_secret",
+        &objs,
+        r#"#{name: "^DB_", value: "^s"}"#,
+    );
+    let want: Vec<(String, String)> = [
+        ("env-db", "spec.template.spec.containers[0].env[1].value"),
+        ("env-db", "spec.template.spec.containers[1].env[0].value"),
+    ]
+    .into_iter()
+    .map(|(n, p)| (n.to_string(), p.to_string()))
+    .collect();
+    assert_eq!(got, want);
+}
+
+#[test]
+fn env_value_from_honours_custom_ignored_secrets_and_configmaps_like_kube_linter() {
+    // Paramètres non par défaut. Sortie de kube-linter v0.8.3 avec `{IgnoredSecrets: ["ign-s"],
+    // IgnoredConfigMaps: ["ign-cm"]}` : les motifs sont des expressions régulières non ancrées.
+    // `ign-s-autre` est ignoré par « ign-s » ; `ev-ignored` ne produit rien ; `ev-manquant`
+    // produit deux constats (le ConfigMap `miss-cm` de l'initialisation, le Secret `miss-s`).
+    let ignored = deployment_with_pod_spec(
+        "ev-ignored",
+        &json!({ "containers": [ { "name": "web", "image": "registry.example.test/web:1.4.2", "env": [
+            { "name": "T", "valueFrom": { "secretKeyRef": { "name": "ign-s", "key": "k" } } },
+            { "name": "U", "valueFrom": { "configMapKeyRef": { "name": "ign-cm", "key": "k" } } }
+        ] } ] }),
+    );
+    let missing = deployment_with_pod_spec(
+        "ev-manquant",
+        &json!({
+            "initContainers": [ { "name": "init", "image": "registry.example.test/init:1.0.0", "env": [
+                { "name": "V", "valueFrom": { "configMapKeyRef": { "name": "miss-cm", "key": "k" } } }
+            ] } ],
+            "containers": [ { "name": "web", "image": "registry.example.test/web:1.4.2", "env": [
+                { "name": "W", "valueFrom": { "secretKeyRef": { "name": "miss-s", "key": "k" } } },
+                { "name": "X", "valueFrom": { "secretKeyRef": { "name": "ign-s-autre", "key": "k" } } }
+            ] } ]
+        }),
+    );
+    let objs = vec![ignored, missing];
+    let mut rhai = lib_script();
+    let mut got = pod_pairs_in_list(
+        &mut rhai,
+        "env_value_from",
+        &objs,
+        r#"#{IgnoredSecrets: ["ign-s"], IgnoredConfigMaps: ["ign-cm"]}"#,
+    );
+    got.sort();
+    let mut want: Vec<(String, String)> = [
+        (
+            "ev-manquant",
+            "spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef",
+        ),
+        (
+            "ev-manquant",
+            "spec.template.spec.initContainers[0].env[0].valueFrom.configMapKeyRef",
+        ),
+    ]
+    .into_iter()
+    .map(|(n, p)| (n.to_string(), p.to_string()))
+    .collect();
+    want.sort();
+    assert_eq!(got, want);
+}
+
+#[test]
 fn the_pod_batch_does_not_raise_on_unexpected_shapes() {
     // Une forme inattendue (spec non objet, conteneurs ou variables de mauvais type) ne lève pas
     // et ne produit aucun constat : la vérification retourne un tableau vide.
     let functions = [
         "default_service_account",
         "dnsconfig_options",
+        "duplicate_env_var",
+        "env_value_from",
+        "env_var_secret",
         "priority_class_name",
+        "read_secret_from_env_var",
         "restart_policy",
     ];
     let mut rhai = lib_script();

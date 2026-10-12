@@ -1,0 +1,158 @@
+# Conforme : références à un Secret ou un ConfigMap présent dans la liste d'objets (même nom,
+# quel que soit le namespace) ; un envFrom ou un volume n'est pas examiné.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ref-connues
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: ref-connues}
+  template:
+    metadata:
+      labels: {app: ref-connues}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          env:
+            - {name: "DB_PASSWORD", valueFrom: {secretKeyRef: {name: known-secret, key: password}}}
+            - {name: "CONFIG_NAME", valueFrom: {configMapKeyRef: {name: known-config, key: name}}}
+            - {name: "PEER_TOKEN", valueFrom: {secretKeyRef: {name: other-ns-secret, key: token}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ref-envfrom-seul
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: ref-envfrom}
+  template:
+    metadata:
+      labels: {app: ref-envfrom}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          envFrom:
+            - secretRef: {name: inconnu-envfrom}
+            - configMapRef: {name: inconnu-cm-envfrom}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ref-volume-seul
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: ref-volume}
+  template:
+    metadata:
+      labels: {app: ref-volume}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          volumeMounts:
+            - {name: certs, mountPath: /etc/certs, readOnly: true}
+      volumes:
+        - name: certs
+          secret: {secretName: inconnu-volume}
+---
+# Non conforme : deux références au même Secret absent (un constat par référence), un Secret
+# absent dans un autre conteneur, un ConfigMap absent dans l'initialisation.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ref-manquantes
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: ref-manquantes}
+  template:
+    metadata:
+      labels: {app: ref-manquantes}
+    spec:
+      initContainers:
+        - name: init
+          image: registry.example.test/init:1.0.0
+          env:
+            - {name: "SEED_CONFIG", valueFrom: {configMapKeyRef: {name: absent-config, key: seed}}}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          env:
+            - {name: "T1", valueFrom: {secretKeyRef: {name: absent-secret, key: a}}}
+            - {name: "T2", valueFrom: {secretKeyRef: {name: absent-secret, key: b}}}
+        - name: side
+          image: registry.example.test/side:1.0.0
+          env:
+            - {name: "T3", valueFrom: {secretKeyRef: {name: absent-secret, key: a}}}
+---
+# Non conforme : un secretKeyRef pointe sur un ConfigMap de ce nom, et inversement (le genre
+# compte : un Secret ne répond pas à configMapKeyRef).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ref-mauvais-genre
+  namespace: app
+spec:
+  serviceName: ref-mauvais-genre
+  replicas: 1
+  selector:
+    matchLabels: {app: ref-genre}
+  template:
+    metadata:
+      labels: {app: ref-genre}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          env:
+            - {name: "CM_AS_SECRET", valueFrom: {secretKeyRef: {name: known-config, key: name}}}
+            - {name: "SECRET_AS_CM", valueFrom: {configMapKeyRef: {name: known-secret, key: password}}}
+---
+# Non conforme : pod nu.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-ref-manquante
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+      env:
+        - {name: "TOKEN", valueFrom: {secretKeyRef: {name: pod-absent-secret, key: token}}}
+---
+# Non-workload : Secret et ConfigMap connus, silencieux.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: known-secret
+  namespace: app
+type: Opaque
+stringData:
+  password: "p"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: known-config
+  namespace: app
+data:
+  name: web
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: other-ns-secret
+  namespace: other
+type: Opaque
+stringData:
+  token: "t"

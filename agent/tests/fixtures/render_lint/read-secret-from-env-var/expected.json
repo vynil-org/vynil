@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "read-secret-from-env-var",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "secret-env"
+  },
+  {
+    "rule": "read-secret-from-env-var",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "secret-env"
+  },
+  {
+    "rule": "read-secret-from-env-var",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "secret-env"
+  },
+  {
+    "rule": "read-secret-from-env-var",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-secret-env"
+  },
+  {
+    "rule": "read-secret-from-env-var",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "secret-ss"
+  }
+]

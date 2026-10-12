@@ -846,3 +846,154 @@ fn restart_policy(obj, objs, ctx, params) {
     findings
 }
 
+// Variable d'environnement déclarée plusieurs fois dans un même conteneur (initialisation comprise).
+// Un constat par nom dupliqué et par conteneur, quel que soit le nombre de répétitions.
+fn duplicate_env_var(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            let env = field(c.container, "env");
+            if type_of(env) != "array" { continue; }
+            let reported = [];
+            for e in env {
+                let n = field(e, "name");
+                if type_of(n) != "string" || n in reported { continue; }
+                let count = 0;
+                for other in env {
+                    if field(other, "name") == n { count += 1; }
+                }
+                if count > 1 {
+                    reported.push(n);
+                    findings.push(render_lint::finding(
+                        "duplicate-env-var",
+                        "error",
+                        obj,
+                        c.path + ".env",
+                        `conteneur "${field(c.container, "name")}" de ${kind} "${name}" : la variable "${n}" est déclarée ${count} fois ; n'en garder qu'une seule`
+                    ));
+                }
+            }
+        }
+    }
+    findings
+}
+
+// Référence `valueFrom` (secretKeyRef ou configMapKeyRef) vers un Secret ou un ConfigMap absent de
+// la liste d'objets (nom exact, genre compris), ou dont le nom correspond à un motif de
+// IgnoredSecrets / IgnoredConfigMaps (expressions régulières non ancrées, comme kube-linter). Un constat par référence
+// d'env (initialisation comprise) ; envFrom et volumes ne sont pas examinés.
+fn env_value_from(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let known_secrets = known_names(objs, "Secret");
+    let known_configmaps = known_names(objs, "ConfigMap");
+    let ignored_secrets = list_param(params, "IgnoredSecrets", []);
+    let ignored_configmaps = list_param(params, "IgnoredConfigMaps", []);
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            let env = field(c.container, "env");
+            if type_of(env) != "array" { continue; }
+            let cname = field(c.container, "name");
+            let i = 0;
+            for e in env {
+                let vf = field(e, "valueFrom");
+                let sref = field(vf, "secretKeyRef");
+                let sname = field(sref, "name");
+                if type_of(sname) == "string" && !(sname in known_secrets) && !matches_any(sname, ignored_secrets) {
+                    findings.push(render_lint::finding(
+                        "env-value-from",
+                        "error",
+                        obj,
+                        `${c.path}.env[${i}].valueFrom.secretKeyRef`,
+                        `conteneur "${cname}" de ${kind} "${name}" : le Secret "${sname}" référencé par la variable "${field(e, "name")}" n'est pas dans la liste d'objets ; créer ce Secret ou corriger la référence`
+                    ));
+                }
+                let cref = field(vf, "configMapKeyRef");
+                let cmname = field(cref, "name");
+                if type_of(cmname) == "string" && !(cmname in known_configmaps) && !matches_any(cmname, ignored_configmaps) {
+                    findings.push(render_lint::finding(
+                        "env-value-from",
+                        "error",
+                        obj,
+                        `${c.path}.env[${i}].valueFrom.configMapKeyRef`,
+                        `conteneur "${cname}" de ${kind} "${name}" : le ConfigMap "${cmname}" référencé par la variable "${field(e, "name")}" n'est pas dans la liste d'objets ; créer ce ConfigMap ou corriger la référence`
+                    ));
+                }
+                i += 1;
+            }
+        }
+    }
+    findings
+}
+
+// Variable d'environnement dont le nom correspond à `name` (défaut `(?i).*secret.*`) et dont la
+// valeur littérale correspond à `value` (défaut `.+`, donc non vide) : un secret en clair. La
+// valeur n'est jamais recopiée dans le message. Un constat par variable (initialisation comprise).
+fn env_var_secret(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let name_pattern = string_param(params, "name", "(?i).*secret.*");
+    let value_pattern = string_param(params, "value", ".+");
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            let env = field(c.container, "env");
+            if type_of(env) != "array" { continue; }
+            let cname = field(c.container, "name");
+            let i = 0;
+            for e in env {
+                let n = field(e, "name");
+                let v = field(e, "value");
+                if type_of(n) == "string" && type_of(v) == "string"
+                    && regex_is_match(name_pattern, n) && regex_is_match(value_pattern, v) {
+                    findings.push(render_lint::finding(
+                        "env-var-secret",
+                        "error",
+                        obj,
+                        `${c.path}.env[${i}].value`,
+                        `conteneur "${cname}" de ${kind} "${name}" : la variable "${n}" porte un secret en clair ; monter le secret en fichier ou le lire par valueFrom.secretKeyRef`
+                    ));
+                }
+                i += 1;
+            }
+        }
+    }
+    findings
+}
+
+// Variable d'environnement lue depuis un secret (`valueFrom.secretKeyRef`), initialisation comprise.
+// Un constat par variable. envFrom n'est pas examiné.
+fn read_secret_from_env_var(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            let env = field(c.container, "env");
+            if type_of(env) != "array" { continue; }
+            let cname = field(c.container, "name");
+            let i = 0;
+            for e in env {
+                let sref = field(field(e, "valueFrom"), "secretKeyRef");
+                if type_of(sref) == "map" {
+                    findings.push(render_lint::finding(
+                        "read-secret-from-env-var",
+                        "error",
+                        obj,
+                        `${c.path}.env[${i}].valueFrom.secretKeyRef`,
+                        `conteneur "${cname}" de ${kind} "${name}" : la variable "${text(field(e, "name"))}" lit un secret depuis l'environnement ; monter le secret en fichier à la place`
+                    ));
+                }
+                i += 1;
+            }
+        }
+    }
+    findings
+}
