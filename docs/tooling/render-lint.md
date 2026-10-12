@@ -1,0 +1,324 @@
+# Render lint
+
+The render lint runs at the end of each `agent package test` run. It hands the objects that the
+test produced to a lint script owned by the **distribution**, and folds the findings of that script
+into the ordinary test verdict.
+
+Vynil provides the engine and the data types. It ships no rule: the script decides what is checked,
+with which severity, and what is excluded. Without a lint script, the render lint does not run and
+`agent package test` behaves exactly as before.
+
+> **Status.** The contract below is the one fixed by the specifications. The library of checks
+> (`render_lint`) is specified, with checks inspired by kube-linter, but its catalogue is not yet
+> fully delivered: do not assume that a given check exists before it is listed by the library's
+> `checks()` function.
+
+## Activation
+
+The render lint is enabled by `--lint-dir` on `agent package test` (see [Package tests](test.md#render-lint)
+and [CLI reference](../cli.md#agent-package-test)):
+
+```bash
+agent package test -p ./my-package --all \
+  --lint-dir ./distribution/lint \
+  --schemas-dir ./distribution/schemas
+```
+
+| Flag | Environment variable | Role |
+|---|---|---|
+| `--lint-dir <dir>` | `LINT_DIRECTORY` | Directory containing `lint.rhai`, the entry point of the distribution script. |
+| `--schemas-dir <dir>` | `SCHEMAS_DIRECTORY` | Directory of JSON Schemas and CRDs used by the `schema_*` functions. Requires `--lint-dir`. |
+
+## The lint directory
+
+`lint.rhai` is the fixed entry point. The modules it imports are resolved in this order:
+
+1. the lint directory itself;
+2. `{script-dir}/lib`, where `script-dir` is the `--script-dir` flag (default `./agent/scripts`).
+
+The `render_lint` and `render_lint_schema` libraries are therefore taken from the agent's script
+directory, not from the distribution.
+
+A missing `lint.rhai`, a script that does not compile, or a script that defines neither `lint` nor
+`lint_suite` stops the command with exit code 3 before any output.
+
+## Entry points
+
+The script may define one or both of these functions. A function that is not defined is skipped.
+
+| Function | Called | Arguments | Returns |
+|---|---|---|---|
+| `lint(objs, ctx)` | Once per test, after its install and asserts | `objs`: copy of the objects created by the test, in creation order; `ctx`: test context | array of findings |
+| `lint_suite(ctx)` | Once per invocation, after the suite | `ctx`: suite context | array of findings |
+
+`lint` is not called for a test whose `value_script` or install step failed: the failure is already
+reported on the test, and a partial render would produce misleading findings.
+
+Each call runs in a fresh Rhai engine, with no state shared between tests. The script receives copies:
+it cannot modify the objects of the test. The available functions are the data-manipulation functions
+of the base engine and the `schema_*` functions. No Kubernetes, HTTP, S3, shell or file function is
+registered: a script that calls one fails with an unknown-function error.
+
+Execution is bounded by an operation limit so that a looping script cannot block the run. The limit
+value is not fixed by the contract yet.
+
+### Errors of the script
+
+Any of the following becomes one failed row named `lint:execution`, carrying the error as its message,
+and produces no suppression for that call:
+
+- a Rhai runtime error, including a call to an unknown function;
+- the operation limit being reached;
+- a return value that is not an array (for example a map).
+
+Scripts are deterministic: the same objects and the same contexts give the same rows.
+
+## Test context: `ctx` in `lint`
+
+`ctx` is read-only and contains only serialisable data. It is built from the resolved test.
+
+```text
+ctx
+├── package
+│   ├── name
+│   ├── type            tenant | service | system
+│   ├── category
+│   ├── description
+│   ├── app_version     absent when not set
+│   ├── features
+│   ├── options         options declared in package.yaml
+│   ├── images          as in package.yaml
+│   └── resources       as in package.yaml
+├── instance
+│   ├── name
+│   ├── namespace
+│   ├── appslug         appslug of the package and the instance
+│   └── options         options given by the test, not resolved
+└── test
+    ├── name
+    ├── description     absent when not set
+    ├── testsets        [{name, variables}] for each referenced testSet
+    └── definition      resolved Test: apiVersion, kind, metadata, instance, mocks, asserts
+```
+
+`test.definition.asserts` contains the asserts of the test followed by those of its testSets.
+
+`instance.options` does not contain the default values of the package options: a rule that needs
+them combines `package.options` and `instance.options`.
+
+## Suite context: `ctx` in `lint_suite`
+
+```text
+ctx
+├── package             same shape as in the test context
+└── suite
+    ├── tests           map: test name -> loaded Test document, not rendered
+    ├── testsets        map: testSet name -> loaded TestSet document
+    └── executed        names of the tests run by this invocation, ascending
+```
+
+## Shape of a finding
+
+A finding is a map returned in the array. Fields:
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `rule` | non-empty string | yes | Rule name. Kept verbatim in the verdict, `/` included (`schema/invalid`). |
+| `severity` | `"error"` or `"warn"` | yes | Effect on the verdict (see below). |
+| `object` | map `{apiVersion, kind, namespace?, name}` | yes | Object the finding is about. `apiVersion`, `kind` and `name` are non-empty strings; `namespace` is optional. |
+| `message` | non-empty string | yes | Message shown in the verdict. |
+| `path` | string | no | Dotted path inside the object, for example `spec.template.spec.containers[0].image`. |
+| `source` | string | no | Free-form origin information. |
+| `suppressed` | boolean | no | Default `false`. A suppressed finding is inventoried, not reported. |
+| `reason` | string | no | Reason given for a suppression. |
+| `origin` | string | no | Where the suppression comes from, for example `annotation:{prefix}{rule}`. |
+
+Unknown keys are ignored.
+
+An element that does not match this shape is **never dropped**. It becomes a failed row named
+`lint:invalid-finding`, whose message names its index (`finding #0: ...`). A badly written script
+therefore turns the test red rather than silently passing.
+
+The order of the array returned by the script is kept: nothing is sorted or de-duplicated.
+
+## Verdict
+
+Each finding becomes a row of the test verdict:
+
+| Case | Row name | Passed | Message |
+|---|---|---|---|
+| `error`, not suppressed | `lint:{rule}` | no | `message`, followed by ` [{path}]` when `path` is set |
+| `warn`, not suppressed | `lint:{rule}` | yes | `warning: ` followed by the message (and path) |
+| suppressed (any severity) | none | — | inventoried, see below |
+| invalid element | `lint:invalid-finding` | no | description of the invalidity |
+| script error | `lint:execution` | no | the error |
+
+The description of a row is `{kind} {namespace}/{name}`, or `{kind} {name}` for a cluster-scoped object.
+For the suite hook, the rows belong to a record named `(suite)`.
+
+A failed row counts like any failed assert: the summary, the JUnit report and exit code 3 apply
+unchanged. A `warn` finding never fails the test.
+
+Because the verdict model has no severity field, a warning is expressed only by its passing row and
+its `warning: ` prefix. Adding an explicit severity field is an open question in the specifications.
+
+## Suppressions
+
+A finding marked `suppressed: true` never fails a test. It is kept in an inventory, so that every
+exception stays visible in the reports.
+
+The engine does not decide what is suppressed. The `render_lint` library marks findings as suppressed
+from annotations on the object (see below), but a script may also set `suppressed` itself.
+
+The inventory is rendered only when it is not empty:
+
+- **text**: after the `Results:` line, a `Suppressed: {n}` line, then one line per suppression:
+  `  [SKIP] {test}: {rule} {kind} {namespace}/{name}: {reason}`, with `(no reason)` when the reason is
+  absent;
+- **json**: after `summary`, a `suppressions` array. Each entry has the keys `test`, `rule`, `kind`,
+  `namespace`, `name`, `path`, `reason`, `origin`; absent fields are `null`;
+- **JUnit**: a `<system-out>` element on the `<testsuite>` of the test concerned, one suppression per
+  line. No other suite carries a `<system-out>` for suppressions.
+
+A suppression does not change the counters or the passing state of the run.
+
+## The `schema_*` functions
+
+These functions are registered in the engine of the lint script only when `--lint-dir` is given.
+
+| Function | Returns |
+|---|---|
+| `schema_known(obj)` | `true` when a schema exists for the object's `apiVersion` and `kind`. An unknown kind is a fact, not an error. |
+| `schema_validate(obj)` | array of `#{path, message}`, empty when the object conforms. Same as `strict: true`. |
+| `schema_validate(obj, #{strict: bool})` | same, with the strict mode set. `strict: false` disables only the strict mode; schema normalisation still applies. |
+| `schema_native_version()` | version of the native Kubernetes schemas embedded in the binary, as a string. |
+
+The `path` returned by `schema_validate` is a JSON pointer (for example `/spec/template/spec/containers/0`,
+empty at the root). The conversion to dotted notation is done by the `render_lint_schema` library.
+
+Schemas come from three sources, in this resolution order:
+
+1. the CRDs of the package, read from `<package-dir>/crds`;
+2. the schema directory of the distribution (`--schemas-dir`);
+3. the native Kubernetes schema table embedded in the binary.
+
+The schema directory contains:
+
+- JSON Schema files named `<group>/<Kind>_<version>.json`, with the exact case of the Kind, for example
+  `apps/Deployment_v1.json`; the core group is the literal directory `core` (`core/Pod_v1.json`);
+- YAML files containing `CustomResourceDefinition` documents.
+
+Other files are ignored. A missing or empty schema directory adds no source; the native table remains.
+A JSON file that cannot be parsed stops the command, and the error names the file.
+
+## The `render_lint` library
+
+The distribution script composes the library with `import`. The alias is the module name
+(`render_lint`), never `lint`: that is the name of the script's entry point `fn lint(objs, ctx)`.
+
+```rhai
+import "render_lint" as render_lint;
+```
+
+### Exposed functions
+
+| Function | Role |
+|---|---|
+| `render_lint::finding(rule, severity, obj, message)` and `render_lint::finding(rule, severity, obj, path, message)` | Builds a finding map. |
+| `render_lint::object_ref(obj)` | The `object` map of an object. |
+| `render_lint::pod_templates(obj)` | Array of `#{pod, path}` for objects that embed a pod template. `path` is `spec.template`, `spec.jobTemplate.spec.template`, or an empty string for a `Pod`. Empty for other objects. |
+| `render_lint::containers(entry)` | Array of `#{container, path, init}` for an entry of `pod_templates`: containers then init containers, with full paths such as `spec.template.spec.containers[0]`. |
+| `render_lint::suppression_reason(obj, rule, opts)` | Value of the annotation `{ignore_prefix}{rule}` of the object, or `()` when absent or when `ignore_prefix` is not given. |
+| `render_lint::apply_suppressions(findings, objs, opts)` | Marks findings suppressed when their object carries the annotation. Sets `reason` (when not empty) and `origin`. |
+| `render_lint::all(objs, ctx, opts)` | Runs every enabled check on every object, and applies suppressions. Order: objects in order, then checks in alphabetical order of their names. |
+| `render_lint::checks()` | Sorted array of the names of the checks provided, in kube-linter naming (dashes). |
+
+Each check is also a function `{name}(obj, objs, ctx, params)`, where the dashes of the kube-linter name
+become underscores. It returns an array of findings, empty when nothing is reported, and returns an empty
+array for kinds it does not apply to. The `rule` of a finding is the kube-linter name, dashes included, so
+that an `exclude` list or a suppression annotation works across tools.
+
+### Options of `render_lint::all`
+
+All keys are optional.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `exclude` | none | Names of checks not to run. |
+| `only` | absent | When present, only these checks run. |
+| `severity` | `"error"` for each check | Map from check name to `"error"` or `"warn"`. Applied after the check runs. |
+| `params` | empty | Map from check name to a map of parameters, using kube-linter parameter names. |
+| `ignore_prefix` | absent | Prefix of the suppression annotations. Without it, no suppression happens at all. |
+| `require_reason` | `false` | When `true`, a suppression with an empty annotation value is not applied. The finding stays, and one `suppression-without-reason` finding of severity `error` is added per object and rule, naming the annotation. |
+
+`render_lint::all` only assembles checks. The library selects nothing by default: no check runs until the
+distribution script calls it.
+
+### Schema validation
+
+`render_lint_schema` is separate from `render_lint::all`: schema validation is opt-in.
+
+```rhai
+import "render_lint_schema" as schema;
+```
+
+`schema.check(obj)` and `schema.check(obj, opts)` return an array of findings for one object:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `strict` | `true` | An undeclared field is an error. `false` only disables strict mode. |
+| `unknown` | `"warn"` | Severity of `schema/unknown-kind` when no schema exists: `"warn"`, `"error"`, or `"ignore"` (no finding). |
+| `severity` | `"error"` | Severity of the `schema/invalid` findings. |
+
+An invalid object reports one `schema/invalid` finding per validation error, with the dotted `path` and the
+message of the engine. An object without `apiVersion` or `kind` gets a `schema/invalid` finding at the root.
+
+## Example: `lint.rhai`
+
+A minimal distribution script with one house rule, plus the call to the library:
+
+```rhai
+import "render_lint" as render_lint;
+
+// House rule: every Deployment must carry a `team` label.
+fn team_label(objs) {
+    let findings = [];
+    for obj in objs {
+        if obj.kind == "Deployment" {
+            let labels = if "labels" in obj.metadata { obj.metadata.labels } else { #{} };
+            if !("team" in labels) {
+                findings.push(render_lint::finding("team-label", "error", obj, "label `team` is required"));
+            }
+        }
+    }
+    findings
+}
+
+fn lint(objs, ctx) {
+    let findings = team_label(objs);
+    findings += render_lint::all(objs, ctx, #{
+        exclude: ["latest-tag"],
+        severity: #{ "no-read-only-root-fs": "warn" },
+        ignore_prefix: "ignore-check.example/",
+        require_reason: true
+    });
+    findings
+}
+```
+
+Run it with:
+
+```bash
+agent package test -p ./my-package --all --lint-dir ./distribution/lint
+```
+
+A Deployment without a `team` label produces a failed row `lint:team-label`. An annotation
+`ignore-check.example/team-label: "legacy"` on that Deployment does not suppress it, because the house
+rule builds its finding directly and does not go through `render_lint::apply_suppressions`. To make a house rule
+suppressible, pass its findings through `render_lint::apply_suppressions(findings, objs, opts)`.
+
+## Limits
+
+- The check catalogue of the library is not yet fully delivered (see the status note).
+- The operation limit value and its configuration are not fixed yet.
+- A `warn` finding has no severity field in the verdict.
