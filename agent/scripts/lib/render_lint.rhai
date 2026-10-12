@@ -239,6 +239,9 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "privileged-container") {
             raw = run_check(raw, cfg, "privileged-container", pod::privileged_container(obj, objs, ctx, param(cfg, "privileged-container")));
         }
+        if enabled(cfg, "privileged-ports") {
+            raw = run_check(raw, cfg, "privileged-ports", pod::privileged_ports(obj, objs, ctx, param(cfg, "privileged-ports")));
+        }
         if enabled(cfg, "readiness-port") {
             raw = run_check(raw, cfg, "readiness-port", pod::readiness_port(obj, objs, ctx, param(cfg, "readiness-port")));
         }
@@ -247,6 +250,9 @@ fn all(objs, ctx, opts) {
         }
         if enabled(cfg, "sensitive-host-mounts") {
             raw = run_check(raw, cfg, "sensitive-host-mounts", pod::sensitive_host_mounts(obj, objs, ctx, param(cfg, "sensitive-host-mounts")));
+        }
+        if enabled(cfg, "ssh-port") {
+            raw = run_check(raw, cfg, "ssh-port", pod::ssh_port(obj, objs, ctx, param(cfg, "ssh-port")));
         }
         if enabled(cfg, "startup-port") {
             raw = run_check(raw, cfg, "startup-port", pod::startup_port(obj, objs, ctx, param(cfg, "startup-port")));
@@ -260,6 +266,12 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "unset-cpu-requirements") {
             raw = run_check(raw, cfg, "unset-cpu-requirements", pod::unset_cpu_requirements(obj, objs, ctx, param(cfg, "unset-cpu-requirements")));
         }
+        if enabled(cfg, "unset-memory-requirements") {
+            raw = run_check(raw, cfg, "unset-memory-requirements", pod::unset_memory_requirements(obj, objs, ctx, param(cfg, "unset-memory-requirements")));
+        }
+        if enabled(cfg, "writable-host-mount") {
+            raw = run_check(raw, cfg, "writable-host-mount", pod::writable_host_mount(obj, objs, ctx, param(cfg, "writable-host-mount")));
+        }
     }
     apply_suppressions(raw, objs, #{ ignore_prefix: cfg.ignore_prefix, require_reason: cfg.require_reason })
 }
@@ -267,5 +279,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["docker-sock", "drop-net-raw-capability", "host-ipc", "host-network", "host-pid", "latest-tag", "liveness-port", "no-liveness-probe", "no-read-only-root-fs", "no-readiness-probe", "privilege-escalation-container", "privileged-container", "readiness-port", "run-as-non-root", "sensitive-host-mounts", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements"]
+    ["docker-sock", "drop-net-raw-capability", "host-ipc", "host-network", "host-pid", "latest-tag", "liveness-port", "no-liveness-probe", "no-read-only-root-fs", "no-readiness-probe", "privilege-escalation-container", "privileged-container", "privileged-ports", "readiness-port", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "writable-host-mount"]
 }

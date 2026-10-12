@@ -1,0 +1,135 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme-lecture-seule
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      volumes:
+        - name: journaux
+          hostPath: {path: /var/log}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          volumeMounts:
+            - {name: journaux, mountPath: /logs, readOnly: true}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sans-readonly
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: sans}
+  template:
+    metadata:
+      labels: {app: sans}
+    spec:
+      volumes:
+        - name: journaux
+          hostPath: {path: /var/log}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          volumeMounts:
+            - {name: journaux, mountPath: /logs}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: readonly-faux
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: faux}
+  template:
+    metadata:
+      labels: {app: faux}
+    spec:
+      volumes:
+        - name: journaux
+          hostPath: {path: /var/log}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          volumeMounts:
+            - {name: journaux, mountPath: /logs, readOnly: false}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: init-ecriture
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: agent}
+  template:
+    metadata:
+      labels: {app: agent}
+    spec:
+      volumes:
+        - name: journaux
+          hostPath: {path: /var/log}
+        - name: donnees
+          emptyDir: {}
+      initContainers:
+        - name: prepare
+          image: registry.example.test/prepare:1.0.0
+          volumeMounts:
+            - {name: journaux, mountPath: /logs}
+      containers:
+        - name: agent
+          image: registry.example.test/agent:1.0.0
+          volumeMounts:
+            - {name: donnees, mountPath: /data}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-socket
+  namespace: app
+spec:
+  schedule: "0 1 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          volumes:
+            - name: socket
+              hostPath: {path: /run/app}
+          containers:
+            - name: task
+              image: registry.example.test/task:1.0.0
+              volumeMounts:
+                - {name: socket, mountPath: /socket, subPath: a}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: volume-non-monte
+  namespace: app
+spec:
+  volumes:
+    - name: journaux
+      hostPath: {path: /var/log}
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm
+  namespace: app
+data:
+  readOnly: "false"

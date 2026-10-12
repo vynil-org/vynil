@@ -165,8 +165,7 @@ checks:
     status: ported
   - name: privileged-ports
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: read-secret-from-env-var
     theme: pod
     status: deferred
@@ -206,8 +205,7 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: ssh-port
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: startup-port
     theme: pod
     status: ported
@@ -222,8 +220,7 @@ checks:
     status: ported
   - name: unset-memory-requirements
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: use-namespace
     theme: workload
     status: deferred
@@ -234,5 +231,4 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: writable-host-mount
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported

@@ -989,3 +989,117 @@ fn unset_cpu_requirements_honours_any_and_custom_bounds_like_kube_linter() {
     .collect();
     assert_eq!(got, want);
 }
+
+/// Deployment d'un seul conteneur `web` décrit par `container` (JSON).
+fn deployment_with_container(name: &str, container: &Value) -> Value {
+    json!({
+        "apiVersion": "apps/v1", "kind": "Deployment",
+        "metadata": { "name": name, "namespace": "app" },
+        "spec": {
+            "replicas": 1,
+            "selector": { "matchLabels": { "app": name } },
+            "template": {
+                "metadata": { "labels": { "app": name } },
+                "spec": { "containers": [ container ] }
+            }
+        }
+    })
+}
+
+#[test]
+fn unset_memory_requirements_honours_any_and_custom_bounds_like_kube_linter() {
+    // Paramètres non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
+    // `{requirementsType: any, lowerBoundMB: 96, upperBoundMB: 1024}` : `m-a-1024` (limite 1Gi,
+    // borne haute incluse) et `m-c-128Mi` (demande 1G = 953,67 MB, limite 128Mi) sont signalés.
+    // `m-b` (100M = 95,37 MB et 1500k = 1,43 MB) est sous la borne basse et `m-d` n'a rien.
+    let objs = vec![
+        deployment_with_resources("m-a-1024", &json!({ "limits": { "memory": "1Gi" } })),
+        deployment_with_resources(
+            "m-b",
+            &json!({ "limits": { "memory": "100M" }, "requests": { "memory": "1500k" } }),
+        ),
+        deployment_with_resources(
+            "m-c-128Mi",
+            &json!({ "requests": { "memory": "1G" }, "limits": { "memory": "128Mi" } }),
+        ),
+        deployment_with_resources("m-d", &json!({})),
+    ];
+    let mut rhai = lib_script();
+    let got = pod_findings_pairs(
+        &mut rhai,
+        "unset_memory_requirements",
+        &objs,
+        r#"#{requirementsType: "any", lowerBoundMB: 96, upperBoundMB: 1024}"#,
+    );
+    let want: Vec<(String, String)> = [
+        (
+            "m-a-1024",
+            "spec.template.spec.containers[0].resources.limits.memory",
+        ),
+        (
+            "m-c-128Mi",
+            "spec.template.spec.containers[0].resources.requests.memory",
+        ),
+        (
+            "m-c-128Mi",
+            "spec.template.spec.containers[0].resources.limits.memory",
+        ),
+    ]
+    .into_iter()
+    .map(|(n, p)| (n.to_string(), p.to_string()))
+    .collect();
+    assert_eq!(got, want);
+}
+
+#[test]
+fn ssh_port_honours_a_custom_port_and_protocol_like_kube_linter() {
+    // Paramètres non par défaut. Sorties de kube-linter v0.8.3 :
+    // - `{port: 2222, protocol: TCP}` : seul `s-pod-2222-23` (2222 TCP) ;
+    // - `{port: 22, protocol: ""}` (sans filtre de protocole) : `s-tcp-22` et `s-udp-22` ;
+    // - `{port: 53, protocol: UDP}` : seul le port 53 UDP de `s-udp-53`, pas son port 53 TCP.
+    let tcp22 = deployment_with_container(
+        "s-tcp-22",
+        &json!({ "name": "web", "image": "x:1", "ports": [ { "containerPort": 22 } ] }),
+    );
+    let udp22 = deployment_with_container(
+        "s-udp-22",
+        &json!({ "name": "web", "image": "x:1", "ports": [ { "containerPort": 22, "protocol": "UDP" } ] }),
+    );
+    let pod = json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "s-pod-2222-23", "namespace": "app" },
+        "spec": { "containers": [ { "name": "web", "image": "x:1",
+            "ports": [ { "containerPort": 2222 }, { "containerPort": 23 } ] } ] }
+    });
+    let udp53 = deployment_with_container(
+        "s-udp-53",
+        &json!({ "name": "web", "image": "x:1", "ports": [
+            { "containerPort": 53, "protocol": "UDP" }, { "containerPort": 53 } ] }),
+    );
+    let objs = vec![tcp22, udp22, pod, udp53];
+    let mut rhai = lib_script();
+
+    let got = pod_findings_pairs(&mut rhai, "ssh_port", &objs, r#"#{port: 2222, protocol: "TCP"}"#);
+    assert_eq!(got, vec![(
+        "s-pod-2222-23".to_string(),
+        "spec.containers[0].ports[0]".to_string()
+    )]);
+
+    let got = pod_findings_pairs(&mut rhai, "ssh_port", &objs, r#"#{port: 22, protocol: ""}"#);
+    assert_eq!(got, vec![
+        (
+            "s-tcp-22".to_string(),
+            "spec.template.spec.containers[0].ports[0]".to_string()
+        ),
+        (
+            "s-udp-22".to_string(),
+            "spec.template.spec.containers[0].ports[0]".to_string()
+        ),
+    ]);
+
+    let got = pod_findings_pairs(&mut rhai, "ssh_port", &objs, r#"#{port: 53, protocol: "UDP"}"#);
+    assert_eq!(got, vec![(
+        "s-udp-53".to_string(),
+        "spec.template.spec.containers[0].ports[0]".to_string()
+    )]);
+}

@@ -582,3 +582,119 @@ private fn requirement_findings(rule, resource, unit, obj, params, default_type,
 fn unset_cpu_requirements(obj, objs, ctx, params) {
     requirement_findings("unset-cpu-requirements", "cpu", "millicores", obj, params, "request", "lowerBoundMillis", "upperBoundMillis")
 }
+
+// Mémoire limite ou demande absente, ou dans la plage signalée (MB, voir `memory_mb`). Défauts :
+// requirementsType `limit`, bornes 0.
+fn unset_memory_requirements(obj, objs, ctx, params) {
+    requirement_findings("unset-memory-requirements", "memory", "MB", obj, params, "limit", "lowerBoundMB", "upperBoundMB")
+}
+
+// Port de conteneur (initialisation comprise) dans la plage privilégiée : 0 < containerPort < 1024,
+// quel que soit le protocole. `hostPort` n'est pas considéré. Un constat par port.
+fn privileged_ports(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            let ports = field(c.container, "ports");
+            if type_of(ports) != "array" { continue; }
+            let i = 0;
+            for p in ports {
+                let number = field(p, "containerPort");
+                if type_of(number) == "i64" && number > 0 && number < 1024 {
+                    findings.push(render_lint::finding(
+                        "privileged-ports",
+                        "error",
+                        obj,
+                        `${c.path}.ports[${i}]`,
+                        `conteneur "${field(c.container, "name")}" de ${kind} "${name}" : port ${number} mappé dans le conteneur, dans la plage privilégiée (1 à 1023) ; utiliser un port supérieur ou égal à 1024`
+                    ));
+                }
+                i += 1;
+            }
+        }
+    }
+    findings
+}
+
+// Port SSH (`port`, défaut 22) exposé par un conteneur (initialisation comprise) avec le protocole
+// `protocol` (défaut `TCP`). Un port sans `protocol` vaut TCP ; `protocol` vide ou absent du
+// paramètre ne filtre pas le protocole. Un constat par port.
+fn ssh_port(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    let port = number_param(params, "port", 22.0);
+    let wanted = field(params, "protocol");
+    let want = if type_of(wanted) == "string" { wanted } else { "TCP" };
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            let ports = field(c.container, "ports");
+            if type_of(ports) != "array" { continue; }
+            let i = 0;
+            for p in ports {
+                let number = field(p, "containerPort");
+                let proto = field(p, "protocol");
+                let have = if type_of(proto) == "string" && proto != "" { proto } else { "TCP" };
+                if type_of(number) == "i64" && number.to_float() == port && (want == "" || want == have) {
+                    findings.push(render_lint::finding(
+                        "ssh-port",
+                        "error",
+                        obj,
+                        `${c.path}.ports[${i}]`,
+                        `conteneur "${field(c.container, "name")}" de ${kind} "${name}" : port ${number} (${have}) exposé, port réservé à SSH ; retirer ce port ou le confier à un service vérifié`
+                    ));
+                }
+                i += 1;
+            }
+        }
+    }
+    findings
+}
+
+// Répertoire hôte monté en écriture : un montage (initialisation comprise) qui référence un volume
+// `hostPath` et dont `readOnly` n'est pas `true`. Un `readOnly` qui n'est ni booléen ni absent est
+// ignoré (kube-linter ne décode pas ces objets). Un constat par montage.
+fn writable_host_mount(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        let hostpaths = #{};
+        let volumes = field(field(field(entry, "pod"), "spec"), "volumes");
+        if type_of(volumes) == "array" {
+            for v in volumes {
+                let vname = field(v, "name");
+                let path = field(field(v, "hostPath"), "path");
+                if type_of(vname) == "string" && type_of(path) == "string" {
+                    hostpaths[vname] = path;
+                }
+            }
+        }
+        for c in render_lint::containers(entry) {
+            let mounts = field(c.container, "volumeMounts");
+            if type_of(mounts) != "array" { continue; }
+            let j = 0;
+            for m in mounts {
+                let vname = field(m, "name");
+                let ro = field(m, "readOnly");
+                let shaped = ro == () || type_of(ro) == "bool";
+                if shaped && ro != true && type_of(vname) == "string" && vname in hostpaths {
+                    findings.push(render_lint::finding(
+                        "writable-host-mount",
+                        "error",
+                        obj,
+                        `${c.path}.volumeMounts[${j}]`,
+                        `conteneur "${field(c.container, "name")}" de ${kind} "${name}" : le répertoire hôte "${hostpaths[vname]}" (volume "${vname}") est monté en écriture ; monter avec readOnly: true`
+                    ));
+                }
+                j += 1;
+            }
+        }
+    }
+    findings
+}

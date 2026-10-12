@@ -1,0 +1,142 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: requete-seule
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: requete}
+  template:
+    metadata:
+      labels: {app: requete}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          resources:
+            requests: {memory: 128Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sans-ressources
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: sans}
+  template:
+    metadata:
+      labels: {app: sans}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: limite-zero
+  namespace: app
+spec:
+  serviceName: db
+  replicas: 1
+  selector:
+    matchLabels: {app: db}
+  template:
+    metadata:
+      labels: {app: db}
+    spec:
+      containers:
+        - name: db
+          image: registry.example.test/db:16
+          resources:
+            limits: {memory: "0"}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: init-sans-limite
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: agent}
+  template:
+    metadata:
+      labels: {app: agent}
+    spec:
+      initContainers:
+        - name: prepare
+          image: registry.example.test/prepare:1.0.0
+          resources:
+            requests: {memory: 64Mi}
+      containers:
+        - name: agent
+          image: registry.example.test/agent:1.0.0
+          resources:
+            limits: {memory: 1Gi}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-sans-limite
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: task
+              image: registry.example.test/task:1.0.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-limites-decimales
+  namespace: app
+spec:
+  containers:
+    - name: cent
+      image: registry.example.test/cent:1.0.0
+      resources:
+        limits: {memory: 100M}
+    - name: octets
+      image: registry.example.test/octets:1.0.0
+      resources:
+        limits: {memory: "1000000"}
+    - name: gi-fractionnaire
+      image: registry.example.test/gi:1.0.0
+      resources:
+        limits: {memory: 1.5Gi}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm
+  namespace: app
+data:
+  memory: "0"

@@ -1,0 +1,26 @@
+[
+  {
+    "rule": "writable-host-mount",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-socket"
+  },
+  {
+    "rule": "writable-host-mount",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "init-ecriture"
+  },
+  {
+    "rule": "writable-host-mount",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "readonly-faux"
+  },
+  {
+    "rule": "writable-host-mount",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sans-readonly"
+  }
+]
