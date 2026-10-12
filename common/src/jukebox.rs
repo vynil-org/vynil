@@ -57,7 +57,7 @@ pub enum JukeBoxDef {
 }
 impl Default for JukeBoxDef {
     fn default() -> Self {
-        Self::List(["docker.io/sebt3/vynil".to_string()].into())
+        Self::List(["ghcr.io/vynil-org/vynil".to_string()].into())
     }
 }
 
@@ -567,6 +567,14 @@ mod tests {
         let yaml = serde_yaml::to_string(&val).unwrap();
         let back: JukeBoxDef = serde_yaml::from_str(&yaml).unwrap();
         assert_eq!(back, val);
+    }
+
+    #[test]
+    fn default_source_is_maintainer_image_list() {
+        assert_eq!(
+            JukeBoxDef::default(),
+            JukeBoxDef::List(vec!["ghcr.io/vynil-org/vynil".to_string()])
+        );
     }
 
     fn make_pkg(category: &str, name: &str) -> VynilPackage {

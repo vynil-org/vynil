@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
 
-pub static DEFAULT_AGENT_IMAGE: &str = "docker.io/sebt3/vynil-agent:0.7.7";
+pub static DEFAULT_AGENT_IMAGE: &str = concat!("ghcr.io/vynil-org/vynil-agent:", env!("CARGO_PKG_VERSION"));
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -187,4 +187,17 @@ pub struct Published {
     pub service: Option<GlobalPublished>,
     /// Definition of the service stored in a children object
     pub definition: Option<Children>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DEFAULT_AGENT_IMAGE;
+
+    #[test]
+    fn default_agent_image_follows_workspace_version() {
+        assert_eq!(
+            DEFAULT_AGENT_IMAGE,
+            concat!("ghcr.io/vynil-org/vynil-agent:", env!("CARGO_PKG_VERSION"))
+        );
+    }
 }

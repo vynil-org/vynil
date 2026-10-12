@@ -172,7 +172,7 @@ Tasks:
       pour les optionnels absents, clés inconnues ignorées, rejet des champs requis.
   [ ] Assertir le vocabulaire des variantes lui-même (nombre et noms) afin qu'une variante
       renommée ou supprimée fasse échouer un test, une fois les décisions ci-dessous tranchées.
-  [ ] Faire de @DEFAULT_AGENT_IMAGE `ghcr.io/vynil-org/vynil-agent:<version du workspace>` par
+  [x] Faire de @DEFAULT_AGENT_IMAGE `ghcr.io/vynil-org/vynil-agent:<version du workspace>` par
       `concat!`/`env!("CARGO_PKG_VERSION")` (décision : le tag suit la version du workspace). Test
       d'abord : l'image vaut `ghcr.io/vynil-org/vynil-agent:` + `env!("CARGO_PKG_VERSION")`.
   [?] @Error::MethodFailed n'est construite nulle part dans le workspace et son troisième payload

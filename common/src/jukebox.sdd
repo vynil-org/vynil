@@ -275,7 +275,7 @@ Tasks:
       @ApplicationCondition::ready_ko porte `No successful update` ; la condition ready ne dit
       jamais « ready ». Consigné tel quel ; décider plus tard si des chaînes corrigées sont un
       changement visible du CRD acceptable.
-  [ ] Basculer le @Default de @JukeBoxDef sur `ghcr.io/vynil-org/vynil` (décision : l'origine
+  [x] Basculer le @Default de @JukeBoxDef sur `ghcr.io/vynil-org/vynil` (décision : l'origine
       `docker.io/sebt3` est gelée, la source par défaut est celle de l'organisation). Écrire d'abord
       le test du Scenario « Default source is the maintainer image list ».
   [?] Un filtre à slash final comme `db/` donne le nom @Some(`""`) dans @filter_packages,
