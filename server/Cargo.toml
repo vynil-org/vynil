@@ -20,7 +20,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive", "env"] }
 regex = "1"
-base64 = "0.22"
+base64 = "0.23"
 thiserror = "2"
 rustls = { version = "0.23", features = ["ring"] }
 rustls-pemfile = "2"
