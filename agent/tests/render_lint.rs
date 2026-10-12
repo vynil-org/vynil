@@ -2469,6 +2469,38 @@ fn access_to_create_pods_honours_custom_resources_and_verbs_like_kube_linter() {
 }
 
 #[test]
+fn a_service_account_is_looked_up_in_the_workload_namespace_only() {
+    // Mesuré : un compte homonyme d'un autre namespace ne compte pas ; un ServiceAccount d'un
+    // groupe tiers ne compte pas ; `default` et un nom vide ne sont jamais signalés.
+    let sa_other = json!({ "apiVersion": "v1", "kind": "ServiceAccount",
+        "metadata": { "name": "sa", "namespace": "other" } });
+    let sa_third = json!({ "apiVersion": "example.com/v1", "kind": "ServiceAccount",
+        "metadata": { "name": "third", "namespace": "app" } });
+    let deployment = |name: &str, ns: &str, account: &str| {
+        json!({
+            "apiVersion": "apps/v1", "kind": "Deployment",
+            "metadata": { "name": name, "namespace": ns },
+            "spec": { "selector": { "matchLabels": { "app": "w" } }, "template": {
+                "metadata": { "labels": { "app": "w" } },
+                "spec": { "serviceAccountName": account, "containers": [ { "name": "c", "image": "i:1" } ] }
+            } }
+        })
+    };
+    let objs = [
+        sa_other,
+        sa_third,
+        deployment("w-other-ns", "app", "sa"),
+        deployment("w-third", "app", "third"),
+        deployment("w-default", "app", "default"),
+        deployment("w-empty", "app", ""),
+    ];
+    assert_eq!(
+        check_findings("non-existent-service-account", &objs, "#{}"),
+        vec!["Deployment/w-other-ns", "Deployment/w-third"]
+    );
+}
+
+#[test]
 fn the_rbac_batch_does_not_raise_on_unexpected_shapes() {
     // Formes inattendues : un constat est refusé, jamais une erreur d'exécution.
     let objs = [

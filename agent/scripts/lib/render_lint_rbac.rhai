@@ -209,3 +209,45 @@ fn access_to_secrets(obj, objs, ctx, params) {
         ["^get$", "^list$", "^delete$", "^create$", "^watch$", "^*$"]
     )
 }
+
+// Vrai quand un ServiceAccount v1 nommé `name` existe dans le namespace `ns` de la liste.
+private fn has_service_account(objs, ns, name) {
+    import "render_lint" as render_lint;
+    for o in objs {
+        if render_lint::kind_of_group(o, ["ServiceAccount"], "") && ns_of(o) == ns && name_of(o) == name {
+            return true;
+        }
+    }
+    false
+}
+
+// Vérification non-existent-service-account : un gabarit de pod (Pod compris) dont le compte de
+// service n'existe pas dans la liste, dans le namespace de la charge de travail. Le champ
+// `serviceAccountName`, s'il est non vide, l'emporte sur le champ déprécié `serviceAccount`. Un
+// compte vide ou `default` n'est jamais signalé (mesuré).
+fn non_existent_service_account(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    for entry in render_lint::pod_templates(obj) {
+        let spec = field(field(entry, "pod"), "spec");
+        let key = "serviceAccountName";
+        let account = text(field(spec, key));
+        if account == "" {
+            key = "serviceAccount";
+            account = text(field(spec, key));
+        }
+        if account == "" || account == "default" { continue; }
+        let ns = ns_of(obj);
+        if has_service_account(objs, ns, account) { continue; }
+        let base = text(field(entry, "path"));
+        let prefix = if base == "" { "spec" } else { base + ".spec" };
+        findings.push(render_lint::finding(
+            "non-existent-service-account",
+            "error",
+            obj,
+            `${prefix}.${key}`,
+            `${text(field(obj, "kind"))} "${name_of(obj)}" : ${key} "${account}" ne correspond à aucun ServiceAccount du namespace "${ns}" ; créer ce ServiceAccount ou référencer un compte existant`
+        ));
+    }
+    findings
+}

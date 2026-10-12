@@ -1,0 +1,236 @@
+# Compte de service référencé par un gabarit de pod (mesuré sur kube-linter v0.8.3) : le nom est
+# cherché parmi les ServiceAccount v1 de la liste, dans le namespace de la charge de travail (un
+# compte homonyme d'un autre namespace ne compte pas). `serviceAccountName` l'emporte sur le champ
+# déprécié `serviceAccount` quand il est renseigné ; un nom vide ou "default" n'est jamais signalé ;
+# un ServiceAccount d'un groupe tiers ne compte pas.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: sa-present, namespace: app}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: sa-other-ns, namespace: other}
+---
+apiVersion: example.com/v1
+kind: ServiceAccount
+metadata: {name: sa-third, namespace: app}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: w-present, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: sa-present
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: w-missing, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: sa-missing
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: w-default-name, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: default
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: w-no-account, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: w-empty-name, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: ""
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: w-other-namespace, namespace: other}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: sa-present
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: w-third-party-account, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: sa-third
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: w-deprecated-field, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccount: sa-missing
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: w-name-wins, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: sa-present
+      serviceAccount: sa-missing
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: w-name-missing-field-present, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: sa-missing
+      serviceAccount: sa-present
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: p-missing, namespace: app}
+spec:
+  serviceAccountName: sa-missing
+  containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: p-present, namespace: app}
+spec:
+  serviceAccountName: sa-present
+  containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: sts-missing, namespace: app}
+spec:
+  serviceName: sts
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: sa-missing
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: ds-missing, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: sa-missing
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata: {name: rs-missing, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: sa-missing
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: rc-missing, namespace: app}
+spec:
+  selector: {app: w}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: sa-missing
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: job-missing, namespace: app}
+spec:
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: sa-missing
+      restartPolicy: Never
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: cron-missing, namespace: app}
+spec:
+  schedule: "0 0 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: sa-missing
+          restartPolicy: Never
+          containers: [{name: c, image: "registry.example.test/c:1.0.0"}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: not-a-workload, namespace: app}
+data:
+  serviceAccountName: sa-missing
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: w-no-template-spec, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: w-empty-name-deprecated-set, namespace: app}
+spec:
+  selector: {matchLabels: {app: w}}
+  template:
+    metadata: {labels: {app: w}}
+    spec:
+      serviceAccountName: ""
+      serviceAccount: sa-missing
+      containers: [{name: c, image: "registry.example.test/c:1.0.0"}]

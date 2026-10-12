@@ -110,8 +110,7 @@ checks:
     status: ported
   - name: non-existent-service-account
     theme: rbac
-    status: deferred
-    reason: "dépend des objets ServiceAccount de la liste d'objets : à porter avec le lot rbac, une fois décidé si la liste du test les contient"
+    status: ported
   - name: non-isolated-pod
     theme: network
     status: ported
