@@ -31,6 +31,23 @@ authors = [
 edition = "2024"
 license = "BSD-3-Clause"
 
+# Static-analysis harness shared by every crate in the workspace.
+# See /linting.sdd for the authoritative contract.
+[workspace.lints.clippy]
+pedantic = { level = "deny", priority = -2 }
+nursery = { level = "warn", priority = -2 }
+# Unwrap/expect in product code are banned per-crate via
+# #![cfg_attr(not(test), deny(clippy::unwrap_used, ...))] on each crate root,
+# so that #[cfg(test)] code stays exempt. Keep them out of this table.
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+missing_docs = "allow"
+missing_debug_implementations = "warn"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [package]
@@ -40,4 +57,7 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
+
+[lints]
+workspace = true
 
