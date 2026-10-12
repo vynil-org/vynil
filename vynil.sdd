@@ -88,9 +88,9 @@ Tasks:
   [ ] #4 Rédiger et relire spec même basename pour chaque fichier source, déléguée par crate.
   [ ] #5 Supprimer les restes `.tasks/`, `docs/conception/` et leurs entrées `.gitignore`.
   [ ] #6 Décider du sort du crate racine `vynil` dans `./src/lib.rs`.
-  [ ] #7 Ownership `vynil-org` : basculer les scripts de release de ./Cargo.toml et ./Makefile sur
+  [x] #7 Ownership `vynil-org` : basculer les scripts de release de ./Cargo.toml et ./Makefile sur
     `ghcr.io/vynil-org` (authentification ghcr, plus de `docker.io`), supprimer `PROJECT` et le
     profil `reivaxm` du Makefile, aligner `RUST_VERSION` des Dockerfiles sur la CI (1.99).
-  [ ] #8 Ownership `vynil-org` : remplacer `github.com/sebt3/vynil` et `docker.io/sebt3/vynil*` par
+  [x] #8 Ownership `vynil-org` : remplacer `github.com/sebt3/vynil` et `docker.io/sebt3/vynil*` par
     `github.com/vynil-org/vynil` et `ghcr.io/vynil-org/vynil*` dans README.md, mkdocs.yml, docs/ et
     docs/fr/ (parité EN/FR), sans toucher `sebt3/rust-yaml`.

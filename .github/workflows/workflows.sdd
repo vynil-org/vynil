@@ -48,6 +48,6 @@ Depends on:
 Tasks:
   [x] #0 Passer `cargo clippy -- -D warnings` au vert sous le harness strict pour que le job Clippy
     cesse d'échouer.
-  [ ] #2 Retirer les deux étapes `DockerHub Login` et préfixer `ghcr.io/` les tags de agent.yml,
+  [x] #2 Retirer les deux étapes `DockerHub Login` et préfixer `ghcr.io/` les tags de agent.yml,
     operator.yml et server.yml (sans préfixe, les images partaient sur Docker Hub).
   [ ] #1 Garder la toolchain Rust épinglée alignée sur le `RUST_VERSION` de chaque Dockerfile.

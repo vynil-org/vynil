@@ -95,30 +95,30 @@ precommit = { cmd=[
     "cargo test"
 ]}
 agent-dev = { cmd=[
-    "podman build . -f agent/Dockerfile -t docker.io/sebt3/vynil-agent:$(cargo run --bin agent -- version)-dev && podman push docker.io/sebt3/vynil-agent:$(cargo run --bin agent -- version)-dev",
+    "podman build . -f agent/Dockerfile -t ghcr.io/vynil-org/vynil-agent:$(cargo run --bin agent -- version)-dev && podman push ghcr.io/vynil-org/vynil-agent:$(cargo run --bin agent -- version)-dev",
 ]}
 agent = { cmd=[
-    "podman build . -f agent/Dockerfile -t docker.io/sebt3/vynil-agent:$(cargo run --bin agent -- version) && podman push docker.io/sebt3/vynil-agent:$(cargo run --bin agent -- version)",
+    "podman build . -f agent/Dockerfile -t ghcr.io/vynil-org/vynil-agent:$(cargo run --bin agent -- version) && podman push ghcr.io/vynil-org/vynil-agent:$(cargo run --bin agent -- version)",
 ]}
 agentbeta = { cmd=[
-    "podman build . -f agent/Dockerfile -t docker.io/sebt3/vynil-agent:$(cargo run --bin agent -- version)-beta && podman push docker.io/sebt3/vynil-agent:$(cargo run --bin agent -- version)-beta",
+    "podman build . -f agent/Dockerfile -t ghcr.io/vynil-org/vynil-agent:$(cargo run --bin agent -- version)-beta && podman push ghcr.io/vynil-org/vynil-agent:$(cargo run --bin agent -- version)-beta",
 ]}
 operator = { cmd=[
-    "podman build . -f operator/Dockerfile -t docker.io/sebt3/vynil-operator:$(cargo run --bin agent -- version) && podman push docker.io/sebt3/vynil-operator:$(cargo run --bin agent -- version)",
+    "podman build . -f operator/Dockerfile -t ghcr.io/vynil-org/vynil-operator:$(cargo run --bin agent -- version) && podman push ghcr.io/vynil-org/vynil-operator:$(cargo run --bin agent -- version)",
 ]}
 operatorbeta = { cmd=[
-    "podman build . -f operator/Dockerfile -t docker.io/sebt3/vynil-operator:$(cargo run --bin agent -- version)-beta && podman push docker.io/sebt3/vynil-operator:$(cargo run --bin agent -- version)-beta",
+    "podman build . -f operator/Dockerfile -t ghcr.io/vynil-org/vynil-operator:$(cargo run --bin agent -- version)-beta && podman push ghcr.io/vynil-org/vynil-operator:$(cargo run --bin agent -- version)-beta",
 ]}
 server = { cmd=[
-    "podman build . -f server/Dockerfile -t docker.io/sebt3/vynil-server:$(cargo run --bin agent -- version) && podman push docker.io/sebt3/vynil-server:$(cargo run --bin agent -- version)",
+    "podman build . -f server/Dockerfile -t ghcr.io/vynil-org/vynil-server:$(cargo run --bin agent -- version) && podman push ghcr.io/vynil-org/vynil-server:$(cargo run --bin agent -- version)",
 ]}
 serverbeta = { cmd=[
-    "podman build . -f server/Dockerfile -t docker.io/sebt3/vynil-server:$(cargo run --bin agent -- version)-beta && podman push docker.io/sebt3/vynil-server:$(cargo run --bin agent -- version)-beta",
+    "podman build . -f server/Dockerfile -t ghcr.io/vynil-org/vynil-server:$(cargo run --bin agent -- version)-beta && podman push ghcr.io/vynil-org/vynil-server:$(cargo run --bin agent -- version)-beta",
 ]}
 update_box = { cmd=[
     "cargo run --bin agent -- package update --source ./box/vynil/",
-    "cargo run --bin agent -- package build -o ./box/vynil/ --tag $(cargo run --bin agent -- version) -r docker.io -n sebt3/vynil -u $(jq -r '.auths[\"docker.io\"].auth' </run/user/$(id -u)/containers/auth.json |base64 -d|awk -F: '{print $1}') -p $(jq -r '.auths[\"docker.io\"].auth' </run/user/$(id -u)/containers/auth.json |base64 -d|awk -F: '{print $2}')",
+    "cargo run --bin agent -- package build -o ./box/vynil/ --tag $(cargo run --bin agent -- version) -r ghcr.io -n vynil-org/vynil -u $(jq -r '.auths[\"ghcr.io\"].auth' </run/user/$(id -u)/containers/auth.json |base64 -d|awk -F: '{print $1}') -p $(jq -r '.auths[\"ghcr.io\"].auth' </run/user/$(id -u)/containers/auth.json |base64 -d|awk -F: '{print $2}')",
 ]}
 box = { cmd=[
-    "cargo run --bin agent -- package build -o ./box/vynil/ --tag $(cargo run --bin agent -- version) -r docker.io -n sebt3/vynil -u $(jq -r '.auths[\"docker.io\"].auth' </run/user/$(id -u)/containers/auth.json |base64 -d|awk -F: '{print $1}') -p $(jq -r '.auths[\"docker.io\"].auth' </run/user/$(id -u)/containers/auth.json |base64 -d|awk -F: '{print $2}')",
+    "cargo run --bin agent -- package build -o ./box/vynil/ --tag $(cargo run --bin agent -- version) -r ghcr.io -n vynil-org/vynil -u $(jq -r '.auths[\"ghcr.io\"].auth' </run/user/$(id -u)/containers/auth.json |base64 -d|awk -F: '{print $1}') -p $(jq -r '.auths[\"ghcr.io\"].auth' </run/user/$(id -u)/containers/auth.json |base64 -d|awk -F: '{print $2}')",
 ]}
