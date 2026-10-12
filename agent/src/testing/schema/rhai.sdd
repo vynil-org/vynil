@@ -40,7 +40,7 @@ Must:
   Ne pas modifier l'objet passé : la conversion est une copie.
 
 Tasks:
-  [ ] Couvrir chaque scénario par un test de même nom.
+  [x] Couvrir chaque scénario par un test de même nom.
 
 Done when:
   Chaque scénario a un test passant et le harnais statique est vert.
