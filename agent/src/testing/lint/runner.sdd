@@ -61,7 +61,7 @@ Handles:
     pas de lint sur un rendu incomplet.
 
 Tasks:
-  [ ] Couvrir chaque scénario par un test de même nom, avec des scripts `lint.rhai` de test
+  [x] Couvrir chaque scénario par un test de même nom, avec des scripts `lint.rhai` de test
       sous `/agent/tests/fixtures/`.
   [?] Valeur de la limite d'opérations du moteur et son éventuelle configuration. Décider
       après mesure sur le script de lint réel de la distribution.
