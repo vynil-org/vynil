@@ -1103,3 +1103,205 @@ fn ssh_port_honours_a_custom_port_and_protocol_like_kube_linter() {
         "spec.template.spec.containers[0].ports[0]".to_string()
     )]);
 }
+
+// ===== lot C1c : vérifications du thème pod (paramètres non par défaut, formes inattendues) =====
+
+/// Constats (nom de l'objet, chemin) de `function` du thème pod, appelée sur chaque objet de
+/// `objs` avec la liste entière comme `objs` : les vérifications qui consultent d'autres objets
+/// (références à des `Secret` ou `ConfigMap`) en ont besoin.
+fn pod_pairs_in_list(
+    rhai: &mut Script,
+    function: &str,
+    objs: &[Value],
+    params: &str,
+) -> Vec<(String, String)> {
+    set_objs(rhai, &Value::Array(objs.to_vec()));
+    let mut pairs = Vec::new();
+    for obj in objs {
+        set_obj(rhai, obj);
+        let found = eval_json(
+            rhai,
+            &format!(r#"import "render_lint_pod" as pod; pod::{function}(obj, objs, #{{}}, {params})"#),
+        );
+        for f in found.as_array().expect("tableau de constats") {
+            pairs.push((
+                obj["metadata"]["name"].as_str().unwrap_or_default().to_string(),
+                f["path"].as_str().unwrap_or_default().to_string(),
+            ));
+        }
+    }
+    pairs
+}
+
+/// Deployment `name` dont le spec du gabarit de pod est `spec` (JSON).
+fn deployment_with_pod_spec(name: &str, spec: &Value) -> Value {
+    json!({
+        "apiVersion": "apps/v1", "kind": "Deployment",
+        "metadata": { "name": name, "namespace": "app" },
+        "spec": {
+            "replicas": 1,
+            "selector": { "matchLabels": { "app": name } },
+            "template": { "metadata": { "labels": { "app": name } }, "spec": spec.clone() }
+        }
+    })
+}
+
+/// Conteneur `web` de l'image de référence des fixtures.
+fn web_container() -> Value {
+    json!({ "name": "web", "image": "registry.example.test/web:1.4.2" })
+}
+
+#[test]
+fn default_service_account_honours_a_custom_pattern_like_kube_linter() {
+    // Paramètre non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
+    // `{serviceAccount: "^app-sa$"}` : `sa-app-sa` (serviceAccountName) et le pod `pod-app-sa`
+    // sont signalés ; `sa-default`, `sa-absent` et `sa-autre` ne le sont pas.
+    let objs = vec![
+        deployment_with_pod_spec(
+            "sa-app-sa",
+            &json!({ "serviceAccountName": "app-sa", "containers": [web_container()] }),
+        ),
+        deployment_with_pod_spec(
+            "sa-default",
+            &json!({ "serviceAccountName": "default", "containers": [web_container()] }),
+        ),
+        deployment_with_pod_spec("sa-absent", &json!({ "containers": [web_container()] })),
+        deployment_with_pod_spec(
+            "sa-autre",
+            &json!({ "serviceAccountName": "autre-sa", "containers": [web_container()] }),
+        ),
+        json!({
+            "apiVersion": "v1", "kind": "Pod",
+            "metadata": { "name": "pod-app-sa", "namespace": "app" },
+            "spec": { "serviceAccountName": "app-sa", "containers": [web_container()] }
+        }),
+    ];
+    let mut rhai = lib_script();
+    let got = pod_pairs_in_list(
+        &mut rhai,
+        "default_service_account",
+        &objs,
+        r#"#{serviceAccount: "^app-sa$"}"#,
+    );
+    let want: Vec<(String, String)> = [
+        ("sa-app-sa", "spec.template.spec.serviceAccountName"),
+        ("pod-app-sa", "spec.serviceAccountName"),
+    ]
+    .into_iter()
+    .map(|(n, p)| (n.to_string(), p.to_string()))
+    .collect();
+    assert_eq!(got, want);
+}
+
+#[test]
+fn dnsconfig_options_honours_a_custom_key_and_value_like_kube_linter() {
+    // Paramètres non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
+    // `{Key: "timeout", Value: "1"}` : `dns-t2` (timeout 2), `dns-absent` (pas de dnsConfig) et
+    // `dns-ndots2` (ndots 2 seulement) sont signalés ; `dns-t1` et `dns-timeout-5-puis-1`
+    // (timeout 1 présent parmi d'autres options) ne le sont pas.
+    let dns =
+        |options: Value| json!({ "dnsConfig": { "options": options }, "containers": [web_container()] });
+    let objs = vec![
+        deployment_with_pod_spec("dns-t1", &dns(json!([{ "name": "timeout", "value": "1" }]))),
+        deployment_with_pod_spec("dns-t2", &dns(json!([{ "name": "timeout", "value": "2" }]))),
+        deployment_with_pod_spec("dns-absent", &json!({ "containers": [web_container()] })),
+        deployment_with_pod_spec("dns-ndots2", &dns(json!([{ "name": "ndots", "value": "2" }]))),
+        deployment_with_pod_spec(
+            "dns-timeout-5-puis-1",
+            &dns(json!([{ "name": "timeout", "value": "5" }, { "name": "timeout", "value": "1" }])),
+        ),
+    ];
+    let mut rhai = lib_script();
+    let got = pod_pairs_in_list(
+        &mut rhai,
+        "dnsconfig_options",
+        &objs,
+        r#"#{Key: "timeout", Value: "1"}"#,
+    );
+    let want: Vec<(String, String)> = [
+        ("dns-t2", "spec.template.spec.dnsConfig"),
+        ("dns-absent", "spec.template.spec.dnsConfig"),
+        ("dns-ndots2", "spec.template.spec.dnsConfig"),
+    ]
+    .into_iter()
+    .map(|(n, p)| (n.to_string(), p.to_string()))
+    .collect();
+    assert_eq!(got, want);
+}
+
+#[test]
+fn priority_class_name_honours_a_custom_accepted_list_like_kube_linter() {
+    // Paramètre non par défaut. Sortie de kube-linter v0.8.3 avec
+    // `{acceptedPriorityClassNames: ["high", "app-critical"]}` : `prio-system-node` et
+    // `prio-high-x` sont signalés ; `prio-high`, `prio-app-critical` et `prio-absent` non. La
+    // correspondance est exacte : `high-x` ne vaut pas `high`.
+    let spec = |class: &str| json!({ "priorityClassName": class, "containers": [web_container()] });
+    let objs = vec![
+        deployment_with_pod_spec("prio-high", &spec("high")),
+        deployment_with_pod_spec("prio-app-critical", &spec("app-critical")),
+        deployment_with_pod_spec("prio-system-node", &spec("system-node-critical")),
+        deployment_with_pod_spec("prio-absent", &json!({ "containers": [web_container()] })),
+        deployment_with_pod_spec("prio-high-x", &spec("high-x")),
+    ];
+    let mut rhai = lib_script();
+    let got = pod_pairs_in_list(
+        &mut rhai,
+        "priority_class_name",
+        &objs,
+        r#"#{acceptedPriorityClassNames: ["high", "app-critical"]}"#,
+    );
+    assert_eq!(got, vec![
+        (
+            "prio-system-node".to_string(),
+            "spec.template.spec.priorityClassName".to_string()
+        ),
+        (
+            "prio-high-x".to_string(),
+            "spec.template.spec.priorityClassName".to_string()
+        ),
+    ]);
+}
+
+#[test]
+fn the_pod_batch_does_not_raise_on_unexpected_shapes() {
+    // Une forme inattendue (spec non objet, conteneurs ou variables de mauvais type) ne lève pas
+    // et ne produit aucun constat : la vérification retourne un tableau vide.
+    let functions = [
+        "default_service_account",
+        "dnsconfig_options",
+        "priority_class_name",
+        "restart_policy",
+    ];
+    let mut rhai = lib_script();
+    let odd_spec = vec![deployment_with_pod_spec("forme-spec", &json!("oops"))];
+    for function in functions {
+        assert!(
+            pod_pairs_in_list(&mut rhai, function, &odd_spec, "#{}").is_empty(),
+            "{function} sur une spec non objet"
+        );
+    }
+    let odd_env = vec![deployment_with_pod_spec(
+        "forme-env",
+        &json!({
+            "serviceAccountName": "app-sa",
+            "restartPolicy": "Always",
+            "priorityClassName": 7,
+            "dnsConfig": "oops",
+            "containers": [
+                { "name": 3, "image": "x:1", "env": "oops" },
+                { "name": "b", "image": "x:1", "env": [
+                    "x",
+                    { "name": 5, "value": 6 },
+                    { "name": "T", "valueFrom": "x" },
+                    { "name": "U", "valueFrom": { "secretKeyRef": 3, "configMapKeyRef": "y" } }
+                ] }
+            ]
+        }),
+    )];
+    for function in functions {
+        assert!(
+            pod_pairs_in_list(&mut rhai, function, &odd_env, "#{}").is_empty(),
+            "{function} sur des conteneurs ou variables de forme inattendue"
+        );
+    }
+}

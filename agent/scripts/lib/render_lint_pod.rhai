@@ -700,3 +700,149 @@ fn writable_host_mount(obj, objs, ctx, params) {
     }
     findings
 }
+
+// Chaîne du paramètre `key`, ou `fallback` si le paramètre est absent ou n'est pas une chaîne.
+private fn string_param(params, key, fallback) {
+    let v = field(params, key);
+    if type_of(v) == "string" { v } else { fallback }
+}
+
+// Nom du compte de service d'un pod : `serviceAccountName` s'il est renseigné, sinon le champ
+// déprécié `serviceAccount` ; chaîne vide si aucun des deux (comme pour kube-linter).
+private fn service_account_name(spec) {
+    let name = text(field(spec, "serviceAccountName"));
+    if name != "" { name } else { text(field(spec, "serviceAccount")) }
+}
+
+// Vrai quand la liste `options` de `dnsConfig` contient l'option `key` avec la valeur `value`.
+// Une option sans valeur (`()`) ne correspond jamais.
+private fn dns_option_found(dns, key, value) {
+    let options = field(dns, "options");
+    if type_of(options) != "array" { return false; }
+    for o in options {
+        if field(o, "name") == key && field(o, "value") == value { return true; }
+    }
+    false
+}
+
+// Noms des objets de genre `kind` dans la liste `objs` (tous namespaces confondus : kube-linter
+// ne rapproche une référence de son objet que par le nom et le genre).
+private fn known_names(objs, kind) {
+    let names = [];
+    if type_of(objs) != "array" { return names; }
+    for o in objs {
+        if field(o, "kind") == kind {
+            let n = text(field(field(o, "metadata"), "name"));
+            if n != "" { names.push(n); }
+        }
+    }
+    names
+}
+
+// Compte de service par défaut : le nom du compte de service du pod correspond à `serviceAccount`
+// (défaut `^(|default)$` : absent, vide ou `default`). Un constat par pod.
+fn default_service_account(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let pattern = string_param(params, "serviceAccount", "^(|default)$");
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        let spec = field(field(entry, "pod"), "spec");
+        if type_of(spec) != "map" { continue; }
+        let sa = service_account_name(spec);
+        if regex_is_match(pattern, sa) {
+            let shown = if sa == "" { "absent" } else { `"${sa}"` };
+            findings.push(render_lint::finding(
+                "default-service-account",
+                "error",
+                obj,
+                pod_spec_path(entry) + ".serviceAccountName",
+                `${kind} "${name}" : compte de service ${shown} (défaut) ; créer un compte dédié et le nommer par serviceAccountName`
+            ));
+        }
+    }
+    findings
+}
+
+// Option DNS attendue absente de `dnsConfig` (défaut : option `ndots` de valeur `2`). Une option
+// `dnsConfig` absente compte comme absente ; une `dnsConfig` de forme inconnue n'est pas signalée.
+// Un constat par pod.
+fn dnsconfig_options(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let key = string_param(params, "Key", "ndots");
+    let value = string_param(params, "Value", "2");
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        let spec = field(field(entry, "pod"), "spec");
+        if type_of(spec) != "map" { continue; }
+        // Structure non reconnue (dnsConfig ou options qui ne sont ni un objet ni un tableau) :
+        // rien à dire, kube-linter ne décode pas ce pod.
+        let dns = field(spec, "dnsConfig");
+        if dns != () && type_of(dns) != "map" { continue; }
+        let options = field(dns, "options");
+        if options != () && type_of(options) != "array" { continue; }
+        if dns_option_found(dns, key, value) { continue; }
+        findings.push(render_lint::finding(
+            "dnsconfig-options",
+            "error",
+            obj,
+            pod_spec_path(entry) + ".dnsConfig",
+            `${kind} "${name}" : l'option DNS "${key}" de valeur "${value}" est absente de dnsConfig ; ajouter ${key}: "${value}" à dnsConfig.options`
+        ));
+    }
+    findings
+}
+
+// Classe de priorité du pod hors de la liste `acceptedPriorityClassNames` (défaut : les deux
+// classes système). Une classe absente ou vide n'est pas signalée. Un constat par pod.
+fn priority_class_name(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let accepted = list_param(params, "acceptedPriorityClassNames", ["system-cluster-critical", "system-node-critical"]);
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        let spec = field(field(entry, "pod"), "spec");
+        if type_of(spec) != "map" { continue; }
+        let pc = text(field(spec, "priorityClassName"));
+        if pc != "" && !contains_value(accepted, pc) {
+            findings.push(render_lint::finding(
+                "priority-class-name",
+                "error",
+                obj,
+                pod_spec_path(entry) + ".priorityClassName",
+                `${kind} "${name}" : classe de priorité "${pc}" non acceptée ; utiliser l'une des classes acceptées (${accepted})`
+            ));
+        }
+    }
+    findings
+}
+
+// Politique de redémarrage du pod différente de `Always` ou `OnFailure`, absente comprise (kube-linter
+// n'accepte pas une politique vide). Un constat par pod.
+fn restart_policy(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        let spec = field(field(entry, "pod"), "spec");
+        if type_of(spec) != "map" { continue; }
+        let rp = text(field(spec, "restartPolicy"));
+        if rp != "Always" && rp != "OnFailure" {
+            let shown = if rp == "" { "absente" } else { `"${rp}"` };
+            findings.push(render_lint::finding(
+                "restart-policy",
+                "error",
+                obj,
+                pod_spec_path(entry) + ".restartPolicy",
+                `${kind} "${name}" : politique de redémarrage ${shown} ; utiliser "Always" ou "OnFailure"`
+            ));
+        }
+    }
+    findings
+}
+

@@ -203,6 +203,12 @@ fn all(objs, ctx, opts) {
     let cfg = settings(opts);
     let raw = [];
     for obj in objs {
+        if enabled(cfg, "default-service-account") {
+            raw = run_check(raw, cfg, "default-service-account", pod::default_service_account(obj, objs, ctx, param(cfg, "default-service-account")));
+        }
+        if enabled(cfg, "dnsconfig-options") {
+            raw = run_check(raw, cfg, "dnsconfig-options", pod::dnsconfig_options(obj, objs, ctx, param(cfg, "dnsconfig-options")));
+        }
         if enabled(cfg, "docker-sock") {
             raw = run_check(raw, cfg, "docker-sock", pod::docker_sock(obj, objs, ctx, param(cfg, "docker-sock")));
         }
@@ -233,6 +239,9 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "no-readiness-probe") {
             raw = run_check(raw, cfg, "no-readiness-probe", pod::no_readiness_probe(obj, objs, ctx, param(cfg, "no-readiness-probe")));
         }
+        if enabled(cfg, "priority-class-name") {
+            raw = run_check(raw, cfg, "priority-class-name", pod::priority_class_name(obj, objs, ctx, param(cfg, "priority-class-name")));
+        }
         if enabled(cfg, "privilege-escalation-container") {
             raw = run_check(raw, cfg, "privilege-escalation-container", pod::privilege_escalation_container(obj, objs, ctx, param(cfg, "privilege-escalation-container")));
         }
@@ -244,6 +253,9 @@ fn all(objs, ctx, opts) {
         }
         if enabled(cfg, "readiness-port") {
             raw = run_check(raw, cfg, "readiness-port", pod::readiness_port(obj, objs, ctx, param(cfg, "readiness-port")));
+        }
+        if enabled(cfg, "restart-policy") {
+            raw = run_check(raw, cfg, "restart-policy", pod::restart_policy(obj, objs, ctx, param(cfg, "restart-policy")));
         }
         if enabled(cfg, "run-as-non-root") {
             raw = run_check(raw, cfg, "run-as-non-root", pod::run_as_non_root(obj, objs, ctx, param(cfg, "run-as-non-root")));
@@ -279,5 +291,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["docker-sock", "drop-net-raw-capability", "host-ipc", "host-network", "host-pid", "latest-tag", "liveness-port", "no-liveness-probe", "no-read-only-root-fs", "no-readiness-probe", "privilege-escalation-container", "privileged-container", "privileged-ports", "readiness-port", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "writable-host-mount"]
+    ["default-service-account", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "host-ipc", "host-network", "host-pid", "latest-tag", "liveness-port", "no-liveness-probe", "no-read-only-root-fs", "no-readiness-probe", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "writable-host-mount"]
 }

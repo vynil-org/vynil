@@ -41,16 +41,14 @@ checks:
     reason: "dépend de la CRD tierce ServiceMonitor (prometheus-operator), absente de la liste d'objets par défaut ; décision ouverte dans render_lint_network.sdd"
   - name: default-service-account
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: deprecated-service-account-field
     theme: workload
     status: deferred
     reason: "porté dans un lot ultérieur"
   - name: dnsconfig-options
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: docker-sock
     theme: pod
     status: ported
@@ -155,8 +153,7 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: priority-class-name
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: privilege-escalation-container
     theme: pod
     status: ported
@@ -183,8 +180,7 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: restart-policy
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: run-as-non-root
     theme: pod
     status: ported
