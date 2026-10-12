@@ -41,7 +41,7 @@ Must:
     `non-isolated-pod`.
 
 Tasks:
-  [ ] Porter les vérifications du thème par lots, chacune avec sa fixture
+  [x] Porter les vérifications du thème par lots, chacune avec sa fixture
       `/agent/tests/fixtures/render_lint/{nom}/` et son statut mis à jour dans le catalogue ; un lot
       est livrable seul tant que le harnais d'oracle reste vert.
   [x] `dangling-servicemonitor` est portée sur la seule liste d'objets. Décision issue d'une

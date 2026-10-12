@@ -31,14 +31,19 @@ Must:
     de kube-linter, et appliquer les mêmes valeurs par défaut.
   Ne signaler que ce que la vérification définit : une vérification n'infère aucune règle
     voisine.
+  Reproduire, pour les relations entre objets, ce que l'outil fait (mesuré) : seul
+    `rbac.authorization.k8s.io/v1` est évalué, `v1beta1` ne donne aucun constat (dérogation
+    assumée à « toutes versions d'un groupe ») ; un RoleBinding résout un Role de son namespace,
+    jamais un ClusterRole, et un ClusterRoleBinding un ClusterRole, par le nom seul (`roleRef.kind`
+    et `roleRef.apiGroup` ignorés) ; une liaison donne un constat au plus.
 
 Tasks:
-  [ ] Porter les vérifications du thème par lots, chacune avec sa fixture
+  [x] Porter les vérifications du thème par lots, chacune avec sa fixture
       `/agent/tests/fixtures/render_lint/{nom}/` et son statut mis à jour dans le catalogue ; un lot
       est livrable seul tant que le harnais d'oracle reste vert.
-  [?] Une vérification de l'oracle qui dépend de ressources externes à la liste d'objets
-      (un `ServiceMonitor` pour des CRD tierces par exemple) : décider si elle est portée sur
-      la seule liste d'objets du test ou marquée `deferred` avec sa raison.
+  [x] `non-existent-service-account` est portée sur la seule liste d'objets : l'outil rapproche le
+      compte des `ServiceAccount` présents dans la liste (mesuré), le compte `default` ou vide
+      n'est jamais signalé.
 
 Done when:
   Chaque entrée `theme: rbac` du catalogue est `ported`, `deferred` avec raison, ou
@@ -48,7 +53,9 @@ Done when:
 Scenario: wildcard rule is reported
   Given un ClusterRole dont une règle porte `verbs: ["*"]`
   When la vérification `wildcard_in_rules` s'exécute
-  Then un constat de règle `wildcard-in-rules` nomme le ClusterRole
+  Then un constat de règle `wildcard-in-rules` nomme le ClusterRole ; il y a un constat par
+    élément `*` de `verbs` ou de `resources` (mesuré : `verbs: ["*","*"]` en donne deux), jamais
+    par règle, et un `*` dans `apiGroups` ou `nonResourceURLs` n'en donne aucun
   Test @wildcard-rule-is-reported
 
 Scenario: cluster-admin binding is reported
@@ -58,7 +65,16 @@ Scenario: cluster-admin binding is reported
   Test @cluster-admin-binding-is-reported
 
 Scenario: read access to secrets is reported
-  Given un Role autorisant `get` sur la ressource `secrets`
+  Given un Role autorisant `get` sur la ressource `secrets`, et un RoleBinding qui le référence
   When la vérification `access_to_secrets` s'exécute
-  Then un constat nomme le Role
+  Then un constat nomme la LIAISON (le RoleBinding) : un Role sans liaison ne donne aucun
+    constat (mesuré)
   Test @read-access-to-secrets-is-reported
+
+Scenario: a service account must exist in the object list
+  Given un Deployment dont `serviceAccountName` nomme un ServiceAccount absent de la liste, dans
+    le même namespace
+  When la vérification `non_existent_service_account` s'exécute
+  Then un constat nomme le Deployment ; le compte `default` ou vide n'est jamais signalé, et un
+    ServiceAccount présent dans un autre namespace ne compte pas
+  Test @a-service-account-must-exist-in-the-object-list

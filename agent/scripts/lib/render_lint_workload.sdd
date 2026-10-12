@@ -34,9 +34,10 @@ Must:
     voisine.
 
 Tasks:
-  [ ] Porter les vérifications du thème par lots, chacune avec sa fixture
+  [x] Porter les vérifications du thème par lots, chacune avec sa fixture
       `/agent/tests/fixtures/render_lint/{nom}/` et son statut mis à jour dans le catalogue ; un lot
       est livrable seul tant que le harnais d'oracle reste vert.
+      `sorted-keys` reste `deferred` : l'ordre des clés est perdu au décodage (mesuré).
   [?] Une vérification de l'oracle qui dépend de ressources externes à la liste d'objets
       (un `ServiceMonitor` pour des CRD tierces par exemple) : décider si elle est portée sur
       la seule liste d'objets du test ou marquée `deferred` avec sa raison.
