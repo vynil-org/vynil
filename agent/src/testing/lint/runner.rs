@@ -3,6 +3,7 @@
 use crate::testing::{
     lint::{
         finding::{parse_findings, to_rows, to_suppressions},
+        patterns,
         sections::Sections,
     },
     result::Suppression,
@@ -41,7 +42,7 @@ pub struct LintRunner {
 }
 
 /// Moteur neuf : bibliothèques de données de base, sans horloge, système de fichiers,
-/// réseau ni cluster ; fonctions `schema_*` seulement. Les imports suivent `lint_dir` puis
+/// réseau ni cluster ; fonctions `schema_*` et `regex_is_match` seulement. Les imports suivent `lint_dir` puis
 /// `{script_dir}/lib`. Les sorties (`print`, `debug`) sont avalées pour ne pas polluer le
 /// rapport du test.
 fn build_engine(lint_dir: &Path, script_dir: &Path, schemas: &SchemaRegistry) -> Engine {
@@ -67,6 +68,7 @@ fn build_engine(lint_dir: &Path, script_dir: &Path, schemas: &SchemaRegistry) ->
     engine.set_module_resolver(resolver);
 
     schema_rhai_register(&mut engine, schemas.clone());
+    patterns::register(&mut engine);
     engine
 }
 
@@ -286,6 +288,34 @@ mod tests {
         assert_eq!(outcome.rows[0].description.as_deref(), Some("Deployment app/web"));
         assert_eq!(outcome.rows[1].description.as_deref(), Some("Deployment app/api"));
         assert!(outcome.rows.iter().all(|r| !r.passed));
+    }
+
+    #[test]
+    fn the_script_can_call_regex_is_match() {
+        // Le script signale seulement les objets dont le nom correspond au motif.
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) {
+                let out = [];
+                for obj in objs.all {
+                    if regex_is_match("^web$", obj.metadata.name) {
+                        out.push(#{
+                            rule: "name-pattern", severity: "error",
+                            object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
+                            message: "nom réservé"
+                        });
+                    }
+                }
+                out
+            }
+        "#,
+        );
+        let objects = vec![deployment("web"), deployment("api")];
+        let outcome = runner.run_test(&test_ctx("default"), &plain(objects));
+        assert_eq!(outcome.rows.len(), 1, "lignes : {:?}", outcome.rows);
+        assert_eq!(outcome.rows[0].name, "lint:name-pattern");
+        assert_eq!(outcome.rows[0].description.as_deref(), Some("Deployment app/web"));
+        assert!(!outcome.rows[0].passed);
     }
 
     #[test]
