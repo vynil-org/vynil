@@ -392,3 +392,91 @@ fn no_read_only_root_fs(obj, objs, ctx, params) {
     }
     findings
 }
+
+// Sonde absente d'un conteneur (initialisation exclue) : `probe_key` (`livenessProbe`,
+// `readinessProbe`) n'est pas renseignée. Une sonde `null` compte comme absente, comme pour kube-linter.
+private fn probe_missing_findings(rule, probe_key, label, obj) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            if c.init { continue; }
+            if field(c.container, probe_key) == () {
+                findings.push(render_lint::finding(
+                    rule,
+                    "error",
+                    obj,
+                    c.path,
+                    `conteneur "${field(c.container, "name")}" de ${kind} "${name}" : pas de sonde de ${label} (${probe_key}) ; définir une ${probe_key} qui vérifie le conteneur`
+                ));
+            }
+        }
+    }
+    findings
+}
+
+// Vrai quand le port `port` d'une sonde est exposé par le conteneur : un entier doit être le
+// `containerPort` d'un port TCP (protocole absent ou exactement `TCP`), une chaîne le `name` d'un
+// port TCP. Un port absent vaut 0 pour kube-linter et n'est jamais exposé. Un port UDP ne compte pas.
+private fn port_exposed(container, port) {
+    let ports = field(container, "ports");
+    if type_of(ports) != "array" { return false; }
+    for p in ports {
+        let proto = field(p, "protocol");
+        if !(proto == () || proto == "TCP") { continue; }
+        let number = field(p, "containerPort");
+        if type_of(port) == "i64" && type_of(number) == "i64" && number == port { return true; }
+        let pname = field(p, "name");
+        if type_of(port) == "string" && type_of(pname) == "string" && pname == port { return true; }
+    }
+    false
+}
+
+// Port de sonde non exposé : pour chaque conteneur (initialisation exclue) et chaque handler de la
+// sonde `probe_key` (`httpGet`, `tcpSocket`, `grpc`) dont le port n'est pas exposé. Un constat par
+// handler ; une sonde `exec` ou sans handler ne produit rien.
+private fn probe_port_findings(rule, probe_key, label, obj) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            if c.init { continue; }
+            let probe = field(c.container, probe_key);
+            if type_of(probe) != "map" { continue; }
+            for handler in ["httpGet", "tcpSocket", "grpc"] {
+                let h = field(probe, handler);
+                if type_of(h) != "map" { continue; }
+                let port = field(h, "port");
+                if port_exposed(c.container, port) { continue; }
+                let shown = if type_of(port) == "()" { "absent" } else { `${port}` };
+                findings.push(render_lint::finding(
+                    rule,
+                    "error",
+                    obj,
+                    c.path + "." + probe_key + "." + handler + ".port",
+                    `conteneur "${field(c.container, "name")}" de ${kind} "${name}" : la sonde de ${label} (${handler}) vise le port ${shown}, non exposé par le conteneur ; déclarer ce port dans ports (protocole TCP) ou corriger la sonde`
+                ));
+            }
+        }
+    }
+    findings
+}
+
+// Conteneur (initialisation exclue) sans sonde de vivacité.
+fn no_liveness_probe(obj, objs, ctx, params) {
+    probe_missing_findings("no-liveness-probe", "livenessProbe", "vivacité", obj)
+}
+
+// Conteneur (initialisation exclue) sans sonde de disponibilité.
+fn no_readiness_probe(obj, objs, ctx, params) {
+    probe_missing_findings("no-readiness-probe", "readinessProbe", "disponibilité", obj)
+}
+
+// Sonde de vivacité visant un port que le conteneur n'expose pas.
+fn liveness_port(obj, objs, ctx, params) {
+    probe_port_findings("liveness-port", "livenessProbe", "vivacité", obj)
+}

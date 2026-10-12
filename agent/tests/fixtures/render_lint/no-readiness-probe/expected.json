@@ -1,0 +1,38 @@
+[
+  {
+    "rule": "no-readiness-probe",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-sans-readiness"
+  },
+  {
+    "rule": "no-readiness-probe",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "deux-conteneurs"
+  },
+  {
+    "rule": "no-readiness-probe",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sans-readiness"
+  },
+  {
+    "rule": "no-readiness-probe",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-sans-readiness"
+  },
+  {
+    "rule": "no-readiness-probe",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-nu-sans-readiness"
+  },
+  {
+    "rule": "no-readiness-probe",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "stateful-sans-readiness"
+  }
+]

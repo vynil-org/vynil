@@ -1,0 +1,148 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 8080
+          livenessProbe:
+            httpGet: {path: /healthz, port: 8080}
+          readinessProbe:
+            httpGet: {path: /ready, port: 8080}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sans-liveness
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: sans-liveness}
+  template:
+    metadata:
+      labels: {app: sans-liveness}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          readinessProbe:
+            httpGet: {path: /ready, port: 8080}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: stateful-sans-liveness
+  namespace: app
+spec:
+  serviceName: db
+  replicas: 1
+  selector:
+    matchLabels: {app: db}
+  template:
+    metadata:
+      labels: {app: db}
+    spec:
+      containers:
+        - name: db
+          image: registry.example.test/db:16
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: init-seulement
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: agent}
+  template:
+    metadata:
+      labels: {app: agent}
+    spec:
+      initContainers:
+        - name: prepare
+          image: registry.example.test/prepare:1.0.0
+      containers:
+        - name: agent
+          image: registry.example.test/agent:1.0.0
+          livenessProbe:
+            tcpSocket: {port: 9100}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-sans-liveness
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: task
+              image: registry.example.test/task:1.0.0
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-sans-liveness
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: once
+          image: registry.example.test/once:1.0.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-nu-sans-liveness
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deux-conteneurs
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: deux}
+  template:
+    metadata:
+      labels: {app: deux}
+    spec:
+      containers:
+        - name: avec
+          image: registry.example.test/avec:1.0.0
+          livenessProbe:
+            httpGet: {path: /healthz, port: 8080}
+        - name: sans
+          image: registry.example.test/sans:1.0.0
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm
+  namespace: app
+data:
+  livenessProbe: absent

@@ -99,8 +99,7 @@ checks:
     status: ported
   - name: liveness-port
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: minimum-three-replicas
     theme: workload
     status: deferred
@@ -119,8 +118,7 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: no-liveness-probe
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: no-node-affinity
     theme: workload
     status: deferred
@@ -130,8 +128,7 @@ checks:
     status: ported
   - name: no-readiness-probe
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: no-rolling-update-strategy
     theme: workload
     status: deferred

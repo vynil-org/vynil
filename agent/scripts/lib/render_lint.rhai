@@ -218,6 +218,21 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "host-pid") {
             raw = run_check(raw, cfg, "host-pid", pod::host_pid(obj, objs, ctx, param(cfg, "host-pid")));
         }
+        if enabled(cfg, "latest-tag") {
+            raw = run_check(raw, cfg, "latest-tag", pod::latest_tag(obj, objs, ctx, param(cfg, "latest-tag")));
+        }
+        if enabled(cfg, "liveness-port") {
+            raw = run_check(raw, cfg, "liveness-port", pod::liveness_port(obj, objs, ctx, param(cfg, "liveness-port")));
+        }
+        if enabled(cfg, "no-liveness-probe") {
+            raw = run_check(raw, cfg, "no-liveness-probe", pod::no_liveness_probe(obj, objs, ctx, param(cfg, "no-liveness-probe")));
+        }
+        if enabled(cfg, "no-read-only-root-fs") {
+            raw = run_check(raw, cfg, "no-read-only-root-fs", pod::no_read_only_root_fs(obj, objs, ctx, param(cfg, "no-read-only-root-fs")));
+        }
+        if enabled(cfg, "no-readiness-probe") {
+            raw = run_check(raw, cfg, "no-readiness-probe", pod::no_readiness_probe(obj, objs, ctx, param(cfg, "no-readiness-probe")));
+        }
         if enabled(cfg, "privilege-escalation-container") {
             raw = run_check(raw, cfg, "privilege-escalation-container", pod::privilege_escalation_container(obj, objs, ctx, param(cfg, "privilege-escalation-container")));
         }
@@ -236,12 +251,6 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "unsafe-sysctls") {
             raw = run_check(raw, cfg, "unsafe-sysctls", pod::unsafe_sysctls(obj, objs, ctx, param(cfg, "unsafe-sysctls")));
         }
-        if enabled(cfg, "latest-tag") {
-            raw = run_check(raw, cfg, "latest-tag", pod::latest_tag(obj, objs, ctx, param(cfg, "latest-tag")));
-        }
-        if enabled(cfg, "no-read-only-root-fs") {
-            raw = run_check(raw, cfg, "no-read-only-root-fs", pod::no_read_only_root_fs(obj, objs, ctx, param(cfg, "no-read-only-root-fs")));
-        }
     }
     apply_suppressions(raw, objs, #{ ignore_prefix: cfg.ignore_prefix, require_reason: cfg.require_reason })
 }
@@ -249,5 +258,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["docker-sock", "drop-net-raw-capability", "host-ipc", "host-network", "host-pid", "latest-tag", "no-read-only-root-fs", "privilege-escalation-container", "privileged-container", "run-as-non-root", "sensitive-host-mounts", "unsafe-proc-mount", "unsafe-sysctls"]
+    ["docker-sock", "drop-net-raw-capability", "host-ipc", "host-network", "host-pid", "latest-tag", "liveness-port", "no-liveness-probe", "no-read-only-root-fs", "no-readiness-probe", "privilege-escalation-container", "privileged-container", "run-as-non-root", "sensitive-host-mounts", "unsafe-proc-mount", "unsafe-sysctls"]
 }
