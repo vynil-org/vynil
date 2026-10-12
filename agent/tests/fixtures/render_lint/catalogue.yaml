@@ -32,8 +32,7 @@ checks:
     status: ported
   - name: dangling-servicemonitor
     theme: network
-    status: deferred
-    reason: "dépend de la CRD tierce ServiceMonitor (prometheus-operator), absente de la liste d'objets par défaut ; décision ouverte dans render_lint_network.sdd"
+    status: ported
   - name: default-service-account
     theme: pod
     status: ported

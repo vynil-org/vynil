@@ -1,0 +1,166 @@
+# Services de la liste : la correspondance porte sur metadata.labels (jamais spec.selector) et
+# ignore le namespace. Un Service doit se décoder et son groupe est le noyau.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-team-a, namespace: app, labels: {team: a, tier: front}}
+spec: {selector: {app: web}, ports: [{name: http, port: 80}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-other-ns, namespace: other, labels: {team: solo}}
+spec: {ports: [{name: http, port: 80}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-spec-selector-only, namespace: app, labels: {q: "1"}}
+spec: {selector: {app: web}, ports: [{name: http, port: 80}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-no-labels, namespace: app}
+spec: {ports: [{name: http, port: 80}]}
+---
+apiVersion: example.io/v1
+kind: Service
+metadata: {name: svc-tiers, namespace: app, labels: {team: tiers}}
+spec: {ports: [{name: http, port: 80}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-malformed-labels, namespace: app, labels: {team: 5}}
+spec: {ports: [{name: http, port: 80}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-malformed-ports, namespace: app, labels: {team: broken}}
+spec: {ports: "junk"}
+---
+# Conformes : toutes les étiquettes du sélecteur figurent sur le Service (sous-ensemble).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-team-a, namespace: app}
+spec:
+  selector: {matchLabels: {team: a}}
+  endpoints: [{port: http}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-team-a-subset, namespace: app}
+spec:
+  selector: {matchLabels: {team: a, tier: front}}
+  endpoints: [{port: http}]
+---
+# Conforme : le Service visé est dans un autre namespace (namespace non comparé, mesuré).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-cross-namespace, namespace: app}
+spec:
+  selector: {matchLabels: {team: solo}}
+  endpoints: [{port: http}]
+---
+# Non conformes : sélecteur sans correspondance, sélecteur plus large que les labels du Service,
+# labels du spec.selector du Service seulement, sélecteur vide, sans selector, groupe tiers, cible
+# sans labels, cible au labels mal formés ou au spec mal formé.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-no-match, namespace: app}
+spec:
+  selector: {matchLabels: {team: nope}}
+  endpoints: [{port: http}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-superset, namespace: app}
+spec:
+  selector: {matchLabels: {team: a, tier: back}}
+  endpoints: [{port: http}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-spec-selector-label, namespace: app}
+spec:
+  selector: {matchLabels: {app: web}}
+  endpoints: [{port: http}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-empty-selector, namespace: app}
+spec:
+  selector: {}
+  endpoints: [{port: http}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-empty-match-labels, namespace: app}
+spec:
+  selector: {matchLabels: {}}
+  endpoints: [{port: http}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-no-selector, namespace: app}
+spec:
+  endpoints: [{port: http}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-expression-only, namespace: app}
+spec:
+  selector: {matchExpressions: [{key: team, operator: In, values: [a, z]}]}
+  endpoints: [{port: http}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-tiers-group, namespace: app}
+spec:
+  selector: {matchLabels: {team: tiers}}
+  endpoints: [{port: http}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-no-labels-target, namespace: app}
+spec:
+  selector: {matchLabels: {app: web}}
+  endpoints: [{port: http}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-malformed-target, namespace: app}
+spec:
+  selector: {matchLabels: {team: broken}}
+  endpoints: [{port: http}]
+---
+# Hors scope : une expression ignorée quand matchLabels est présent (aucune conjonction), une
+# version v1alpha1 et un groupe tiers ne sont pas examinés, un sélecteur mal formé est ignoré.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-expression-ignored, namespace: app}
+spec:
+  selector:
+    matchLabels: {team: a}
+    matchExpressions: [{key: team, operator: In, values: [zz]}]
+  endpoints: [{port: http}]
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ServiceMonitor
+metadata: {name: sm-v1alpha1, namespace: app}
+spec:
+  selector: {matchLabels: {team: nope}}
+---
+apiVersion: example.io/v1
+kind: ServiceMonitor
+metadata: {name: sm-tiers-kind, namespace: app}
+spec:
+  selector: {matchLabels: {team: nope}}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-malformed-selector, namespace: app}
+spec:
+  selector: "x"
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: sm-malformed-match-labels, namespace: app}
+spec:
+  selector: {matchLabels: {team: 5}}

@@ -1933,6 +1933,7 @@ fn the_network_batch_does_not_raise_on_unexpected_shapes() {
         "dangling_networkpolicy",
         "dangling_networkpolicypeer_podselector",
         "non_isolated_pod",
+        "dangling_servicemonitor",
     ];
     let odd = vec![
         json!({ "apiVersion": "v1", "kind": "Service", "metadata": { "name": "a", "namespace": "app" }, "spec": "oops" }),
@@ -1953,6 +1954,8 @@ fn the_network_batch_does_not_raise_on_unexpected_shapes() {
         json!({ "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": { "name": "o", "namespace": "app" }, "spec": { "podSelector": { "matchExpressions": "x" }, "ingress": [ { "from": [ { "podSelector": { "matchLabels": { "app": 5 } } } ] } ] } }),
         json!({ "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": { "name": "q", "namespace": "app" }, "spec": { "podSelector": {}, "egress": [ { "to": [ { "namespaceSelector": 3 } ] } ] } }),
         json!({ "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": { "name": "r", "namespace": "app" }, "spec": { "podSelector": { "matchExpressions": [ { "key": "app", "operator": "In", "values": "web" } ] } } }),
+        json!({ "apiVersion": "monitoring.coreos.com/v1", "kind": "ServiceMonitor", "metadata": { "name": "s", "namespace": "app" }, "spec": { "selector": "x" } }),
+        json!({ "apiVersion": "monitoring.coreos.com/v1", "kind": "ServiceMonitor", "metadata": { "name": "t", "namespace": "app" }, "spec": { "selector": { "matchLabels": { "team": 5 } } } }),
     ];
     let mut rhai = lib_script();
     set_objs(&mut rhai, &Value::Array(odd));
@@ -2191,4 +2194,44 @@ fn a_malformed_pod_is_not_a_selector_target_like_kube_linter() {
     });
     let got = check_findings("dangling-service", &[pod, svc], "#{}");
     assert_eq!(got, vec!["Service/s"]);
+}
+
+#[test]
+fn dangling_servicemonitor_resolves_like_kube_linter() {
+    // Sortie de kube-linter v0.8.3 sur la fixture dangling-servicemonitor : la correspondance porte
+    // sur metadata.labels des Services du noyau (jamais spec.selector), sans comparer le namespace ;
+    // seul matchLabels compte (matchExpressions ignoré) ; un matchLabels vide, un sélecteur absent,
+    // un groupe tiers, une version v1alpha1, un Service mal formé ou sans labels ne correspondent pas.
+    let objs = fixture_objects("dangling-servicemonitor");
+    let got = check_findings("dangling-servicemonitor", &objs, "#{}");
+    let want = vec![
+        "ServiceMonitor/sm-empty-match-labels",
+        "ServiceMonitor/sm-empty-selector",
+        "ServiceMonitor/sm-expression-only",
+        "ServiceMonitor/sm-malformed-target",
+        "ServiceMonitor/sm-no-labels-target",
+        "ServiceMonitor/sm-no-match",
+        "ServiceMonitor/sm-no-selector",
+        "ServiceMonitor/sm-spec-selector-label",
+        "ServiceMonitor/sm-superset",
+        "ServiceMonitor/sm-tiers-group",
+    ];
+    assert_eq!(got, want);
+}
+
+#[test]
+fn a_servicemonitor_matches_a_service_of_another_namespace_like_kube_linter() {
+    // Mesuré : le namespace du ServiceMonitor n'est pas comparé à celui du Service.
+    let svc = json!({
+        "apiVersion": "v1", "kind": "Service",
+        "metadata": { "name": "s", "namespace": "other", "labels": { "team": "solo" } },
+        "spec": { "ports": [ { "name": "http", "port": 80 } ] }
+    });
+    let sm = json!({
+        "apiVersion": "monitoring.coreos.com/v1", "kind": "ServiceMonitor",
+        "metadata": { "name": "sm", "namespace": "app" },
+        "spec": { "selector": { "matchLabels": { "team": "solo" } }, "endpoints": [ { "port": "http" } ] }
+    });
+    let got = check_findings("dangling-servicemonitor", &[svc, sm], "#{}");
+    assert!(got.is_empty(), "service d'un autre namespace : {got:?}");
 }

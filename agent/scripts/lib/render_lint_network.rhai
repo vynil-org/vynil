@@ -623,3 +623,40 @@ fn non_isolated_pod(obj, objs, ctx, params) {
 private fn kind_name(obj) {
     text(field(obj, "kind"))
 }
+
+// Kind ServiceMonitor du groupe monitoring.coreos.com, version v1 exactement (mesuré).
+private fn is_service_monitor(obj) {
+    text(field(obj, "apiVersion")) == "monitoring.coreos.com/v1" && text(field(obj, "kind")) == "ServiceMonitor"
+}
+
+// ServiceMonitor dont `spec.selector.matchLabels` ne correspond aux labels d'aucun Service de la
+// liste. Mesuré sur kube-linter v0.8.3 : les labels lus sont ceux de metadata du Service (jamais
+// spec.selector) ; le namespace n'est pas comparé ; matchExpressions est ignoré (sans effet quand
+// matchLabels est présent, et seul il ne correspond à rien) ; un matchLabels vide ne correspond à
+// rien. Un Service mal formé, d'un autre groupe ou aux labels mal typés n'est pas une cible. Seule
+// la liste d'objets est nécessaire : la vérification n'a pas besoin de la CRD.
+fn dangling_servicemonitor(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !is_service_monitor(obj) { return []; }
+    let spec = field(obj, "spec");
+    if spec != () && type_of(spec) != "map" { return []; }
+    let sel = field(spec, "selector");
+    if !label_selector_well_formed(sel) { return []; }
+    let ml = field(sel, "matchLabels");
+    if type_of(ml) == "map" {
+        for o in objs {
+            if !kind_of_group(o, ["Service"], "") { continue; }
+            if !service_well_formed(o) { continue; }
+            let labels = labels_of(field(o, "metadata"));
+            if labels != () && selects(ml, labels) { return []; }
+        }
+    }
+    let name = name_of(obj);
+    [render_lint::finding(
+        "dangling-servicemonitor",
+        "error",
+        obj,
+        "spec.selector",
+        `ServiceMonitor "${name}" : spec.selector.matchLabels ne correspond aux labels d'aucun Service de la liste ; corriger les labels du sélecteur ou créer le Service visé`
+    )]
+}
