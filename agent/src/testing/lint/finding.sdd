@@ -70,7 +70,7 @@ Handles:
   Tableau vide — aucune ligne, aucune suppression.
 
 Tasks:
-  [ ] Couvrir chaque scénario par un test de même nom.
+  [x] Couvrir chaque scénario par un test de même nom.
   [?] Une ligne `warn` est `passed: true` avec un préfixe de message : le modèle de résultat
       n'a pas de notion de sévérité. Décider si @VynilAssertResult doit porter un champ de
       sévérité (changement additif des formes JSON et JUnit).
