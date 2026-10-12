@@ -60,7 +60,7 @@ Handles:
   Test sans description ni asserts — `description` absent, `asserts` vide dans `definition`.
 
 Tasks:
-  [ ] Couvrir chaque scénario par un test de même nom.
+  [x] Couvrir chaque scénario par un test de même nom.
   [?] `instance.options` ne contient pas les valeurs par défaut des options du package : la
       résolution est faite par les scripts `context` à l'exécution. Décider s'il faut exposer
       une vue résolue (reproduire la fusion de vynil-core), ou laisser les règles combiner
