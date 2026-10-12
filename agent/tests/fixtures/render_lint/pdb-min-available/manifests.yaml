@@ -1,0 +1,411 @@
+# Workloads liés, dans le namespace app. Les labels "yy" sont quotés (YAML 1.1).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ten, namespace: app}
+spec:
+  replicas: 10
+  selector: {matchLabels: {app: ten}}
+  template:
+    metadata: {labels: {app: ten}}
+    spec: {containers: [{name: ten, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: zero, namespace: app}
+spec:
+  replicas: 0
+  selector: {matchLabels: {app: zero}}
+  template:
+    metadata: {labels: {app: zero}}
+    spec: {containers: [{name: zero, image: "registry.example.test/web:1.4.2"}]}
+---
+# Sans spec.replicas : Kubernetes compte 1 réplica.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: norep, namespace: app}
+spec:
+  selector: {matchLabels: {app: norep}}
+  template:
+    metadata: {labels: {app: norep}}
+    spec: {containers: [{name: norep, image: "registry.example.test/web:1.4.2"}]}
+---
+# DaemonSet : compté sans réplica (zéro).
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: ds, namespace: app}
+spec:
+  selector: {matchLabels: {app: ds}}
+  template:
+    metadata: {labels: {app: ds}}
+    spec: {containers: [{name: ds, image: "registry.example.test/agent:2.0.0"}]}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: sts, namespace: app}
+spec:
+  replicas: 3
+  serviceName: sts
+  selector: {matchLabels: {app: sts}}
+  template:
+    metadata: {labels: {app: sts}}
+    spec: {containers: [{name: sts, image: "registry.example.test/db:16.2"}]}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata: {name: rs, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: rs}}
+  template:
+    metadata: {labels: {app: rs}}
+    spec: {containers: [{name: rs, image: "registry.example.test/web:1.4.2"}]}
+---
+# CronJob : compté sans réplica (zéro), lié par un sélecteur vide.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: cron, namespace: app}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: cron}}
+        spec: {restartPolicy: Never, containers: [{name: cron, image: "registry.example.test/migrate:3.1.0"}]}
+---
+# ReplicationController : non lié (mesuré).
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: rc, namespace: app}
+spec:
+  replicas: 3
+  selector: {app: rc}
+  template:
+    metadata: {labels: {app: rc}}
+    spec: {containers: [{name: rc, image: "registry.example.test/web:1.4.2"}]}
+---
+# Job : non lié (mesuré).
+apiVersion: batch/v1
+kind: Job
+metadata: {name: job, namespace: app}
+spec:
+  template:
+    metadata: {labels: {app: job}}
+    spec: {restartPolicy: Never, containers: [{name: job, image: "registry.example.test/migrate:3.1.0"}]}
+---
+# Groupe apps, version antérieure : lié (mesuré, le groupe compte).
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata: {name: beta, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: beta}}
+  template:
+    metadata: {labels: {app: beta}}
+    spec: {containers: [{name: beta, image: "registry.example.test/web:1.4.2"}]}
+---
+# Groupe tiers extensions : non lié.
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: ext, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ext}}
+  template:
+    metadata: {labels: {app: ext}}
+    spec: {containers: [{name: ext, image: "registry.example.test/web:1.4.2"}]}
+---
+# Autre namespace : non lié aux PDB du namespace app.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: otherns, namespace: other}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: otherns}}
+  template:
+    metadata: {labels: {app: otherns}}
+    spec: {containers: [{name: otherns, image: "registry.example.test/web:1.4.2"}]}
+---
+# Sélecteur à deux labels : la PDB {app: dual} s'applique à ce sélecteur (sous-ensemble).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dual, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: dual, tier: "yy"}}
+  template:
+    metadata: {labels: {app: dual, tier: "yy"}}
+    spec: {containers: [{name: dual, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dual2, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: dual2}}
+  template:
+    metadata: {labels: {app: dual2}}
+    spec: {containers: [{name: dual2, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : 2 < 3 réplicas.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: ok-two, namespace: app}
+spec:
+  minAvailable: 2
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : 3 réplicas, minAvailable 3.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: three, namespace: app}
+spec:
+  minAvailable: 3
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : minAvailable "3" (entier en chaîne, compté comme 3).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: str-three, namespace: app}
+spec:
+  minAvailable: "3"
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : 10 réplicas, minAvailable 10.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: ten-ten, namespace: app}
+spec:
+  minAvailable: 10
+  selector: {matchLabels: {app: ten}}
+---
+# Conforme : 10 réplicas, minAvailable 4.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: four-ten, namespace: app}
+spec:
+  minAvailable: 4
+  selector: {matchLabels: {app: ten}}
+---
+# Non conforme : 0 réplica, minAvailable 1.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: zero-one, namespace: app}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app: zero}}
+---
+# Non conforme : 0 réplica, minAvailable 0.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: zero-zero, namespace: app}
+spec:
+  minAvailable: 0
+  selector: {matchLabels: {app: zero}}
+---
+# Non conforme : Deployment sans replicas (1), minAvailable 1.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: norep-one, namespace: app}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app: norep}}
+---
+# Conforme : Deployment sans replicas (1), minAvailable 0.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: norep-zero, namespace: app}
+spec:
+  minAvailable: 0
+  selector: {matchLabels: {app: norep}}
+---
+# Non conforme : DaemonSet compté à 0 réplica, minAvailable 0.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: ds-zero, namespace: app}
+spec:
+  minAvailable: 0
+  selector: {matchLabels: {app: ds}}
+---
+# Non conforme : StatefulSet à 3 réplicas, minAvailable 3.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: sts-three, namespace: app}
+spec:
+  minAvailable: 3
+  selector: {matchLabels: {app: sts}}
+---
+# Non conforme : ReplicaSet à 3 réplicas, minAvailable 3.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: rs-three, namespace: app}
+spec:
+  minAvailable: 3
+  selector: {matchLabels: {app: rs}}
+---
+# Conforme : ReplicationController non lié (mesuré).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: rc-three, namespace: app}
+spec:
+  minAvailable: 3
+  selector: {matchLabels: {app: rc}}
+---
+# Conforme : Job non lié (mesuré).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: job-three, namespace: app}
+spec:
+  minAvailable: 3
+  selector: {matchLabels: {app: job}}
+---
+# Non conforme : Deployment apps/v1beta1 lié, 3 réplicas.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: beta-three, namespace: app}
+spec:
+  minAvailable: 3
+  selector: {matchLabels: {app: beta}}
+---
+# Conforme : Deployment extensions/v1beta1 non lié.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: ext-three, namespace: app}
+spec:
+  minAvailable: 3
+  selector: {matchLabels: {app: ext}}
+---
+# Conforme : Deployment homonyme dans un autre namespace.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: otherns-three, namespace: app}
+spec:
+  minAvailable: 3
+  selector: {matchLabels: {app: otherns}}
+---
+# Non conforme : {app: dual} est un sous-ensemble du sélecteur de dual (3 réplicas).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: subset-dual, namespace: app}
+spec:
+  minAvailable: 3
+  selector: {matchLabels: {app: dual}}
+---
+# Conforme : {app: dual2, tier: "yy"} n'est pas un sous-ensemble du sélecteur de dual2.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: superset-dual2, namespace: app}
+spec:
+  minAvailable: 3
+  selector: {matchLabels: {app: dual2, tier: "yy"}}
+---
+# Non conforme : 100%, quel que soit le nombre de réplicas.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: pct-hundred, namespace: app}
+spec:
+  minAvailable: "100%"
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : 99% de 10 réplicas arrondi au supérieur = 10.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: pct-ninety-nine, namespace: app}
+spec:
+  minAvailable: "99%"
+  selector: {matchLabels: {app: ten}}
+---
+# Conforme : 90% de 10 réplicas = 9.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: pct-ninety, namespace: app}
+spec:
+  minAvailable: "90%"
+  selector: {matchLabels: {app: ten}}
+---
+# Conforme : 50% de 3 réplicas arrondi au supérieur = 2.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: pct-fifty, namespace: app}
+spec:
+  minAvailable: "50%"
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : chaîne qui n'est ni un entier ni un pourcentage.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: bad-abc, namespace: app}
+spec:
+  minAvailable: "abc"
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : chaîne vide.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: bad-empty, namespace: app}
+spec:
+  minAvailable: ""
+  selector: {matchLabels: {app: web}}
+---
+# Conforme : minAvailable absent.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: absent, namespace: app}
+spec:
+  selector: {matchLabels: {app: web}}
+---
+# Conforme : minAvailable nul.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: null-min, namespace: app}
+spec:
+  minAvailable: null
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : minAvailable 3.0, compté comme 3 (mesuré).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: float-three, namespace: app}
+spec:
+  minAvailable: 3.0
+  selector: {matchLabels: {app: norep}}
+---
+# Non conforme : selector absent, minAvailable 3.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: nosel, namespace: app}
+spec:
+  minAvailable: 3
+---
+# Non conforme : selector nul, minAvailable 3.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: nullsel, namespace: app}
+spec:
+  minAvailable: 3
+  selector: null
+---
+# Non conforme : selector vide (tous les workloads du namespace), minAvailable 3.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: emptysel, namespace: app}
+spec:
+  minAvailable: 3
+  selector: {matchLabels: {}}
+---
+# Hors scope : policy/v1beta1 n'est pas évaluée, même invalide.
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata: {name: beta-abc, namespace: app}
+spec:
+  minAvailable: "abc"
+  selector: {matchLabels: {app: web}}

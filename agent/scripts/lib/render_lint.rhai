@@ -293,6 +293,15 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "no-rolling-update-strategy") {
             raw = run_check(raw, cfg, "no-rolling-update-strategy", workload::no_rolling_update_strategy(obj, objs, ctx, param(cfg, "no-rolling-update-strategy")));
         }
+        if enabled(cfg, "pdb-max-unavailable") {
+            raw = run_check(raw, cfg, "pdb-max-unavailable", workload::pdb_max_unavailable(obj, objs, ctx, param(cfg, "pdb-max-unavailable")));
+        }
+        if enabled(cfg, "pdb-min-available") {
+            raw = run_check(raw, cfg, "pdb-min-available", workload::pdb_min_available(obj, objs, ctx, param(cfg, "pdb-min-available")));
+        }
+        if enabled(cfg, "pdb-unhealthy-pod-eviction-policy") {
+            raw = run_check(raw, cfg, "pdb-unhealthy-pod-eviction-policy", workload::pdb_unhealthy_pod_eviction_policy(obj, objs, ctx, param(cfg, "pdb-unhealthy-pod-eviction-policy")));
+        }
         if enabled(cfg, "priority-class-name") {
             raw = run_check(raw, cfg, "priority-class-name", pod::priority_class_name(obj, objs, ctx, param(cfg, "priority-class-name")));
         }
@@ -351,5 +360,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["dangling-horizontalpodautoscaler", "default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "host-ipc", "host-network", "host-pid", "hpa-minimum-three-replicas", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-node-affinity", "no-read-only-root-fs", "no-readiness-probe", "no-rolling-update-strategy", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "use-namespace", "writable-host-mount"]
+    ["dangling-horizontalpodautoscaler", "default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "host-ipc", "host-network", "host-pid", "hpa-minimum-three-replicas", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-node-affinity", "no-read-only-root-fs", "no-readiness-probe", "no-rolling-update-strategy", "pdb-max-unavailable", "pdb-min-available", "pdb-unhealthy-pod-eviction-policy", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "use-namespace", "writable-host-mount"]
 }

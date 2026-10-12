@@ -128,16 +128,13 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: pdb-max-unavailable
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: pdb-min-available
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: pdb-unhealthy-pod-eviction-policy
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: priority-class-name
     theme: pod
     status: ported

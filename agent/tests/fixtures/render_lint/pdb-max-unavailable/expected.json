@@ -1,0 +1,38 @@
+[
+  {
+    "rule": "pdb-max-unavailable",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "str-abc"
+  },
+  {
+    "rule": "pdb-max-unavailable",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "str-empty"
+  },
+  {
+    "rule": "pdb-max-unavailable",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "str-one"
+  },
+  {
+    "rule": "pdb-max-unavailable",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "zero-float"
+  },
+  {
+    "rule": "pdb-max-unavailable",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "zero-int"
+  },
+  {
+    "rule": "pdb-max-unavailable",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "zero-pct"
+  }
+]

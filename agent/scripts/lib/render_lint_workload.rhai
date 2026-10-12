@@ -468,3 +468,206 @@ fn hpa_minimum_three_replicas(obj, objs, ctx, params) {
         `HorizontalPodAutoscaler "${name}" : minReplicas ${minimum}, minimum ${want} ; porter spec.minReplicas à au moins ${want}`
     )]
 }
+
+// PodDisruptionBudget évaluée par kube-linter : seule l'apiVersion policy/v1 est lue ; une PDB
+// policy/v1beta1 est silencieuse, même invalide (mesuré sur v0.8.3).
+private fn is_pdb(obj) {
+    text(field(obj, "apiVersion")) == "policy/v1" && kind_of_group(obj, ["PodDisruptionBudget"], "policy")
+}
+
+// Nom et namespace d'un objet (chaîne vide si absents).
+private fn obj_name(obj) {
+    text(field(field(obj, "metadata"), "name"))
+}
+
+private fn obj_namespace(obj) {
+    text(field(field(obj, "metadata"), "namespace"))
+}
+
+// Workloads qu'une PDB peut protéger (mesuré) : Deployment, StatefulSet, ReplicaSet et DaemonSet
+// (apps, toute version), Job et CronJob (batch). Un ReplicationController et un Pod ne sont pas liés.
+private fn pdb_related(obj) {
+    kind_of_group(obj, ["Deployment", "StatefulSet", "ReplicaSet", "DaemonSet"], "apps")
+        || kind_of_group(obj, ["Job", "CronJob"], "batch")
+}
+
+// Réplicas comptés pour une PDB : `spec.replicas`, 1 quand il est absent (mesuré pour Deployment,
+// StatefulSet, ReplicaSet). Les genres sans champ replicas (DaemonSet, Job, CronJob) comptent 0.
+private fn pdb_replicas(dep) {
+    if kind_of_group(dep, ["Deployment", "StatefulSet", "ReplicaSet"], "apps") {
+        let r = field(field(dep, "spec"), "replicas");
+        if r == () { 1 } else { r }
+    } else {
+        0
+    }
+}
+
+// Vrai quand le sélecteur de la PDB (matchLabels et matchExpressions) s'applique aux labels `dl`
+// du sélecteur du workload. Mesuré : la PDB {app: a} s'applique à un workload de sélecteur
+// {app: a, tier: "yy"} (sous-ensemble), pas l'inverse ; un sélecteur vide s'applique à tout.
+private fn pdb_selects(match_labels, exprs, dl) {
+    if type_of(match_labels) == "map" {
+        for k in match_labels.keys() {
+            if !(k in dl) || dl[k] != match_labels[k] { return false; }
+        }
+    }
+    if type_of(exprs) == "array" {
+        for e in exprs {
+            if !expression_matches(e, dl) { return false; }
+        }
+    }
+    true
+}
+
+// Chaîne de pourcentage `N%` (chiffres puis %), vraie quand la valeur en est une.
+private fn is_percent(v) {
+    type_of(v) == "string" && regex_is_match("^[0-9]+%$", v)
+}
+
+// maxUnavailable à 0 bloque toute éviction. Entier ou décimal nul, ou pourcentage nul ("0%") ;
+// une chaîne qui n'est pas un pourcentage (y compris un entier écrit entre guillemets) est une
+// valeur invalide. Absent ou nul : pas de constat.
+fn pdb_max_unavailable(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !is_pdb(obj) { return []; }
+    let spec = field(obj, "spec");
+    if type_of(spec) != "map" { return []; }
+    let v = field(spec, "maxUnavailable");
+    let zero = false;
+    let invalid = false;
+    if type_of(v) == "i64" {
+        zero = v == 0;
+    } else if type_of(v) == "f64" {
+        zero = v == 0.0;
+    } else if type_of(v) == "string" {
+        if is_percent(v) {
+            zero = regex_is_match("^0+%$", v);
+        } else {
+            invalid = true;
+        }
+    } else {
+        return [];
+    }
+    let name = obj_name(obj);
+    if zero {
+        return [render_lint::finding(
+            "pdb-max-unavailable",
+            "error",
+            obj,
+            "spec.maxUnavailable",
+            `PodDisruptionBudget "${name}" : maxUnavailable ${v} bloque toute éviction de pods ; définir spec.maxUnavailable à une valeur supérieure à 0`
+        )];
+    }
+    if invalid {
+        return [render_lint::finding(
+            "pdb-max-unavailable",
+            "error",
+            obj,
+            "spec.maxUnavailable",
+            `PodDisruptionBudget "${name}" : maxUnavailable "${v}" n'est ni un entier ni un pourcentage ; utiliser un entier sans guillemets ou un pourcentage supérieur à 0`
+        )];
+    }
+    []
+}
+
+// minAvailable qui ne laisse aucune éviction possible : un nombre de réplicas des workloads liés
+// (même namespace, sélecteur couvert) inférieur ou égal à minAvailable. Entier, entier écrit en
+// chaîne et décimal entier sont comptés comme entiers ; `N%` est arrondi au supérieur sur les
+// réplicas de chaque workload ; `100%` est signalé une fois, sans workload. Chaîne invalide ou
+// selector absent (nul compris) : constat dédié, une fois par PDB.
+fn pdb_min_available(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !is_pdb(obj) { return []; }
+    let spec = field(obj, "spec");
+    if type_of(spec) != "map" { return []; }
+    let v = field(spec, "minAvailable");
+    let name = obj_name(obj);
+    let count = -1;
+    let percent = -1;
+    if type_of(v) == "string" {
+        if is_percent(v) {
+            let p = parse_int(v.sub_string(0, v.len() - 1));
+            if p == 100 {
+                return [render_lint::finding(
+                    "pdb-min-available",
+                    "error",
+                    obj,
+                    "spec.minAvailable",
+                    `PodDisruptionBudget "${name}" : minAvailable 100% bloque toute éviction ; définir une valeur strictement inférieure à 100%`
+                )];
+            }
+            percent = p;
+        } else if regex_is_match("^[0-9]+$", v) {
+            count = parse_int(v);
+        } else {
+            return [render_lint::finding(
+                "pdb-min-available",
+                "error",
+                obj,
+                "spec.minAvailable",
+                `PodDisruptionBudget "${name}" : minAvailable "${v}" n'est ni un entier ni un pourcentage ; utiliser un entier sans guillemets ou un pourcentage`
+            )];
+        }
+    } else if type_of(v) == "i64" {
+        count = v;
+    } else if type_of(v) == "f64" && v == v.floor() {
+        count = v.to_int();
+    } else {
+        return [];
+    }
+    let selector = field(spec, "selector");
+    if selector == () {
+        return [render_lint::finding(
+            "pdb-min-available",
+            "error",
+            obj,
+            "spec.selector",
+            `PodDisruptionBudget "${name}" : spec.selector absent ; définir spec.selector pour désigner les workloads protégés`
+        )];
+    }
+    if type_of(selector) != "map" { return []; }
+    let match_labels = field(selector, "matchLabels");
+    let exprs = field(selector, "matchExpressions");
+    if malformed(match_labels) || malformed_list(exprs) { return []; }
+    let ns = obj_namespace(obj);
+    let out = [];
+    for dep in objs {
+        if !pdb_related(dep) || obj_namespace(dep) != ns { continue; }
+        let dlabels = field(field(dep, "spec"), "selector");
+        let dl = field(dlabels, "matchLabels");
+        let labels = if type_of(dl) == "map" { dl } else { #{} };
+        if !pdb_selects(match_labels, exprs, labels) { continue; }
+        let replicas = pdb_replicas(dep);
+        if type_of(replicas) != "i64" { continue; }
+        let minimum = if percent >= 0 { (replicas * percent + 99) / 100 } else { count };
+        if replicas > minimum { continue; }
+        let dkind = text(field(dep, "kind"));
+        let dname = obj_name(dep);
+        out.push(render_lint::finding(
+            "pdb-min-available",
+            "error",
+            obj,
+            "spec.minAvailable",
+            `PodDisruptionBudget "${name}" : ${dkind} "${dname}" compte ${replicas} réplica(s), minAvailable ${minimum} bloque toute éviction ; définir minAvailable strictement inférieur à ${replicas}`
+        ));
+    }
+    out
+}
+
+// PodDisruptionBudget sans `unhealthyPodEvictionPolicy` explicite (absent ou nul). Toute valeur
+// explicite est acceptée.
+fn pdb_unhealthy_pod_eviction_policy(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !is_pdb(obj) { return []; }
+    let spec = field(obj, "spec");
+    if type_of(spec) != "map" { return []; }
+    if field(spec, "unhealthyPodEvictionPolicy") != () { return []; }
+    let name = obj_name(obj);
+    [render_lint::finding(
+        "pdb-unhealthy-pod-eviction-policy",
+        "error",
+        obj,
+        "spec.unhealthyPodEvictionPolicy",
+        `PodDisruptionBudget "${name}" : unhealthyPodEvictionPolicy non défini ; le fixer explicitement, par exemple à AlwaysAllow`
+    )]
+}
