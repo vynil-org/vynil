@@ -8,23 +8,11 @@ private fn field(m, key) {
     if type_of(m) == "map" && key in m { m[key] } else { () }
 }
 
-// Motifs de BlockList par défaut de kube-linter (`latest-tag`). Rhai n'a pas de moteur de regex :
-// seuls ces trois motifs, à l'identique, sont reconnus. Tout autre motif lève une erreur explicite.
+// Vrai quand `image` correspond à au moins un motif de `block` (expressions régulières, via
+// `regex_is_match`, comme le BlockList de kube-linter).
 private fn blocked(image, block) {
     for pattern in block {
-        if pattern == ".*:(latest)$" {
-            if image.ends_with(":latest") { return true; }
-        } else if pattern == "^[^:]*$" {
-            if !image.contains(":") { return true; }
-        } else if pattern == "(.*/[^:]+)$" {
-            let parts = image.split("/");
-            if parts.len() > 1 {
-                let last = parts[parts.len() - 1];
-                if last != "" && !last.contains(":") { return true; }
-            }
-        } else {
-            throw `latest-tag : motif BlockList "${pattern}" non supporté (pas de regex dans Rhai ; seuls les motifs par défaut de kube-linter le sont)`;
-        }
+        if regex_is_match(pattern, image) { return true; }
     }
     false
 }
@@ -32,6 +20,7 @@ private fn blocked(image, block) {
 // Image d'un conteneur d'un objet qui utilise un tag `latest` ou pas de tag.
 fn latest_tag(obj, objs, ctx, params) {
     import "render_lint" as render_lint;
+    // Défauts de kube-linter (`latest-tag`, paramètre BlockList) ; un BlockList fourni les remplace.
     let block = [".*:(latest)$", "^[^:]*$", "(.*/[^:]+)$"];
     if type_of(params) == "map" && "BlockList" in params && type_of(params.BlockList) == "array" {
         block = params.BlockList;

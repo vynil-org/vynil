@@ -295,18 +295,31 @@ fn the_library_engine_offers_regex_is_match() {
 // ===== render_lint_pod.sdd (vérifications portées en C0) =====
 
 #[test]
-fn latest_tag_honours_the_allow_list() {
-    // ÉCART DE SPEC : le scénario parle d'un paramètre `allowList`, qui n'existe pas chez
-    // kube-linter (seul `BlockList` existe). Le test vérifie l'équivalent sous la forme de
-    // kube-linter : un motif de BlockList qui ne couvre pas `:latest` ne rend aucun constat.
+fn latest_tag_honours_the_block_list() {
+    // Scénario de render_lint_pod.sdd : un BlockList qui ne couvre pas l'image ne rend aucun
+    // constat, même si l'image est en `:latest`. (Le scénario d'origine parlait d'un
+    // `allowList` : kube-linter n'a que `BlockList`, il n'y a pas d'écart à porter.)
     let mut rhai = lib_script();
     set_obj(&mut rhai, &deployment("app", "web", "registry/app:latest"));
     let findings = eval_json(
         &mut rhai,
         r#"import "render_lint_pod" as pod;
-           pod::latest_tag(obj, [obj], #{}, #{BlockList: ["^[^:]*$", "(.*/[^:]+)$"]})"#,
+           pod::latest_tag(obj, [obj], #{}, #{BlockList: ["^forbidden/.*"]})"#,
     );
     assert_eq!(findings, json!([]));
+}
+
+#[test]
+fn latest_tag_flags_an_image_the_custom_block_list_covers() {
+    // Cas inverse : un BlockList personnalisé qui couvre l'image produit un constat.
+    let mut rhai = lib_script();
+    set_obj(&mut rhai, &deployment("app", "web", "registry/app:latest"));
+    let findings = eval_json(
+        &mut rhai,
+        r#"import "render_lint_pod" as pod;
+           pod::latest_tag(obj, [obj], #{}, #{BlockList: ["^registry/.*"]})"#,
+    );
+    assert_eq!(rules(&findings), vec!["latest-tag".to_string()]);
 }
 
 #[test]

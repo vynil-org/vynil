@@ -49,7 +49,7 @@ Must not:
     « ce texte correspond-il à ce motif ».
 
 Tasks:
-  [ ] Couvrir chaque scénario par un test de même nom.
+  [x] Couvrir chaque scénario par un test de même nom.
 
 Done when:
   Chaque scénario a un test passant et le harnais statique est vert.
