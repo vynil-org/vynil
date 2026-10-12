@@ -1852,3 +1852,102 @@ fn a_secret_or_configmap_reference_resolves_only_to_the_core_kind() {
     let resolved = check_findings("env-value-from", &[consumer, core_configmap], "#{}");
     assert!(resolved.is_empty(), "ConfigMap du noyau : {resolved:?}");
 }
+
+// ===== Thème network : dangling-service, exposed-services =====
+
+#[test]
+fn service_selecting_no_pod_is_dangling() {
+    // Scénario de render_lint_network.sdd : aucun gabarit de pod ne correspond au sélecteur.
+    let svc = json!({
+        "apiVersion": "v1", "kind": "Service",
+        "metadata": { "name": "web", "namespace": "app" },
+        "spec": { "selector": { "app": "web" }, "ports": [ { "port": 80 } ] }
+    });
+    let got = check_findings("dangling-service", &[svc], "#{}");
+    assert_eq!(got, vec!["Service/web"]);
+}
+
+#[test]
+fn dangling_service_resolves_like_kube_linter() {
+    // Sortie de kube-linter v0.8.3 sur la fixture dangling-service : le groupe retenu dépend du
+    // genre (Deployment apps et extensions, ReplicaSet et DaemonSet apps et extensions, StatefulSet
+    // apps seulement ; Deployment du noyau ou example.io ignoré), le namespace est comparé, les labels
+    // lus sont ceux du gabarit (pas metadata), un sélecteur vide ne correspond à rien, ExternalName
+    // exact est exempté et un Service mal formé est ignoré.
+    let objs = fixture_objects("dangling-service");
+    let got = check_findings("dangling-service", &objs, "#{}");
+    let want = vec![
+        "Service/svc-core-dep",
+        "Service/svc-cross-ns",
+        "Service/svc-empty-selector",
+        "Service/svc-ext-sts",
+        "Service/svc-externalname-lower",
+        "Service/svc-extra-key",
+        "Service/svc-metadata-only",
+        "Service/svc-no-match",
+        "Service/svc-no-selector",
+        "Service/svc-nodeport",
+        "Service/svc-nons-ns",
+        "Service/svc-pod-other-ns",
+        "Service/svc-tiers",
+    ];
+    assert_eq!(got, want);
+}
+
+#[test]
+fn exposed_services_honours_forbidden_types_like_kube_linter() {
+    // Paramètre non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
+    // `forbiddenServiceTypes` sur la fixture exposed-services : `["ClusterIP", "ExternalName"]`
+    // signale clusterip et externalname ; `["nodeport"]` signale les trois nodeport (casse ignorée) ;
+    // une liste vide ne signale rien.
+    let objs = fixture_objects("exposed-services");
+    let got = check_findings(
+        "exposed-services",
+        &objs,
+        r#"#{forbiddenServiceTypes: ["ClusterIP", "ExternalName"]}"#,
+    );
+    assert_eq!(got, vec!["Service/clusterip", "Service/externalname"]);
+    let got = check_findings(
+        "exposed-services",
+        &objs,
+        r#"#{forbiddenServiceTypes: ["nodeport"]}"#,
+    );
+    assert_eq!(got, vec![
+        "Service/nodeport",
+        "Service/nodeport-lower",
+        "Service/nodeport-other",
+    ]);
+    let got = check_findings("exposed-services", &objs, "#{forbiddenServiceTypes: []}");
+    assert!(got.is_empty(), "liste vide : {got:?}");
+}
+
+#[test]
+fn the_network_batch_does_not_raise_on_unexpected_shapes() {
+    // Formes inattendues (spec, sélecteur, type, ports, gabarit, jobTemplate) : aucune levée,
+    // aucun constat du thème network.
+    let functions = ["dangling_service", "exposed_services"];
+    let odd = vec![
+        json!({ "apiVersion": "v1", "kind": "Service", "metadata": { "name": "a", "namespace": "app" }, "spec": "oops" }),
+        json!({ "apiVersion": "v1", "kind": "Service", "metadata": { "name": "b", "namespace": "app" }, "spec": { "selector": "x", "type": 4 } }),
+        json!({ "apiVersion": "v1", "kind": "Service", "metadata": { "name": "c", "namespace": "app" }, "spec": { "selector": { "app": 5 }, "ports": "x" } }),
+        json!({ "apiVersion": "v1", "kind": "Service", "metadata": { "name": "d", "namespace": "app" }, "spec": { "ports": [ "x", { "port": "80", "targetPort": [1] } ] } }),
+        json!({ "apiVersion": "v1", "kind": "Service", "metadata": "x", "spec": 7 }),
+        json!({ "apiVersion": "v1", "kind": "Pod", "metadata": { "name": "e", "namespace": "app", "labels": { "app": 3 } }, "spec": 4 }),
+        json!({ "apiVersion": "apps/v1", "kind": "Deployment", "metadata": { "name": "f", "namespace": "app" }, "spec": { "template": "y" } }),
+        json!({ "apiVersion": "batch/v1", "kind": "CronJob", "metadata": { "name": "g", "namespace": "app" }, "spec": { "jobTemplate": "z" } }),
+    ];
+    let mut rhai = lib_script();
+    set_objs(&mut rhai, &Value::Array(odd));
+    let only = functions
+        .iter()
+        .map(|f| format!("\"{}\"", f.replace('_', "-")))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let found = eval_json(
+        &mut rhai,
+        &format!(
+            r#"import "render_lint" as render_lint; render_lint::all(objs, #{{}}, #{{only: [{only}], params: #{{"exposed-services": #{{forbiddenServiceTypes: "NodePort"}}}}}})"#
+        ),
+    );
+    assert_eq!(found, json!([]), "aucun constat sur des formes inattendues");
+}

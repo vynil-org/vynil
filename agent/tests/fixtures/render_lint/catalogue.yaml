@@ -32,8 +32,7 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: dangling-service
     theme: network
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: dangling-servicemonitor
     theme: network
     status: deferred
@@ -64,8 +63,7 @@ checks:
     status: ported
   - name: exposed-services
     theme: network
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: host-ipc
     theme: pod
     status: ported

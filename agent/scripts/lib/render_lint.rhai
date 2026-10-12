@@ -214,12 +214,16 @@ fn all(objs, ctx) { all(objs, ctx, #{}) }
 
 fn all(objs, ctx, opts) {
     import "render_lint_pod" as pod;
+    import "render_lint_network" as network;
     import "render_lint_workload" as workload;
     let cfg = settings(opts);
     let raw = [];
     for obj in objs {
         if enabled(cfg, "dangling-horizontalpodautoscaler") {
             raw = run_check(raw, cfg, "dangling-horizontalpodautoscaler", workload::dangling_horizontalpodautoscaler(obj, objs, ctx, param(cfg, "dangling-horizontalpodautoscaler")));
+        }
+        if enabled(cfg, "dangling-service") {
+            raw = run_check(raw, cfg, "dangling-service", network::dangling_service(obj, objs, ctx, param(cfg, "dangling-service")));
         }
         if enabled(cfg, "default-service-account") {
             raw = run_check(raw, cfg, "default-service-account", pod::default_service_account(obj, objs, ctx, param(cfg, "default-service-account")));
@@ -244,6 +248,9 @@ fn all(objs, ctx, opts) {
         }
         if enabled(cfg, "env-var-secret") {
             raw = run_check(raw, cfg, "env-var-secret", pod::env_var_secret(obj, objs, ctx, param(cfg, "env-var-secret")));
+        }
+        if enabled(cfg, "exposed-services") {
+            raw = run_check(raw, cfg, "exposed-services", network::exposed_services(obj, objs, ctx, param(cfg, "exposed-services")));
         }
         if enabled(cfg, "host-ipc") {
             raw = run_check(raw, cfg, "host-ipc", pod::host_ipc(obj, objs, ctx, param(cfg, "host-ipc")));
@@ -366,5 +373,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["dangling-horizontalpodautoscaler", "default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "host-ipc", "host-network", "host-pid", "hpa-minimum-three-replicas", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-node-affinity", "no-read-only-root-fs", "no-readiness-probe", "no-rolling-update-strategy", "pdb-max-unavailable", "pdb-min-available", "pdb-unhealthy-pod-eviction-policy", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "required-annotation-email", "required-label-owner", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "use-namespace", "writable-host-mount"]
+    ["dangling-horizontalpodautoscaler", "dangling-service", "default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "exposed-services", "host-ipc", "host-network", "host-pid", "hpa-minimum-three-replicas", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-node-affinity", "no-read-only-root-fs", "no-readiness-probe", "no-rolling-update-strategy", "pdb-max-unavailable", "pdb-min-available", "pdb-unhealthy-pod-eviction-policy", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "required-annotation-email", "required-label-owner", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "use-namespace", "writable-host-mount"]
 }
