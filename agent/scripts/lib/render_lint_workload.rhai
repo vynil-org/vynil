@@ -671,3 +671,55 @@ fn pdb_unhealthy_pod_eviction_policy(obj, objs, ctx, params) {
         `PodDisruptionBudget "${name}" : unhealthyPodEvictionPolicy non défini ; le fixer explicitement, par exemple à AlwaysAllow`
     )]
 }
+
+// Annotation de metadata.annotations dont la clé répond au motif `key` (recherche, non ancrée) et
+// dont la valeur répond au motif `value` (non ancrée) : le couple doit correspondre (mesuré). Seules
+// les métadonnées de l'objet comptent, pas le gabarit de pod.
+// Défaut : annotation `email` à une adresse, comme la vérification de kube-linter.
+fn required_annotation_email(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !deployment_like(obj) { return []; }
+    let key = string_param(params, "key", "email");
+    let value = string_param(params, "value", "[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+");
+    let annotations = field(field(obj, "metadata"), "annotations");
+    if malformed(annotations) { return []; }
+    if type_of(annotations) == "map" {
+        for k in annotations.keys() {
+            if regex_is_match(key, k) && regex_is_match(value, text(annotations[k])) { return []; }
+        }
+    }
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    [render_lint::finding(
+        "required-annotation-email",
+        "error",
+        obj,
+        "metadata.annotations",
+        `${kind} "${name}" : aucune annotation "${key}" avec une valeur valide (${value}) ; ajouter metadata.annotations.${key} avec l'adresse e-mail du propriétaire`
+    )]
+}
+
+// Label de metadata.labels dont la clé répond au motif `key` (recherche, non ancrée, sensible à la
+// casse) ; la valeur est libre. Seules les métadonnées de l'objet comptent, pas le gabarit de pod.
+// Défaut : label `owner`, comme la vérification de kube-linter.
+fn required_label_owner(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !deployment_like(obj) { return []; }
+    let key = string_param(params, "key", "owner");
+    let labels = field(field(obj, "metadata"), "labels");
+    if malformed(labels) { return []; }
+    if type_of(labels) == "map" {
+        for k in labels.keys() {
+            if regex_is_match(key, k) { return []; }
+        }
+    }
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    [render_lint::finding(
+        "required-label-owner",
+        "error",
+        obj,
+        "metadata.labels",
+        `${kind} "${name}" : aucun label "${key}" ; ajouter metadata.labels.${key} avec le nom du propriétaire`
+    )]
+}

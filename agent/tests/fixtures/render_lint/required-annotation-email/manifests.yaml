@@ -1,0 +1,206 @@
+# Conforme : annotation email à une adresse valide.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-dep, namespace: app, annotations: {email: "a.b@example.com"}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-dep}}
+  template:
+    metadata: {labels: {app: ok-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : la clé est reconnue par son motif (xemailx contient email).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-key-contains, namespace: app, annotations: {xemailx: "a.b@example.com"}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-key-contains}}
+  template:
+    metadata: {labels: {app: ok-key-contains}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : la valeur est reconnue par son motif (texte autour de l'adresse).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-value-contains, namespace: app, annotations: {email: "x a.b@example.com y"}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-value-contains}}
+  template:
+    metadata: {labels: {app: ok-value-contains}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : valeur sans adresse.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: bad-value, namespace: app, annotations: {email: "nope"}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-value}}
+  template:
+    metadata: {labels: {app: bad-value}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : valeur vide.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: bad-empty, namespace: app, annotations: {email: ""}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-empty}}
+  template:
+    metadata: {labels: {app: bad-empty}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : aucune annotation.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: bad-absent, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-absent}}
+  template:
+    metadata: {labels: {app: bad-absent}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : seule une autre annotation (owner) porte une adresse valide.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: bad-other-key, namespace: app, annotations: {owner: "a.b@example.com"}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-other-key}}
+  template:
+    metadata: {labels: {app: bad-other-key}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : la clé email a une valeur invalide, l'autre clé une valeur valide (paires).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: bad-mixed-pair, namespace: app, annotations: {email: "nope", owner: "a.b@example.com"}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-mixed-pair}}
+  template:
+    metadata: {labels: {app: bad-mixed-pair}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : l'annotation n'est portée que par le gabarit de pod, pas par l'objet.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: bad-template-only, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-template-only}}
+  template:
+    metadata: {labels: {app: bad-template-only}, annotations: {email: "a.b@example.com"}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : StatefulSet sans annotation valide.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: bad-sts, namespace: app, annotations: {email: "nope"}}
+spec:
+  replicas: 3
+  serviceName: bad-sts
+  selector: {matchLabels: {app: bad-sts}}
+  template:
+    metadata: {labels: {app: bad-sts}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+# Non conforme : DaemonSet sans annotation valide.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: bad-ds, namespace: app, annotations: {email: "nope"}}
+spec:
+  selector: {matchLabels: {app: bad-ds}}
+  template:
+    metadata: {labels: {app: bad-ds}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+# Non conforme : ReplicaSet sans annotation valide.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata: {name: bad-rs, namespace: app, annotations: {email: "nope"}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-rs}}
+  template:
+    metadata: {labels: {app: bad-rs}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : ReplicationController sans annotation valide.
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: bad-rc, namespace: app, annotations: {email: "nope"}}
+spec:
+  replicas: 3
+  selector: {app: bad-rc}
+  template:
+    metadata: {labels: {app: bad-rc}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : Job sans annotation valide.
+apiVersion: batch/v1
+kind: Job
+metadata: {name: bad-job, namespace: app, annotations: {email: "nope"}}
+spec:
+  template:
+    metadata: {labels: {app: bad-job}}
+    spec: {restartPolicy: Never, containers: [{name: migrate, image: "registry.example.test/migrate:3.1.0"}]}
+---
+# Non conforme : CronJob sans annotation valide.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: bad-cron, namespace: app, annotations: {email: "nope"}}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: bad-cron}}
+        spec: {restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+# Non conforme : Pod sans annotation valide.
+apiVersion: v1
+kind: Pod
+metadata: {name: bad-pod, namespace: app, annotations: {email: "nope"}}
+spec:
+  containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Non conforme : apps/v1beta1 est aussi un Deployment du groupe apps.
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata: {name: bad-beta, namespace: app, annotations: {email: "nope"}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-beta}}
+  template:
+    metadata: {labels: {app: bad-beta}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Hors scope : un Service n'est pas un workload.
+apiVersion: v1
+kind: Service
+metadata: {name: svc, namespace: app, annotations: {email: "nope"}}
+spec:
+  selector: {app: svc}
+  ports: [{port: 80}]
+---
+# Hors scope : un ConfigMap n'est pas un workload.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: cfg, namespace: app, annotations: {email: "nope"}}
+data: {k: v}
+---
+# Hors scope : groupe extensions/v1beta1 (non lu par la vérification).
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: legacy-ext, namespace: app, annotations: {email: "nope"}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: legacy-ext}}
+  template:
+    metadata: {labels: {app: legacy-ext}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}

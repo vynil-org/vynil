@@ -155,12 +155,10 @@ checks:
     status: ported
   - name: required-annotation-email
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: required-label-owner
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: restart-policy
     theme: pod
     status: ported
@@ -181,7 +179,7 @@ checks:
   - name: sorted-keys
     theme: workload
     status: deferred
-    reason: "porté dans un lot ultérieur"
+    reason: "ordre des clés perdu avant la vérification : les objets de lint sont des cartes Rhai (BTreeMap, keys() trié) ; mesuré : yaml_decode et yaml_decode_multi sur `b: 1` puis `a: 2` donnent keys() = [a, b], et une carte littérale ou JSON aussi ; seul yaml_decode_ordered garde l'ordre ([b, a]) mais ce n'est pas le type des objets de lint. kube-linter lit l'ordre source (signale `Keys are not sorted at root`), impossible à reproduire fidèlement"
   - name: ssh-port
     theme: pod
     status: ported

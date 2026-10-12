@@ -1646,6 +1646,81 @@ fn hpa_minimum_replicas_honours_min_replicas_like_kube_linter() {
 }
 
 #[test]
+fn required_annotation_email_honours_key_and_value_like_kube_linter() {
+    // Paramètres non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
+    // `{key: owner, value: "example\\.com$"}` (template required-annotation) sur la fixture
+    // required-annotation-email : la paire owner/example.com est reconnue, et seuls les objets
+    // sans annotation owner valide sont signalés (bad-mixed-pair et bad-other-key ne le sont plus).
+    let objs = fixture_objects("required-annotation-email");
+    let got = check_findings(
+        "required-annotation-email",
+        &objs,
+        r#"#{key: "owner", value: "example\\.com$"}"#,
+    );
+    let want = vec![
+        "CronJob/bad-cron",
+        "DaemonSet/bad-ds",
+        "Deployment/bad-absent",
+        "Deployment/bad-beta",
+        "Deployment/bad-empty",
+        "Deployment/bad-template-only",
+        "Deployment/bad-value",
+        "Deployment/ok-dep",
+        "Deployment/ok-key-contains",
+        "Deployment/ok-value-contains",
+        "Job/bad-job",
+        "Pod/bad-pod",
+        "ReplicaSet/bad-rs",
+        "ReplicationController/bad-rc",
+        "StatefulSet/bad-sts",
+    ];
+    assert_eq!(got, want);
+}
+
+#[test]
+fn metadata_labels_and_annotations_are_silent_when_malformed() {
+    // Métadonnées de mauvais type (annotations et labels qui ne sont pas des cartes) : aucune
+    // levée, aucun constat des deux vérifications d'étiquettes.
+    let odd = vec![json!({ "apiVersion": "apps/v1", "kind": "Deployment",
+        "metadata": { "name": "m", "namespace": "app", "annotations": "x", "labels": [ 1 ] },
+        "spec": { "replicas": 3 } })];
+    let mut rhai = lib_script();
+    set_objs(&mut rhai, &Value::Array(odd));
+    let found = eval_json(
+        &mut rhai,
+        r#"import "render_lint" as render_lint; render_lint::all(objs, #{}, #{only: ["required-annotation-email", "required-label-owner"]})"#,
+    );
+    assert_eq!(found, json!([]), "métadonnées malformées : aucun constat");
+}
+
+#[test]
+fn required_label_owner_honours_key_like_kube_linter() {
+    // Paramètre non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
+    // `{key: team}` (template required-label) sur la fixture required-label-owner : ok-key-prefix
+    // (label owner-team, clé qui contient team) n'est plus signalé ; ok-dep (label owner seul)
+    // l'est, la clé team étant absente.
+    let objs = fixture_objects("required-label-owner");
+    let got = check_findings("required-label-owner", &objs, r#"#{key: "team"}"#);
+    let want = vec![
+        "CronJob/bad-cron",
+        "DaemonSet/bad-ds",
+        "Deployment/bad-absent",
+        "Deployment/bad-beta",
+        "Deployment/bad-case",
+        "Deployment/bad-template-only",
+        "Deployment/ok-dep",
+        "Deployment/ok-empty-value",
+        "Deployment/ok-key-suffix",
+        "Job/bad-job",
+        "Pod/bad-pod",
+        "ReplicaSet/bad-rs",
+        "ReplicationController/bad-rc",
+        "StatefulSet/bad-sts",
+    ];
+    assert_eq!(got, want);
+}
+
+#[test]
 fn no_anti_affinity_honours_min_replicas_like_kube_linter() {
     // Paramètre non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
     // `{minReplicas: 3}` sur la fixture no-anti-affinity : seul `none-dep` (trois réplicas sans
