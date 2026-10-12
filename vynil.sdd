@@ -52,6 +52,12 @@ Depends on:
   `vynil-core` depuis crates.io, boîte à outils réutilisable Rhai/Handlebars/OCI
 
 Must:
+  Tenir le dépôt (`vynil-org/vynil`) et `vynil-core` (`vynil-org/vynil-core`) pour la propriété de
+    l'organisation GitHub `vynil-org`. L'origine `sebt3` (GitHub comme `docker.io/sebt3`) est gelée :
+    plus une source de publication ni un défaut. Seul `rust-yaml` (fork git, ./Cargo.toml) y reste.
+  Publier les images et le paquet `vynil` uniquement sur `ghcr.io/vynil-org`, via l'outillage de
+    release de ./Cargo.toml et ./Makefile et les workflows de /.github/workflows/workflows.sdd.
+  Faire suivre @DEFAULT_AGENT_IMAGE de /common/src/lib.sdd à la version du workspace.
   Garder quatre ressources personnalisées `@JukeBox`, `@SystemInstance`, `@ServiceInstance`, et
     `@TenantInstance` dans le groupe `vynil.solidite.fr/v1` comme surface d'API publique.
   Toute erreur produit reçoit un identifiant stable, unique dans son message.
@@ -61,6 +67,11 @@ Must:
     `operator` et `server` dépendent de `common` ; jamais de dépendance vers un crate binaire.
 
 Must not:
+  Publier ou référencer une image ou un paquet sur Docker Hub : la seule registry est
+    `ghcr.io/vynil-org` (images `vynil-agent`, `vynil-operator`, `vynil-server`, et le paquet
+    `vynil`). `docker.io/sebt3` n'est cité que comme origine héritée à migrer.
+  Offrir une indirection de projet ou d'organisation dans l'outillage de release (variable
+    `PROJECT`, profils par développeur) : une seule cible, `ghcr.io/vynil-org`.
   Réintroduire workflow retiré `docs/conception/` plus `.tasks/` ou le lire comme
     autorité.
   Introduire un crate workspace sans spec de niveau répertoire nommant son owner.
@@ -77,3 +88,9 @@ Tasks:
   [ ] #4 Rédiger et relire spec même basename pour chaque fichier source, déléguée par crate.
   [ ] #5 Supprimer les restes `.tasks/`, `docs/conception/` et leurs entrées `.gitignore`.
   [ ] #6 Décider du sort du crate racine `vynil` dans `./src/lib.rs`.
+  [ ] #7 Ownership `vynil-org` : basculer les scripts de release de ./Cargo.toml et ./Makefile sur
+    `ghcr.io/vynil-org` (authentification ghcr, plus de `docker.io`), supprimer `PROJECT` et le
+    profil `reivaxm` du Makefile, aligner `RUST_VERSION` des Dockerfiles sur la CI (1.99).
+  [ ] #8 Ownership `vynil-org` : remplacer `github.com/sebt3/vynil` et `docker.io/sebt3/vynil*` par
+    `github.com/vynil-org/vynil` et `ghcr.io/vynil-org/vynil*` dans README.md, mkdocs.yml, docs/ et
+    docs/fr/ (parité EN/FR), sans toucher `sebt3/rust-yaml`.

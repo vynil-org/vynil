@@ -127,7 +127,7 @@ Accepts:
     lu par rien dans cette lane Rust.
   @Parameters.agent_image — `--agent-image` long-only, env `AGENT_IMAGE`, value name
     `AGENT_IMAGE`, @String, défaut clap @common::DEFAULT_AGENT_IMAGE, soit
-    `docker.io/sebt3/vynil-agent:0.7.7` ; l'autre flag service-only du jumeau.
+    @DEFAULT_AGENT_IMAGE ; l'autre flag service-only du jumeau.
   @Parameters.config_dir — `-c` / `--config-dir`, env `CONFIG_DIR`, value name
     `CONFIG_DIR`, @std::path::PathBuf, défaut clap `.`.
   @Parameters.controller_values — `--controller-values` long-only, env
@@ -241,7 +241,7 @@ Scenario: service-only flags reach scripts at their defaults
     `vynil_namespace`, `package_dir`, `script_dir`, `template_dir`, `agent_image`,
     `config_dir`, `controller_values` — aucune clé `tag`
   And `template_dir` vaut `./agent/templates`, `agent_image` vaut
-    `docker.io/sebt3/vynil-agent:0.7.7` et `controller_values` est la chaîne JSON `"{}"`
+    @DEFAULT_AGENT_IMAGE et `controller_values` est la chaîne JSON `"{}"`
 
 Scenario: absent or already-gone CR fails before any handoff
   Given aucun @ServiceInstance n'existe à ce namespace/nom — jamais créé, ou retiré

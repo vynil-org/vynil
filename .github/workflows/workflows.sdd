@@ -27,12 +27,16 @@ Owns:
 Must:
   Lancer `cargo test`, `cargo fmt --check` sur nightly, `cargo clippy -- -D warnings`, et une
     gate de couverture `cargo tarpaulin` sur chaque push vers `main` et chaque pull request.
-  Publier les images à la fois sur Docker Hub et `ghcr.io` pour `linux/amd64` et `linux/arm64` au push de tag.
+  Publier les images uniquement sur `ghcr.io` (tags préfixés `ghcr.io/${{ github.repository }}-<crate>`,
+    authentification `GITHUB_TOKEN`) pour `linux/amd64` et `linux/arm64` au push de tag.
+  Épingler la toolchain Rust de chaque job de gate à celle de la CI de `vynil-core` (1.99.0).
   Construire le plugin pour `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, et
     `x86_64-pc-windows-msvc`, en limitant cargo à `kubectl-vynil/Cargo.toml`.
   Construire chaque image depuis le Dockerfile de sa propre crate sous `/`.
 
 Must not:
+  Se connecter à Docker Hub ni référencer le secret `DOCKERHUB_TOKEN` : Docker Hub est abandonné.
+  Laisser un tag d'image sans préfixe de registry : sans `ghcr.io/` l'image part sur Docker Hub.
   Soumettre un changement ne touchant que la documentation aux jobs de build Rust.
   Publier un tag mutable autre que `latest` et le tag `github.ref_name`.
 
@@ -42,6 +46,8 @@ Depends on:
   /server/Dockerfile.sdd
 
 Tasks:
-  [ ] #0 Passer `cargo clippy -- -D warnings` au vert sous le harness strict pour que le job Clippy
+  [x] #0 Passer `cargo clippy -- -D warnings` au vert sous le harness strict pour que le job Clippy
     cesse d'échouer.
+  [ ] #2 Retirer les deux étapes `DockerHub Login` et préfixer `ghcr.io/` les tags de agent.yml,
+    operator.yml et server.yml (sans préfixe, les images partaient sur Docker Hub).
   [ ] #1 Garder la toolchain Rust épinglée alignée sur le `RUST_VERSION` de chaque Dockerfile.

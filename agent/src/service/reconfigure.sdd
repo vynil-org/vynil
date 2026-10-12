@@ -69,7 +69,7 @@ Accepts:
     cette voie Rust.
   @Parameters.agent_image — seulement en long `--agent-image`, env `AGENT_IMAGE`, nom de valeur
     `AGENT_IMAGE`, @String, défaut clap @common::DEFAULT_AGENT_IMAGE, c.-à-d.
-    `docker.io/sebt3/vynil-agent:0.7.7`.
+    @DEFAULT_AGENT_IMAGE.
   @Parameters.tag — seulement en long `--tag`, env `TAG`, nom de valeur `TAG`, @String, requis,
     transféré verbatim dans `args`, jamais analysé ni validé comme version ici.
   @Parameters.config_dir — `-c` / `--config-dir`, env `CONFIG_DIR`, nom de valeur `CONFIG_DIR`,
@@ -202,7 +202,7 @@ Scenario: args JSON equals the install ten keys at defaults
     `package_dir`, `script_dir`, `template_dir`, `agent_image`, `tag`, `config_dir`,
     `controller_values`
   And `controller_values` est la chaîne JSON `"{}"`, `template_dir` vaut `./agent/templates` et
-    `agent_image` vaut `docker.io/sebt3/vynil-agent:0.7.7`
+    `agent_image` vaut @DEFAULT_AGENT_IMAGE
 
 Scenario: missing CR fails before any handoff
   Given aucun @ServiceInstance à ce namespace/nom — ou sa lecture est Forbidden

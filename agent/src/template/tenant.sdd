@@ -307,7 +307,7 @@ Example:
   `args` tel que les scripts le voient avec tous les défauts : `namespace` `default`,
     `instance` `instance-name`, `vynil_namespace` `vynil-system`, `package_dir` `/src`,
     `script_dir` `./agent/scripts`, `template_dir` `./agent/templates`, `agent_image`
-    `docker.io/sebt3/vynil-agent:0.7.7`, `tag` `1.0.0`, `config_dir` `.`,
+    @DEFAULT_AGENT_IMAGE, `tag` `1.0.0`, `config_dir` `.`,
     `controller_values` `{}`, `context_name` `Simple`
   trame stdout : ligne `---`, puis un document YAML, par objet ; pas de séparateur
     final.

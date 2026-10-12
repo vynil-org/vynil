@@ -53,7 +53,7 @@ Depends on:
     (@tokio::task::block_in_place exige un runtime multi-thread).
   /common/src/lib.sdd — @common::Result, les variantes @common::Error et
     @common::DEFAULT_AGENT_IMAGE comme défaut clap de `agent_image`,
-    `docker.io/sebt3/vynil-agent:0.7.7`.
+    @DEFAULT_AGENT_IMAGE.
   @clap @Args, @serde, @serde_json — parsage des flags et les derives derrière le JSON
     de `args`.
   ./mod.rs — le seul appelant, commenté: l'appel attendu et la voie
@@ -247,7 +247,7 @@ Scenario: args JSON equals the install ten keys at defaults
     `vynil_namespace`, `package_dir`, `script_dir`, `template_dir`, `agent_image`,
     `tag`, `config_dir`, `controller_values`
   And `controller_values` est la chaîne JSON `"{}"`, `template_dir` est
-    `./agent/templates` et `agent_image` est `docker.io/sebt3/vynil-agent:0.7.7`
+    `./agent/templates` et `agent_image` est @DEFAULT_AGENT_IMAGE
 
 Scenario: missing CR fails before any handoff
   Given aucun @TenantInstance à ce namespace/nom — ou que sa lecture soit Forbidden

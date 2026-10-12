@@ -60,7 +60,7 @@ Accepts:
     cette voie Rust.
   @Parameters.agent_image — `--agent-image` (long seul), env `AGENT_IMAGE`, nom de valeur
     `AGENT_IMAGE`, @String, défaut clap @common::DEFAULT_AGENT_IMAGE, c'est-à-dire
-    `docker.io/sebt3/vynil-agent:0.7.7` ; l'autre flag partagé avec le jumeau service.
+    @DEFAULT_AGENT_IMAGE ; l'autre flag partagé avec le jumeau service.
   @Parameters.tag — `--tag` (long seul), env `TAG`, nom de valeur `TAG`, @String, requis ;
     transféré tel quel dans `args`, jamais parsé ni validé comme version ici.
   @Parameters.config_dir — `-c` / `--config-dir`, env `CONFIG_DIR`, nom de valeur
@@ -203,7 +203,7 @@ Scenario: shared template flags reach scripts at their defaults
     `vynil_namespace`, `package_dir`, `script_dir`, `template_dir`, `agent_image`,
     `tag`, `config_dir`, `controller_values`
   And `template_dir` vaut `./agent/templates`, `agent_image` vaut
-    `docker.io/sebt3/vynil-agent:0.7.7` et `controller_values` est la chaîne JSON `"{}"`
+    @DEFAULT_AGENT_IMAGE et `controller_values` est la chaîne JSON `"{}"`
 
 Scenario: missing CR fails before any handoff
   Given aucun @TenantInstance n'existe à ce namespace/name — ou sa lecture est Forbidden

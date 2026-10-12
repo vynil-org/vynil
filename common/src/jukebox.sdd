@@ -46,7 +46,7 @@ Must:
     les clés attendues (`username`+`password` ou `token` pour `http`, `access_key_id` +
     `secret_access_key` pour `s3`, leur absence signifiant un rôle IAM) sont des contrats de
     doc-comment que ce fichier ne valide ni ne résout. Le @Default de @JukeBoxDef est `List` de
-    la seule image `docker.io/sebt3/vynil`.
+    la seule image `ghcr.io/vynil-org/vynil`.
   Toute @ApplicationCondition construite via @ApplicationCondition::new horodate
     `last_transition_time` @Some(@chrono::Utc::now()) capturé à la construction et porte la
     generation de l'appelant ; les messages figés sont `Updated succesfully` (faute d'orthographe
@@ -150,7 +150,7 @@ Exposes:
     { @registry, @project }, ::Gitlab { @url, @registry, @project }, ::Script(@String), ::Http
     { @url, @secret: @Option<@String> }, ::S3 { @bucket, @region, @prefix, @endpoint, @secret }
     (les trois derniers @Option) ; l'impl @std::default::Default donne @JukeBoxDef::List de
-    `docker.io/sebt3/vynil`.
+    `ghcr.io/vynil-org/vynil`.
   @JukeBoxMaturity — enum @JukeBoxMaturity::Stable (`#[default]`), ::Beta, ::Alpha, wire
     snake_case, derives @Serialize/@Deserialize/@Eq/@PartialEq/@Clone/@Debug/@JsonSchema/@Default.
   @JukeBoxSpec — struct spec du CRD aux champs publics @JukeBoxSpec::source
@@ -275,8 +275,9 @@ Tasks:
       @ApplicationCondition::ready_ko porte `No successful update` ; la condition ready ne dit
       jamais « ready ». Consigné tel quel ; décider plus tard si des chaînes corrigées sont un
       changement visible du CRD acceptable.
-  [?] Le @Default de @JukeBoxDef code en dur l'image mainteneur `docker.io/sebt3/vynil` comme
-      source de paquets par défaut. Décider plus tard si un défaut vide ou neutre est plus sûr.
+  [ ] Basculer le @Default de @JukeBoxDef sur `ghcr.io/vynil-org/vynil` (décision : l'origine
+      `docker.io/sebt3` est gelée, la source par défaut est celle de l'organisation). Écrire d'abord
+      le test du Scenario « Default source is the maintainer image list ».
   [?] Un filtre à slash final comme `db/` donne le nom @Some(`""`) dans @filter_packages,
       n'appariant (et remplaçant) que les paquets dont le nom est littéralement vide — sans doute
       involontaire vs un appariement catégorie entière. Décider si les parties de filtre vides se
@@ -316,7 +317,7 @@ Scenario: Source variants round-trip through JSON and YAML
 
 Scenario: Default source is the maintainer image list
   Given @JukeBoxDef::default()
-  Then la valeur est @JukeBoxDef::List de exactement `docker.io/sebt3/vynil`
+  Then la valeur est @JukeBoxDef::List de exactement `ghcr.io/vynil-org/vynil`
   Aucun test mappé n'existe.
 
 Scenario: Full scan success closes both conditions and replaces the cache

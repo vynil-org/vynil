@@ -35,7 +35,7 @@ Accepts:
     lane install ; la lane delete n'a PAS de `tag`, donc `instance.requested` atterrit à
     `()` — map-miss tolérée, pas un raise, et aucune étape delete livrée ne l'indexe). Les
     clés que CE fichier lit, sans gate : `template_dir` (texte @PathBuf sérialisé) et
-    `agent_image` (défaut clap `docker.io/sebt3/vynil-agent:0.7.7`,
+    `agent_image` (défaut clap @DEFAULT_AGENT_IMAGE,
     @common::DEFAULT_AGENT_IMAGE) ; une clé manquante atterrit à `()` dans le contexte. Tout
     le reste est consommé en aval via la délégation et les hooks (leur contrat de lecture
     est ./../lib/build_context.sdd et le ./context_service.sdd en attente).

@@ -59,7 +59,7 @@ Accepts:
     flag propre au service absent du jumeau system, lu par rien dans cette lane Rust.
   @Parameters.agent_image — nom long seul `--agent-image`, env `AGENT_IMAGE`, nom de
     valeur `AGENT_IMAGE`, @String, défaut clap @common::DEFAULT_AGENT_IMAGE, c.-à-d.
-    `docker.io/sebt3/vynil-agent:0.7.7` ; l'autre flag propre au service du jumeau.
+    @DEFAULT_AGENT_IMAGE ; l'autre flag propre au service du jumeau.
   @Parameters.tag — nom long seul `--tag`, env `TAG`, nom de valeur `TAG`, @String,
     requis ; transmis tel quel dans `args`, jamais parsé ni validé comme version ici.
   @Parameters.config_dir — `-c` / `--config-dir`, env `CONFIG_DIR`, nom de valeur
@@ -177,7 +177,7 @@ Tasks:
   [?] L'idempotence est entièrement côté script : pas de garde `status` dans cette lane
       et @ServiceInstance::set_status_ready n'en a pas (/common/src/instanceservice.sdd)
       — les relances rejouent tout le flux script. Confirmer.
-  [?] `--agent-image` embarque le défaut clap `docker.io/sebt3/vynil-agent:0.7.7` venu de
+  [?] `--agent-image` embarque le défaut clap @DEFAULT_AGENT_IMAGE venu de
       @common::DEFAULT_AGENT_IMAGE, dont la dérive du verrou de version face à la version
       du workspace est ouverte dans /common/src/lib.sdd. Confirmer que le flag suit cette
       décision plutôt que de la suivre séparément ici.
@@ -211,7 +211,7 @@ Scenario: service-only flags reach scripts at their defaults
     `package_dir`, `script_dir`, `template_dir`, `agent_image`, `tag`, `config_dir`,
     `controller_values`
   And `template_dir` vaut `./agent/templates`, `agent_image` vaut
-    `docker.io/sebt3/vynil-agent:0.7.7` et `controller_values` est la chaîne JSON `"{}"`
+    @DEFAULT_AGENT_IMAGE et `controller_values` est la chaîne JSON `"{}"`
 
 Scenario: missing CR fails before any handoff
   Given aucun @ServiceInstance à ce namespace/nom — ou une lecture Forbidden

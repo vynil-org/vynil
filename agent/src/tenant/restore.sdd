@@ -90,7 +90,7 @@ Accepts:
     par le snippet tel qu'évalué.
   @Parameters.agent_image — long-only `--agent-image`, env `AGENT_IMAGE`, value
     name `AGENT_IMAGE`, @String, défaut clap @common::DEFAULT_AGENT_IMAGE, soit
-    `docker.io/sebt3/vynil-agent:0.7.7` ; l'autre flag emprunté à la forme
+    @DEFAULT_AGENT_IMAGE ; l'autre flag emprunté à la forme
     install, sans lecteur dans cette lane.
   @Parameters.tag — long-only `--tag`, env `TAG`, value name `TAG`, @String,
     requis ; porté par la forme de flags install, jamais parsé ni utilisé ici.
@@ -250,7 +250,7 @@ Scenario: install-shape flags reach scripts at their defaults
     `agent_image`, `tag`, `config_dir`, `controller_values`
   And `package_dir` vaut `/tmp/package`, `script_dir` vaut `./agent/scripts`,
     `template_dir` vaut `./agent/templates`, `agent_image` vaut
-    `docker.io/sebt3/vynil-agent:0.7.7`, `config_dir` vaut `.` et
+    @DEFAULT_AGENT_IMAGE, `config_dir` vaut `.` et
     `controller_values` est la chaîne JSON `"{}"`
 
 Scenario: missing instance CR is invisible to this lane

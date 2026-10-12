@@ -92,7 +92,7 @@ Must:
     `CONTROLLER_BASE_DIR` : défaut `./operator` ; seul usage, le chemin de partials
       `{CONTROLLER_BASE_DIR}/templates` (relatif au working directory par défaut).
     `VYNIL_NAMESPACE` : défaut `vynil-system`.
-    `AGENT_IMAGE` : défaut @common::@DEFAULT_AGENT_IMAGE — `docker.io/sebt3/vynil-agent:0.7.7`.
+    `AGENT_IMAGE` : défaut @common::@DEFAULT_AGENT_IMAGE.
     `AGENT_ACCOUNT` : défaut `vynil-agent`.
     `AGENT_LOG_LEVEL` : défaut `info`.
     `TENANT_LABEL` : défaut `vynil.solidite.fr/tenant`.
@@ -342,7 +342,7 @@ Scenario: Environment defaults bake the base context once
   Given aucune des six variables posée
   When @build_context construit @base_context
   Then les clés sont exactement `vynil_namespace`:`vynil-system`,
-    `agent_image`:`docker.io/sebt3/vynil-agent:0.7.7`, `service_account`:`vynil-agent`,
+    `agent_image`:@DEFAULT_AGENT_IMAGE, `service_account`:`vynil-agent`,
     `log_level`:`info`, `label_key`:`vynil.solidite.fr/tenant`
   But avec `VYNIL_NAMESPACE` posée à la chaîne vide la valeur est `""`, et modifier l'env
     ensuite dans le processus vivant ne change rien ici

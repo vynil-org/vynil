@@ -61,12 +61,12 @@ Must:
     chemins d'import : getter et setter sont exportés comme une paire utilisable —
     @crate::get_client_name se résout via ./context.rs et @crate::set_client_name via @vynil_core —
     un appelant peut donc brancher le provider core en passant ce getter à ce setter depuis ce crate.
-  Épingler @DEFAULT_AGENT_IMAGE à la valeur exacte `docker.io/sebt3/vynil-agent:0.7.7` (voir Tasks
-    pour la dérive vis-à-vis de la version du workspace).
+  Dériver @DEFAULT_AGENT_IMAGE à la compilation, par `concat!` et `env!("CARGO_PKG_VERSION")`, en
+    `ghcr.io/vynil-org/vynil-agent:<version du workspace>` : le tag suit toujours /Cargo.toml.
 
 Exposes:
   @DEFAULT_AGENT_IMAGE — `pub static` de type `&'static str`, valeur
-    `docker.io/sebt3/vynil-agent:0.7.7`.
+    `ghcr.io/vynil-org/vynil-agent:` suivie de `CARGO_PKG_VERSION` (version du workspace).
   @Error — `pub enum` dérivant @thiserror::Error et @Debug ; le vocabulaire d'erreurs du crate ;
     variantes avec payload, attribut de conversion et modèle d'affichage :
     @Error::SerializationError(@serde_json::Error, `#[from]`) — `SerializationError: {0}`
@@ -172,10 +172,9 @@ Tasks:
       pour les optionnels absents, clés inconnues ignorées, rejet des champs requis.
   [ ] Assertir le vocabulaire des variantes lui-même (nombre et noms) afin qu'une variante
       renommée ou supprimée fasse échouer un test, une fois les décisions ci-dessous tranchées.
-  [?] @DEFAULT_AGENT_IMAGE reste `docker.io/sebt3/vynil-agent:0.7.7` alors que la version du
-      workspace dans /Cargo.toml est `0.7.10`, contre la règle racine voulant que l'image de
-      chaque crate reste cohérente avec la version du workspace. Décider plus tard si le tag se
-      verrouille sur les releases publiées et se pousse à part, ou doit suivre la version du workspace.
+  [ ] Faire de @DEFAULT_AGENT_IMAGE `ghcr.io/vynil-org/vynil-agent:<version du workspace>` par
+      `concat!`/`env!("CARGO_PKG_VERSION")` (décision : le tag suit la version du workspace). Test
+      d'abord : l'image vaut `ghcr.io/vynil-org/vynil-agent:` + `env!("CARGO_PKG_VERSION")`.
   [?] @Error::MethodFailed n'est construite nulle part dans le workspace et son troisième payload
       @String n'atteint jamais le message affiché. Décider plus tard si le modèle gagne `{2}` ou
       si la variante est supprimée.
