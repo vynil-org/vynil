@@ -480,3 +480,105 @@ fn no_readiness_probe(obj, objs, ctx, params) {
 fn liveness_port(obj, objs, ctx, params) {
     probe_port_findings("liveness-port", "livenessProbe", "vivacité", obj)
 }
+
+// Sonde de disponibilité visant un port que le conteneur n'expose pas.
+fn readiness_port(obj, objs, ctx, params) {
+    probe_port_findings("readiness-port", "readinessProbe", "disponibilité", obj)
+}
+
+// Sonde de démarrage visant un port que le conteneur n'expose pas.
+fn startup_port(obj, objs, ctx, params) {
+    probe_port_findings("startup-port", "startupProbe", "démarrage", obj)
+}
+
+// Nombre d'un paramètre entier ou flottant, ou `fallback` si absent ou d'un autre type.
+private fn number_param(params, key, fallback) {
+    let v = field(params, key);
+    if type_of(v) == "i64" { v.to_float() } else if type_of(v) == "f64" { v } else { fallback }
+}
+
+// Clés de `resources` retenues par `requirementsType` : `requests`, `limits`, ou les deux pour `any`
+// (un constat par clé). Une valeur inconnue ne retient rien : kube-linter refuse la vérification.
+private fn requirement_types(value, default_type) {
+    let t = if type_of(value) == "string" { value } else { default_type };
+    if t == "request" { ["requests"] } else if t == "limit" { ["limits"] } else if t == "any" { ["requests", "limits"] } else { [] }
+}
+
+// Demande ou limite de CPU d'un conteneur, en millicores entières (arrondies vers le haut, comme
+// `MilliValue()` de kube-linter) ; 0 si absente ; `()` si la forme n'est pas reconnue.
+private fn cpu_millis(container, which) {
+    let q = field(field(field(container, "resources"), which), "cpu");
+    if q == () { return 0.0; }
+    if type_of(q) == "i64" { return ceiling(q.to_float() * 1000.0); }
+    if type_of(q) == "f64" { return ceiling(q * 1000.0); }
+    if type_of(q) != "string" { return (); }
+    if regex_is_match("^[0-9]+(\\.[0-9]+)?m$", q) {
+        return ceiling(parse_float(q.sub_string(0, q.len() - 1)));
+    }
+    if regex_is_match("^[0-9]+(\\.[0-9]+)?$", q) { return ceiling(parse_float(q) * 1000.0); }
+    ()
+}
+
+// Mémoire d'un conteneur en MB (2^20 octets, unité de kube-linter), flottant ; 0 si absente ; `()`
+// si la forme n'est pas reconnue. Suffixes binaires (Ki, Mi, Gi, Ti) et décimaux (k, M, G, T, m).
+private fn memory_mb(container, which) {
+    let q = field(field(field(container, "resources"), which), "memory");
+    if q == () { return 0.0; }
+    if type_of(q) == "i64" { return q.to_float() / 1048576.0; }
+    if type_of(q) == "f64" { return q / 1048576.0; }
+    if type_of(q) != "string" { return (); }
+    let units = [["Ki", 1024.0], ["Mi", 1048576.0], ["Gi", 1073741824.0], ["Ti", 1099511627776.0], ["k", 1000.0], ["M", 1000000.0], ["G", 1000000000.0], ["T", 1000000000000.0], ["m", 0.001]];
+    for u in units {
+        if q.ends_with(u[0]) {
+            let body = q.sub_string(0, q.len() - u[0].len());
+            if !regex_is_match("^[0-9]+(\\.[0-9]+)?$", body) { return (); }
+            return parse_float(body) * u[1] / 1048576.0;
+        }
+    }
+    if !regex_is_match("^[0-9]+(\\.[0-9]+)?$", q) { return (); }
+    parse_float(q) / 1048576.0
+}
+
+// Valeur de la ressource `resource` (`cpu` ou `memory`) sous `which` (`requests` ou `limits`).
+private fn requirement_value(container, which, resource) {
+    if resource == "cpu" { cpu_millis(container, which) } else { memory_mb(container, which) }
+}
+
+// Constats « exigence non bornée » : pour chaque conteneur (initialisation comprise) et chaque type
+// retenu, la valeur est signalée quand elle tombe dans l'intervalle fermé [lo ; hi] des paramètres.
+// C'est la sémantique exacte de kube-linter : avec les bornes par défaut (0 ; 0), seule une valeur
+// absente (lue comme 0) est signalée. Un constat par conteneur et type.
+private fn requirement_findings(rule, resource, unit, obj, params, default_type, lo_key, hi_key) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let types = requirement_types(field(params, "requirementsType"), default_type);
+    if types.len() == 0 { return findings; }
+    let lo = number_param(params, lo_key, 0.0);
+    let hi = number_param(params, hi_key, 0.0);
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            for which in types {
+                let v = requirement_value(c.container, which, resource);
+                if v == () || v < lo || v > hi { continue; }
+                let raw = field(field(field(c.container, "resources"), which), resource);
+                let shown = if raw == () { "absente (0)" } else { `"${raw}"` };
+                let label = if which == "requests" { "requête" } else { "limite" };
+                findings.push(render_lint::finding(
+                    rule,
+                    "error",
+                    obj,
+                    c.path + ".resources." + which + "." + resource,
+                    `conteneur "${field(c.container, "name")}" de ${kind} "${name}" : ${label} ${resource} ${shown} est dans la plage signalée [${lo} ; ${hi}] ${unit} ; la renseigner hors de cette plage`
+                ));
+            }
+        }
+    }
+    findings
+}
+
+// Demande de CPU absente ou dans la plage signalée. Défauts : requirementsType `request`, bornes 0.
+fn unset_cpu_requirements(obj, objs, ctx, params) {
+    requirement_findings("unset-cpu-requirements", "cpu", "millicores", obj, params, "request", "lowerBoundMillis", "upperBoundMillis")
+}

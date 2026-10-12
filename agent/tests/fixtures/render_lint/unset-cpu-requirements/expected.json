@@ -1,0 +1,38 @@
+[
+  {
+    "rule": "unset-cpu-requirements",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-sans-request"
+  },
+  {
+    "rule": "unset-cpu-requirements",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "init-sans-request"
+  },
+  {
+    "rule": "unset-cpu-requirements",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "deux-conteneurs"
+  },
+  {
+    "rule": "unset-cpu-requirements",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "limite-seule"
+  },
+  {
+    "rule": "unset-cpu-requirements",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sans-ressources"
+  },
+  {
+    "rule": "unset-cpu-requirements",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "request-zero"
+  }
+]

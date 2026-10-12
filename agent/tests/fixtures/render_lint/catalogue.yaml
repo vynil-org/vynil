@@ -173,8 +173,7 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: readiness-port
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: required-annotation-email
     theme: workload
     status: deferred
@@ -211,8 +210,7 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: startup-port
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: unsafe-proc-mount
     theme: pod
     status: ported
@@ -221,8 +219,7 @@ checks:
     status: ported
   - name: unset-cpu-requirements
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: unset-memory-requirements
     theme: pod
     status: deferred

@@ -894,3 +894,98 @@ fn sysctl_and_proc_mount_checks_are_silent_on_non_workloads() {
         );
     }
 }
+
+// ===== render_lint_pod.sdd (vérifications de pod portées en C1b) =====
+
+/// Constats (objet, chemin) de `function` du thème pod sur chaque objet de `objs`, avec les
+/// paramètres `params` (expression Rhai).
+fn pod_findings_pairs(
+    rhai: &mut Script,
+    function: &str,
+    objs: &[Value],
+    params: &str,
+) -> Vec<(String, String)> {
+    let mut pairs = Vec::new();
+    for obj in objs {
+        let found = pod_findings(rhai, function, obj, params);
+        for f in found.as_array().expect("tableau de constats") {
+            pairs.push((
+                obj["metadata"]["name"].as_str().unwrap_or_default().to_string(),
+                f["path"].as_str().unwrap_or_default().to_string(),
+            ));
+        }
+    }
+    pairs
+}
+
+/// Deployment d'un seul conteneur `web` portant `resources` (JSON).
+fn deployment_with_resources(name: &str, resources: &Value) -> Value {
+    json!({
+        "apiVersion": "apps/v1", "kind": "Deployment",
+        "metadata": { "name": name, "namespace": "app" },
+        "spec": {
+            "replicas": 1,
+            "selector": { "matchLabels": { "app": name } },
+            "template": {
+                "metadata": { "labels": { "app": name } },
+                "spec": { "containers": [ { "name": "web", "image": "x:1", "resources": resources.clone() } ] }
+            }
+        }
+    })
+}
+
+#[test]
+fn unset_cpu_requirements_honours_any_and_custom_bounds_like_kube_linter() {
+    // Paramètres non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
+    // `{requirementsType: any, lowerBoundMillis: 100, upperBoundMillis: 1000}` sur ces cinq
+    // Deployments : `p-100-1000` (request 100m, limit 1) et `p-500-100` (request 500m, limit
+    // 100m) sont signalés, un constat par type ; `p-aucun`, `p-50` et `p-2` ne le sont pas.
+    let objs = vec![
+        deployment_with_resources("p-aucun", &json!({})),
+        deployment_with_resources(
+            "p-50",
+            &json!({ "requests": { "cpu": "50m" }, "limits": { "cpu": "50m" } }),
+        ),
+        deployment_with_resources(
+            "p-100-1000",
+            &json!({ "requests": { "cpu": "100m" }, "limits": { "cpu": "1" } }),
+        ),
+        deployment_with_resources(
+            "p-500-100",
+            &json!({ "requests": { "cpu": "500m" }, "limits": { "cpu": "100m" } }),
+        ),
+        deployment_with_resources(
+            "p-2",
+            &json!({ "requests": { "cpu": 2 }, "limits": { "cpu": 2 } }),
+        ),
+    ];
+    let mut rhai = lib_script();
+    let got = pod_findings_pairs(
+        &mut rhai,
+        "unset_cpu_requirements",
+        &objs,
+        r#"#{requirementsType: "any", lowerBoundMillis: 100, upperBoundMillis: 1000}"#,
+    );
+    let want: Vec<(String, String)> = [
+        (
+            "p-100-1000",
+            "spec.template.spec.containers[0].resources.requests.cpu",
+        ),
+        (
+            "p-100-1000",
+            "spec.template.spec.containers[0].resources.limits.cpu",
+        ),
+        (
+            "p-500-100",
+            "spec.template.spec.containers[0].resources.requests.cpu",
+        ),
+        (
+            "p-500-100",
+            "spec.template.spec.containers[0].resources.limits.cpu",
+        ),
+    ]
+    .into_iter()
+    .map(|(n, p)| (n.to_string(), p.to_string()))
+    .collect();
+    assert_eq!(got, want);
+}
