@@ -39,3 +39,23 @@ asserts:
   value:
     spec:
       replicas: 1
+- name: vynil JukeBox
+  description: "The package owns exactly one cluster-scoped JukeBox named vynil"
+  selector:
+    kind: JukeBox
+    name: vynil
+  matcher:
+    exact: 1
+- name: vynil JukeBox source and schedule
+  description: "The vynil JukeBox points to the ghcr.io source and the nightly schedule"
+  selector:
+    kind: JukeBox
+    name: vynil
+  matcher:
+    exact: 1
+  value:
+    spec:
+      source:
+        list:
+        - "ghcr.io/vynil-org/vynil"
+      schedule: "0 3 * * *"
