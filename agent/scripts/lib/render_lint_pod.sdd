@@ -58,12 +58,13 @@ Scenario: init containers are checked like containers
   Then le chemin du constat finit par `initContainers[0]`
   Test @init-containers-are-checked-like-containers
 
-Scenario: latest tag honours the allow list
-  Given un conteneur d'image `registry/app:latest` et le paramètre `allowList` contenant
-    `registry/app:latest`
+Scenario: latest tag honours the block list
+  Given un conteneur d'image `registry/app:latest` et le paramètre `BlockList` valant
+    `["^forbidden/.*"]`, qui ne couvre pas cette image
   When la vérification `latest_tag` s'exécute
-  Then aucun constat n'est rendu
-  Test @latest-tag-honours-the-allow-list
+  Then aucun constat n'est rendu : seule une image correspondant à un motif du `BlockList` est
+    signalée, et le motif est évalué par `regex_is_match`
+  Test @latest-tag-honours-the-block-list
 
 Scenario: non-workload object is silent
   Given un ConfigMap

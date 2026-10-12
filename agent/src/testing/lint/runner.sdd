@@ -39,7 +39,8 @@ Raises:
 Must:
   Résoudre les imports du script dans l'ordre : @lint_dir, puis `{script_dir}/lib`.
   Évaluer chaque appel dans un moteur neuf, sans état partagé entre tests, avec les seules
-    fonctions de manipulation de données du moteur de base et les fonctions `schema_*` :
+    fonctions de manipulation de données du moteur de base, les fonctions `schema_*` et
+    `regex_is_match` de ./patterns.sdd :
     aucune fonction k8s, http, s3, shell ni fichier n'y est enregistrée, si bien qu'un script
     qui les appelle échoue sur fonction inconnue.
   Appeler `lint(objs, ctx)` avec `objs` la carte de @Sections::to_dynamic — `all` (copie, en

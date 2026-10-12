@@ -1,0 +1,80 @@
+# Spec fichier de ./patterns.rs — la fonction d'expression régulière offerte au script de lint.
+
+Spec: LintPatterns
+
+Platform: Rust
+
+Purpose:
+  Fournir au script de lint de la distribution et à la bibliothèque `render_lint` une fonction
+    de correspondance par expression régulière. Rhai n'en a pas, et beaucoup de paramètres des
+    vérifications portées de kube-linter en sont (le `BlockList` de `latest-tag` par exemple).
+    La fonction est pure : elle ne lit que ses arguments, ce qui garde le script pur.
+
+Owns:
+  ./patterns.rs
+
+References:
+  ./runner.sdd — enregistre cette fonction dans le moteur du script de lint.
+  ./lint.sdd — la règle de pureté du script que cette fonction respecte.
+  /agent/scripts/lib/render_lint.sdd — la bibliothèque qui l'appelle par `regex_is_match`.
+
+Exposes:
+  @register — `(engine: &mut rhai::Engine)` : enregistre la fonction Rhai
+    `regex_is_match(pattern: String, text: String) -> bool`.
+
+Accepts:
+  @pattern : une expression régulière au dialecte de la crate `regex` de Rust, non ancrée par
+    défaut (`^`/`$` l'ancrent). @text : la chaîne testée.
+
+Returns:
+  `true` quand @pattern trouve une correspondance dans @text, `false` sinon.
+
+Raises:
+  Erreur d'exécution Rhai `regex_is_match: invalid pattern {pattern}: {raison}` quand @pattern
+    ne compile pas, ou dépasse la limite de taille du programme compilé.
+
+Must:
+  Rester en temps linéaire : la crate `regex` sans retour arrière, donc aucun motif ne peut faire
+    exploser l'évaluation. Borner la taille du programme compilé par la limite de la crate.
+  Rester pure et déterministe : mêmes arguments, même résultat, aucun état partagé observable.
+  Ne jamais paniquer : un motif invalide est une erreur Rhai, jamais un `unwrap`.
+
+Must not:
+  Offrir une extraction de groupes ou un remplacement : la fonction répond à une seule question,
+    « ce texte correspond-il à ce motif ».
+
+Tasks:
+  [ ] Couvrir chaque scénario par un test de même nom.
+
+Done when:
+  Chaque scénario a un test passant et le harnais statique est vert.
+
+Scenario: an unanchored pattern matches inside the text
+  Given le motif `latest` et le texte `registry/app:latest`
+  When `regex_is_match` s'exécute
+  Then le résultat est `true`
+  Test @an-unanchored-pattern-matches-inside-the-text
+
+Scenario: anchors constrain the match
+  Given le motif `^app$` et les textes `app` puis `registry/app`
+  When `regex_is_match` s'exécute sur chacun
+  Then le premier est `true` et le second `false`
+  Test @anchors-constrain-the-match
+
+Scenario: the default latest tag block list
+  Given les trois motifs `.*:(latest)$`, `^[^:]*$` et `(.*/[^:]+)$`
+  When ils sont testés sur `nginx:latest`, `nginx` et `nginx:1.27`
+  Then les deux premiers textes correspondent à au moins un motif et le troisième à aucun
+  Test @the-default-latest-tag-block-list
+
+Scenario: an invalid pattern is a script error
+  Given le motif `(` 
+  When `regex_is_match` s'exécute
+  Then le script reçoit une erreur dont le message commence par `regex_is_match: invalid pattern`
+  Test @an-invalid-pattern-is-a-script-error
+
+Scenario: a pathological pattern stays linear
+  Given le motif `(a+)+$` et un texte de cinquante `a` suivi d'un `b`
+  When `regex_is_match` s'exécute
+  Then le résultat est `false` sans dépasser la limite d'opérations du moteur
+  Test @a-pathological-pattern-stays-linear

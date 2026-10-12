@@ -69,7 +69,10 @@ Must:
     qui retourne un tableau de constats (vide s'il n'y a rien à signaler). Une vérification ne
     s'applique qu'aux kinds qu'elle concerne et retourne un tableau vide pour les autres.
   Faire de @all un pur assemblage : pour chaque objet dans l'ordre, chaque vérification
-    activée dans l'ordre alphabétique de son nom ; l'ordre des constats est donc déterministe.
+    activée dans l'ordre alphabétique GLOBAL de son nom, tous thèmes confondus ; l'ordre des
+    constats est donc déterministe et indépendant du thème qui porte la vérification.
+  Importer la bibliothèque dans le corps des fonctions des modules thématiques et non en tête :
+    ./render_lint.rhai importe les modules thématiques, un import en tête ferait un cycle.
   Prendre pour `rule` d'un constat le nom kube-linter exact, tirets compris, pour qu'une liste
     `exclude` ou une annotation de suppression soit portable d'un outil à l'autre.
   Appliquer `severity` après exécution de la vérification, sans qu'elle ait à le savoir.

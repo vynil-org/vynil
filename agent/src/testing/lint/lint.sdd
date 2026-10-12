@@ -18,6 +18,7 @@ Structure:
   ./finding.rs: le type d'un constat, son analyse depuis Rhai, sa conversion en lignes de
     résultat et en inventaire de suppressions (./finding.sdd)
   ./context.rs: construction du contexte en lecture seule passé au script (./context.sdd)
+  ./patterns.rs: la fonction `regex_is_match` offerte au script, pure (./patterns.sdd)
   ./sections.rs: classement des objets du test par section du paquet, d'après les
     `set_status_<section>` que le paquet a appelés (./sections.sdd)
   ./runner.rs: chargement du script de la distribution, appel des points d'entrée, repli des
