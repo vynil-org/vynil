@@ -122,7 +122,6 @@ pub fn rhai_err(e: Error) -> Box<rhai::EvalAltResult> {
     drop(e);
     msg.into()
 }
-#[must_use]
 pub fn rhai_err_str(e: String) -> Box<rhai::EvalAltResult> {
     e.into()
 }

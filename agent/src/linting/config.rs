@@ -220,7 +220,7 @@ mod tests {
     #[test]
     fn load_returns_default_when_file_absent() {
         let config = LintConfig::load(Path::new("/nonexistent/path"));
-        assert!(config.disable.is_empty());
+        assert_eq!(config.disable, Vec::<String>::new());
         assert!(config.override_.is_empty());
         assert!(config.files.is_empty());
     }

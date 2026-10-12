@@ -700,7 +700,7 @@ fn list_jukebox_mocks(mocks: &Arc<Mutex<Vec<Dynamic>>>) -> RhaiRes<Dynamic> {
     let items: Vec<K8sJukeBoxMock> = lock_clone(mocks)
         .iter()
         .filter(|m| {
-            m.as_map_ref().ok().is_some_and(|map| {
+            m.as_map_ref().is_ok_and(|map| {
                 map.get("kind")
                     .and_then(|k| k.clone().into_string().ok())
                     .is_some_and(|k| k == "JukeBox")

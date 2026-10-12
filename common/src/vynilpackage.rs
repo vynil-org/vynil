@@ -780,7 +780,7 @@ requirements: []
         assert_eq!(pkg.metadata.category, "apps");
         assert_eq!(pkg.metadata.description, "A minimal test package");
         assert!(matches!(pkg.metadata.usage, VynilPackageType::Tenant));
-        assert!(pkg.requirements.is_empty());
+        assert_eq!(pkg.requirements.len(), 0);
         std::fs::remove_file(p).ok();
     }
 

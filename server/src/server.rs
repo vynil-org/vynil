@@ -42,8 +42,11 @@ where
 {
     type Rejection = DiagError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        Ok(Self(parts.headers.clone()))
+    fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
+        std::future::ready(Ok(Self(parts.headers.clone())))
     }
 }
 

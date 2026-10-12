@@ -254,7 +254,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let fb = make_box(&dir);
         let result = fb.read_all_from_cache().unwrap();
-        assert!(result.is_empty());
+        assert_eq!(result.len(), 0);
     }
 
     #[test]

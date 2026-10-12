@@ -657,14 +657,14 @@ mod tests {
     #[test]
     fn emit_script_bash_is_not_empty() {
         let bash_script = include_str!("../completions/bash.sh");
-        assert!(!bash_script.is_empty());
+        assert_ne!(bash_script, "");
         assert!(bash_script.contains("__complete"));
     }
 
     #[test]
     fn emit_script_zsh_is_not_empty() {
         let zsh_script = include_str!("../completions/zsh.sh");
-        assert!(!zsh_script.is_empty());
+        assert_ne!(zsh_script, "");
         assert!(zsh_script.contains("__complete"));
     }
 }
