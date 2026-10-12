@@ -195,7 +195,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 name = "agent"
 version = "0.7.10"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "clap",
  "common",
  "env_logger",
@@ -788,7 +788,7 @@ version = "0.7.10"
 dependencies = [
  "actix-web",
  "argon2",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bcrypt",
  "chrono",
  "crc32fast",
@@ -2856,7 +2856,7 @@ version = "0.7.10"
 dependencies = [
  "actix-web",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "common",
  "either",
@@ -3814,7 +3814,7 @@ version = "0.7.10"
 dependencies = [
  "axum",
  "axum-server",
- "base64 0.22.1",
+ "base64 0.23.1",
  "clap",
  "common",
  "k8s-openapi",
