@@ -231,7 +231,7 @@ Handles:
     @Err la construction et tue la commande avant toute sortie.
 
 Tasks:
-  [ ] Couvrir les scénarios de lint ci-dessous par des tests de même nom :
+  [x] Couvrir les scénarios de lint ci-dessous par des tests de même nom :
       lint-dir-turns-findings-into-failed-asserts, schemas-dir-requires-lint-dir,
       missing-lint-script-dies-before-output, no-lint-dir-leaves-behaviour-unchanged.
   [ ] Couvrir @run par des tests — aucun module #[cfg(test)] n'existe dans ce
