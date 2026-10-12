@@ -13,8 +13,7 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: cluster-admin-role-binding
     theme: rbac
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: dangling-horizontalpodautoscaler
     theme: workload
     status: ported
@@ -195,8 +194,7 @@ checks:
     status: ported
   - name: wildcard-in-rules
     theme: rbac
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: writable-host-mount
     theme: pod
     status: ported

@@ -2260,3 +2260,126 @@ fn a_servicemonitor_matches_a_service_of_another_namespace_like_kube_linter() {
     let got = check_findings("dangling-servicemonitor", &[svc, sm], "#{}");
     assert!(got.is_empty(), "service d'un autre namespace : {got:?}");
 }
+
+// ===== render_lint_rbac.sdd (vérifications rbac portées en C4) =====
+
+/// Un objet RBAC v1 de genre `kind`, avec ses règles, dans `ns` (vide : pas de namespace).
+fn rbac_object(kind: &str, name: &str, ns: &str, rules: &Value) -> Value {
+    let mut meta = json!({ "name": name });
+    if !ns.is_empty() {
+        meta["namespace"] = json!(ns);
+    }
+    json!({
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": kind,
+        "metadata": meta,
+        "rules": rules
+    })
+}
+
+/// Une liaison `kind` (`RoleBinding` ou `ClusterRoleBinding`) vers le genre `ref_kind` et le nom `ref_name`.
+fn rbac_binding(kind: &str, name: &str, ns: &str, ref_kind: &str, ref_name: &str) -> Value {
+    let mut meta = json!({ "name": name });
+    if !ns.is_empty() {
+        meta["namespace"] = json!(ns);
+    }
+    json!({
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": kind,
+        "metadata": meta,
+        "roleRef": { "apiGroup": "rbac.authorization.k8s.io", "kind": ref_kind, "name": ref_name },
+        "subjects": [ { "kind": "User", "name": "alice", "apiGroup": "rbac.authorization.k8s.io" } ]
+    })
+}
+
+#[test]
+fn wildcard_rule_is_reported() {
+    // Scénario « wildcard rule is reported » : un ClusterRole dont une règle porte verbs ["*"].
+    let cr = rbac_object(
+        "ClusterRole",
+        "cr-all",
+        "",
+        &json!([ { "apiGroups": [""], "resources": ["pods"], "verbs": ["*"] } ]),
+    );
+    assert_eq!(check_findings("wildcard-in-rules", &[cr], "#{}"), vec![
+        "ClusterRole/cr-all"
+    ]);
+}
+
+#[test]
+fn cluster_admin_binding_is_reported() {
+    // Scénario « cluster-admin binding is reported » : un ClusterRoleBinding vers cluster-admin.
+    let crb = rbac_binding("ClusterRoleBinding", "admin", "", "ClusterRole", "cluster-admin");
+    assert_eq!(check_findings("cluster-admin-role-binding", &[crb], "#{}"), vec![
+        "ClusterRoleBinding/admin"
+    ]);
+}
+
+#[test]
+fn wildcard_in_rules_counts_each_occurrence_like_kube_linter() {
+    // Mesuré : un constat par élément `*` de resources ou de verbs. Trois occurrences, trois
+    // constats ; apiGroups et nonResourceURLs ne comptent pas.
+    let role = rbac_object(
+        "Role",
+        "many",
+        "app",
+        &json!([
+            { "apiGroups": [""], "resources": ["*", "*"], "verbs": ["*"] },
+            { "apiGroups": ["*"], "resources": ["pods"], "verbs": ["get"] },
+            { "nonResourceURLs": ["*"], "verbs": ["get"] }
+        ]),
+    );
+    assert_eq!(check_findings("wildcard-in-rules", &[role], "#{}"), vec![
+        "Role/many",
+        "Role/many",
+        "Role/many"
+    ]);
+}
+
+#[test]
+fn rbac_objects_outside_v1_or_outside_scope_are_silent() {
+    // Mesuré : les objets rbac.authorization.k8s.io/v1beta1 et les groupes tiers homonymes ne
+    // donnent aucun constat, et un ConfigMap qui porte des règles n'est pas un Role.
+    let beta = json!({
+        "apiVersion": "rbac.authorization.k8s.io/v1beta1", "kind": "Role",
+        "metadata": { "name": "beta", "namespace": "app" },
+        "rules": [ { "apiGroups": [""], "resources": ["*"], "verbs": ["*"] } ]
+    });
+    let homonym = json!({
+        "apiVersion": "rbac.example.com/v1", "kind": "ClusterRole",
+        "metadata": { "name": "homonym" },
+        "rules": [ { "apiGroups": [""], "resources": ["*"], "verbs": ["*"] } ]
+    });
+    let cm = json!({
+        "apiVersion": "v1", "kind": "ConfigMap", "metadata": { "name": "cm", "namespace": "app" },
+        "rules": [ { "verbs": ["*"] } ]
+    });
+    assert_eq!(
+        check_findings("wildcard-in-rules", &[beta, homonym, cm], "#{}"),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn the_rbac_batch_does_not_raise_on_unexpected_shapes() {
+    // Formes inattendues : un constat est refusé, jamais une erreur d'exécution.
+    let objs = [
+        json!({ "apiVersion": "rbac.authorization.k8s.io/v1", "kind": "Role",
+            "metadata": { "name": "r", "namespace": "app" }, "rules": "x" }),
+        json!({ "apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding",
+            "metadata": { "name": "rb", "namespace": "app" }, "roleRef": 5 }),
+        json!({ "apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding" }),
+        json!({ "apiVersion": "apps/v1", "kind": "Deployment",
+            "metadata": { "name": "d", "namespace": "app" },
+            "spec": { "template": { "spec": { "serviceAccountName": 5 } } } }),
+    ];
+    for check in [
+        "wildcard-in-rules",
+        "cluster-admin-role-binding",
+        "access-to-secrets",
+        "access-to-create-pods",
+        "non-existent-service-account",
+    ] {
+        assert!(check_findings(check, &objs, "#{}").is_empty(), "{check}");
+    }
+}
