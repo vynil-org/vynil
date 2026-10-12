@@ -27,7 +27,8 @@ References:
   /agent/src/testing/lint/context.sdd — la forme de `ctx` reçue par les vérifications.
 
 Exposes:
-  Via la convention `import "render_lint" as lint` :
+  Via la convention `import "render_lint" as render_lint` (l'alias porte le nom du module,
+    jamais `lint` : c'est le nom du point d'entrée `fn lint(objs, ctx)` du script de la distribution) :
     @finding(rule, severity, obj, message) et @finding(rule, severity, obj, path, message) —
       carte constat : `rule`, `severity` (`"error"` ou `"warn"`), `object` (carte
       `apiVersion`, `kind`, `namespace` si présent, `name`), `message`, `path` si donné.
@@ -84,17 +85,19 @@ Must not:
 Tasks:
   [ ] Couvrir chaque scénario par un test d'intégration dans
       `/agent/tests/render_lint.rs`, portant le nom de sa ligne `Test @`.
-  [?] Rhai ne ré-exporte pas les fonctions d'un module importé et ne sait pas appeler une
-      fonction par nom à travers un module : décider du mécanisme d'assemblage de @all et de
-      @checks (table de pointeurs de fonction construite par module, ou liste explicite
-      générée). Le contrat observable ci-dessus est seul à tenir.
+  [ ] Assembler @all et @checks par une liste explicite écrite à la main dans ./render_lint.rhai :
+      une suite d'appels `thème::nom_de_verification(obj, objs, ctx, params)` par thème, dans
+      l'ordre alphabétique des noms. Décision : Rhai ne ré-exporte pas les fonctions d'un module
+      importé et n'appelle pas une fonction par nom à travers un module ; la liste explicite est
+      le mécanisme le plus lisible et le test de catalogue de /agent/tests/lint_oracle.sdd (une
+      entrée `ported` = une fonction de module = un nom de @checks) détecte tout oubli.
 
 Done when:
   Chaque scénario a un test passant et la spec de chaque module thématique est satisfaite.
 
 Scenario: finding carries the object identity
   Given un Deployment `web` du namespace `app`
-  When `lint::finding("latest-tag", "error", obj, "image uses latest")` est évalué
+  When `render_lint::finding("latest-tag", "error", obj, "image uses latest")` est évalué
   Then la carte porte `rule`, `severity: "error"`, `object` avec `kind: "Deployment"`,
     `namespace: "app"`, `name: "web"` et `message`
   Test @finding-carries-the-object-identity

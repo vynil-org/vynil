@@ -38,6 +38,10 @@ References:
     modules thématiques vérifiés ici.
 
 Must:
+  Générer chaque `expected.json` avec le binaire de l'outil de référence, jamais à la main :
+    un verdict écrit à la main vérifierait le code contre ce que son auteur croit. Le binaire
+    est téléchargé hors du dépôt, sa somme sha256 vérifiée contre celle publiée par la release,
+    et n'est lancé que sur les `manifests.yaml` écrits pour ce dépôt.
   Écrire les manifestes de fixtures pour ce dépôt : un manifeste n'est jamais copié depuis
     les sources de l'outil de référence, seul son verdict est consigné.
   Comparer, pour chaque entrée `ported`, la sortie de `render_lint::all` avec
