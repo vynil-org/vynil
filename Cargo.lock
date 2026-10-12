@@ -204,6 +204,7 @@ dependencies = [
  "junit-report",
  "k8s-openapi",
  "kube",
+ "regex",
  "rhai",
  "rustls",
  "serde",
