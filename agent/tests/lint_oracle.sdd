@@ -63,10 +63,10 @@ Must not:
     (variable d'environnement dédiée), jamais un effet de bord d'un test en échec.
 
 Tasks:
-  [ ] Établir `catalogue.yaml` à partir de l'inventaire de l'outil de référence, thème par
+  [x] Établir `catalogue.yaml` à partir de l'inventaire de l'outil de référence, thème par
       thème, avec le statut `deferred` et une raison pour tout ce qui n'est pas encore porté.
-  [ ] Ajouter pour chaque vérification portée son répertoire de fixtures et son verdict.
-  [ ] Couvrir les scénarios de `render_lint.sdd` et `render_lint_schema.sdd` dans
+  [x] Ajouter pour chaque vérification portée son répertoire de fixtures et son verdict.
+  [x] Couvrir les scénarios de `render_lint.sdd` et `render_lint_schema.sdd` dans
       `render_lint.rs`.
   [?] Version de l'outil de référence à épingler (sortie JSON et inventaire changent entre
       versions). Décider de l'épingler dans le catalogue (`oracle_version`) et du moment de
