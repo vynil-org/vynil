@@ -1,0 +1,38 @@
+[
+  {
+    "rule": "no-anti-affinity",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "affinity-only"
+  },
+  {
+    "rule": "no-anti-affinity",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "empty-aa"
+  },
+  {
+    "rule": "no-anti-affinity",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "empty-required"
+  },
+  {
+    "rule": "no-anti-affinity",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "none-dep"
+  },
+  {
+    "rule": "no-anti-affinity",
+    "kind": "ReplicationController",
+    "namespace": "app",
+    "name": "rc-two"
+  },
+  {
+    "rule": "no-anti-affinity",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "db-sts"
+  }
+]

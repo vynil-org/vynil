@@ -1489,3 +1489,28 @@ fn minimum_three_replicas_honours_min_replicas_like_kube_linter() {
     ];
     assert_eq!(got, want);
 }
+
+#[test]
+fn no_anti_affinity_honours_min_replicas_like_kube_linter() {
+    // Paramètre non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
+    // `{minReplicas: 3}` sur la fixture no-anti-affinity : seul `none-dep` (trois réplicas sans
+    // anti-affinité) est signalé ; les deux réplicas de `empty-aa`, `db-sts` et `rc-two` ne le
+    // sont plus.
+    let objs = fixture_objects("no-anti-affinity");
+    let got = check_findings("no-anti-affinity", &objs, r"#{minReplicas: 3}");
+    assert_eq!(got, vec!["Deployment/none-dep"]);
+}
+
+#[test]
+fn no_extensions_v1beta_honours_group_and_version_like_kube_linter() {
+    // Paramètres non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
+    // `{group: apps, version: "v1beta.+"}` sur la fixture no-extensions-v1beta : seul le
+    // Deployment apps/v1beta1 est signalé ; les objets extensions/v1beta1 ne le sont plus.
+    let objs = fixture_objects("no-extensions-v1beta");
+    let got = check_findings(
+        "no-extensions-v1beta",
+        &objs,
+        r#"#{group: "apps", version: "v1beta.+"}"#,
+    );
+    assert_eq!(got, vec!["Deployment/beta-apps-dep"]);
+}

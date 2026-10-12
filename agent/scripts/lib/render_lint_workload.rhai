@@ -138,6 +138,65 @@ fn minimum_three_replicas(obj, objs, ctx, params) {
     )]
 }
 
+// Réplicas au moins égaux à `minReplicas` (défaut 2) sans anti-affinité entre pods : `podAntiAffinity`
+// absent, ou présent sans aucune règle `preferred` ni `required`.
+fn no_anti_affinity(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !replicated(obj) { return []; }
+    let min = int_param(params, "minReplicas", 2);
+    let replicas = replicas_of(obj);
+    if type_of(replicas) != "i64" || replicas < min { return []; }
+    let templates = render_lint::pod_templates(obj);
+    if templates.len() == 0 { return []; }
+    let base = pod_spec_path(templates[0]);
+    let spec = pod_spec(templates[0]);
+    if type_of(spec) != "map" || malformed(field(spec, "affinity")) { return []; }
+    let affinity = field(spec, "affinity");
+    let anti = field(affinity, "podAntiAffinity");
+    if malformed(anti) { return []; }
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    if anti == () {
+        return [render_lint::finding(
+            "no-anti-affinity",
+            "error",
+            obj,
+            base + ".affinity",
+            `${kind} "${name}" : ${replicas} réplicas sans anti-affinité entre pods ; définir spec.affinity.podAntiAffinity avec une règle preferred ou required`
+        )];
+    }
+    if has_terms(field(anti, "preferredDuringSchedulingIgnoredDuringExecution"))
+        || has_terms(field(anti, "requiredDuringSchedulingIgnoredDuringExecution")) {
+        return [];
+    }
+    [render_lint::finding(
+        "no-anti-affinity",
+        "error",
+        obj,
+        base + ".affinity.podAntiAffinity",
+        `${kind} "${name}" : ${replicas} réplicas, podAntiAffinity ne définit ni preferred ni required ; ajouter au moins une règle de préférence ou d'obligation`
+    )]
+}
+
+// API obsolète : objet dont le groupe vaut `group` (défaut `extensions`) et dont la version
+// correspond à `version` (défaut `v1beta.+`), quel que soit son genre.
+fn no_extensions_v1beta(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let group = string_param(params, "group", "extensions");
+    let pattern = string_param(params, "version", "v1beta.+");
+    let api = text(field(obj, "apiVersion"));
+    if group_of(api) != group || !regex_is_match(pattern, version_of(api)) { return []; }
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    [render_lint::finding(
+        "no-extensions-v1beta",
+        "error",
+        obj,
+        "apiVersion",
+        `${kind} "${name}" : apiVersion ${api} est obsolète ; migrer vers une version stable du même genre (par exemple apps/v1 pour un Deployment)`
+    )]
+}
+
 // Job autonome sans `ttlSecondsAfterFinished`, ou CronJob dont le gabarit de Job en définit un
 // (ils entrent en conflit avec successfulJobsHistoryLimit). Une valeur nulle compte comme absente.
 fn job_ttl_seconds_after_finished(obj, objs, ctx, params) {
@@ -167,6 +226,60 @@ fn job_ttl_seconds_after_finished(obj, objs, ctx, params) {
         )];
     }
     []
+}
+
+// Sélecteur qui ne correspond pas aux labels du gabarit. Pour Deployment, StatefulSet, DaemonSet et
+// ReplicaSet, un sélecteur absent ou vide est signalé ; pour Job, un sélecteur absent est normal
+// (Kubernetes le génère). Un ReplicationController (sélecteur en simple carte), un CronJob et un
+// Pod ne sont pas vérifiés.
+fn mismatching_selector(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let is_job = kind_of_group(obj, ["Job"], "batch");
+    if !(is_job || kind_of_group(obj, ["Deployment", "StatefulSet", "DaemonSet", "ReplicaSet"], "apps")) {
+        return [];
+    }
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    let spec = field(obj, "spec");
+    if type_of(spec) != "map" || malformed(field(spec, "template")) { return []; }
+    let selector = field(spec, "selector");
+    if malformed(selector) { return []; }
+    let match_labels = field(selector, "matchLabels");
+    let exprs = field(selector, "matchExpressions");
+    if malformed(match_labels) || malformed_list(exprs) { return []; }
+    let has_labels = type_of(match_labels) == "map" && match_labels.len() > 0;
+    let has_exprs = type_of(exprs) == "array" && exprs.len() > 0;
+    if !has_labels && !has_exprs {
+        if is_job { return []; }
+        return [render_lint::finding(
+            "mismatching-selector",
+            "error",
+            obj,
+            "spec.selector",
+            `${kind} "${name}" : aucun sélecteur ; définir spec.selector.matchLabels correspondant aux labels du gabarit`
+        )];
+    }
+    let labels = field(field(field(field(obj, "spec"), "template"), "metadata"), "labels");
+    if type_of(labels) != "map" { labels = #{}; }
+    let ok = true;
+    if has_labels {
+        for k in match_labels.keys() {
+            if !(k in labels) || labels[k] != match_labels[k] { ok = false; }
+        }
+    }
+    if has_exprs {
+        for e in exprs {
+            if !expression_matches(e, labels) { ok = false; }
+        }
+    }
+    if ok { return []; }
+    [render_lint::finding(
+        "mismatching-selector",
+        "error",
+        obj,
+        "spec.selector",
+        `${kind} "${name}" : le sélecteur (spec.selector) ne correspond pas aux labels de spec.template.metadata.labels ; aligner le sélecteur sur le gabarit`
+    )]
 }
 
 // Champ déprécié `serviceAccount` du pod : signalé quand il est renseigné sans `serviceAccountName`,

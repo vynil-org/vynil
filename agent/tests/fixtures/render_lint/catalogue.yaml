@@ -98,16 +98,13 @@ checks:
     status: ported
   - name: mismatching-selector
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: no-anti-affinity
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: no-extensions-v1beta
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: no-liveness-probe
     theme: pod
     status: ported

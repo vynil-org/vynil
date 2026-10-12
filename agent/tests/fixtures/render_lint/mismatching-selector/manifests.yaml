@@ -1,0 +1,268 @@
+# Conforme : matchLabels présent dans le gabarit.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-labels, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : In satisfait par la valeur du label.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-in, namespace: app}
+spec:
+  replicas: 3
+  selector:
+    matchExpressions:
+    - {key: app, operator: In, values: [web, api]}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : NotIn non satisfait par la valeur du label.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-notin, namespace: app}
+spec:
+  replicas: 3
+  selector:
+    matchExpressions:
+    - {key: app, operator: NotIn, values: ["other"]}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : Exists sur un label présent.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-exists, namespace: app}
+spec:
+  replicas: 3
+  selector:
+    matchExpressions:
+    - {key: app, operator: Exists}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : DoesNotExist sur un label absent.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-dne, namespace: app}
+spec:
+  replicas: 3
+  selector:
+    matchExpressions:
+    - {key: zone, operator: DoesNotExist}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : matchLabels d'une autre valeur.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: mis-labels, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: other}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : In sans la valeur du label.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: mis-in, namespace: app}
+spec:
+  replicas: 3
+  selector:
+    matchExpressions:
+    - {key: app, operator: In, values: [api]}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : NotIn qui contient la valeur du label.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: mis-notin, namespace: app}
+spec:
+  replicas: 3
+  selector:
+    matchExpressions:
+    - {key: app, operator: NotIn, values: [web]}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : Exists sur un label absent du gabarit.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: mis-exists, namespace: app}
+spec:
+  replicas: 3
+  selector:
+    matchExpressions:
+    - {key: zone, operator: Exists}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : DoesNotExist sur un label présent.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: mis-dne, namespace: app}
+spec:
+  replicas: 3
+  selector:
+    matchExpressions:
+    - {key: app, operator: DoesNotExist}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : un label du sélecteur manque au gabarit.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: mis-extra, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: web, tier: frontend}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : gabarit sans labels.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: tpl-nolabels, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: web}}
+  template:
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : sélecteur absent.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: nosel-dep, namespace: app}
+spec:
+  replicas: 3
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : sélecteur vide.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: emptysel-dep, namespace: app}
+spec:
+  replicas: 3
+  selector: {}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : StatefulSet dont le sélecteur ne correspond pas.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: db-sts, namespace: app}
+spec:
+  replicas: 3
+  serviceName: db
+  selector: {matchLabels: {app: db}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+# Non conforme : DaemonSet dont le sélecteur ne correspond pas.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: agent-ds, namespace: app}
+spec:
+  selector: {matchLabels: {app: agent}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+# Non conforme : DaemonSet sans sélecteur.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: agent-nosel, namespace: app}
+spec:
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+# Non conforme : ReplicaSet dont le sélecteur ne correspond pas.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata: {name: rs-mis, namespace: app}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: other}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : Job dont le sélecteur ne correspond pas.
+apiVersion: batch/v1
+kind: Job
+metadata: {name: job-mis, namespace: app}
+spec:
+  selector: {matchLabels: {app: other}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {restartPolicy: Never, containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Silencieux : Job sans sélecteur (il est généré par Kubernetes).
+apiVersion: batch/v1
+kind: Job
+metadata: {name: job-nosel, namespace: app}
+spec:
+  template:
+    metadata: {labels: {app: web}}
+    spec: {restartPolicy: Never, containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Silencieux : ReplicationController, son sélecteur est une simple carte de labels non vérifiée.
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: rc-mis, namespace: app}
+spec:
+  replicas: 2
+  selector: {app: other}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Silencieux : CronJob et Pod n'ont pas de sélecteur.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: nightly-cron, namespace: app}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: web}}
+        spec: {restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: solo-pod, namespace: app, labels: {app: web}}
+spec:
+  containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Hors scope : groupe extensions/v1beta1.
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: legacy-ext, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: other}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}

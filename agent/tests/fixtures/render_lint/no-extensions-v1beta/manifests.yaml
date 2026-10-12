@@ -1,0 +1,73 @@
+# Non conforme : Ingress de l'ancien groupe extensions/v1beta1.
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata: {name: legacy-ingress, namespace: app}
+spec:
+  rules: []
+---
+# Non conforme : extensions/v1beta2 est aussi une version de la famille v1beta.
+apiVersion: extensions/v1beta2
+kind: Ingress
+metadata: {name: legacy-ingress2, namespace: app}
+spec:
+  rules: []
+---
+# Non conforme : Deployment de l'ancien groupe extensions/v1beta1.
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: legacy-dep, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: legacy-dep}}
+  template:
+    metadata: {labels: {app: legacy-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : Deployment en apps/v1.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web-dep, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: web-dep}}
+  template:
+    metadata: {labels: {app: web-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Silencieux : groupe apps, pas extensions (apps/v1beta1 est une autre API).
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata: {name: beta-apps-dep, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: beta-apps-dep}}
+  template:
+    metadata: {labels: {app: beta-apps-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Silencieux : Ingress du groupe networking.k8s.io, version v1beta1 non concernée.
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata: {name: net-ingress, namespace: app}
+spec:
+  rules: []
+---
+# Silencieux : Ingress du groupe networking.k8s.io en v1.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: net-ingress-v1, namespace: app}
+spec:
+  rules: []
+---
+# Silencieux : objets du noyau, sans groupe.
+apiVersion: v1
+kind: Service
+metadata: {name: web-svc, namespace: app}
+spec:
+  selector: {app: web-dep}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: app-config, namespace: app}
+data: {mode: "fast"}

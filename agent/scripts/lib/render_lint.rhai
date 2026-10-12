@@ -249,6 +249,15 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "minimum-three-replicas") {
             raw = run_check(raw, cfg, "minimum-three-replicas", workload::minimum_three_replicas(obj, objs, ctx, param(cfg, "minimum-three-replicas")));
         }
+        if enabled(cfg, "mismatching-selector") {
+            raw = run_check(raw, cfg, "mismatching-selector", workload::mismatching_selector(obj, objs, ctx, param(cfg, "mismatching-selector")));
+        }
+        if enabled(cfg, "no-anti-affinity") {
+            raw = run_check(raw, cfg, "no-anti-affinity", workload::no_anti_affinity(obj, objs, ctx, param(cfg, "no-anti-affinity")));
+        }
+        if enabled(cfg, "no-extensions-v1beta") {
+            raw = run_check(raw, cfg, "no-extensions-v1beta", workload::no_extensions_v1beta(obj, objs, ctx, param(cfg, "no-extensions-v1beta")));
+        }
         if enabled(cfg, "no-liveness-probe") {
             raw = run_check(raw, cfg, "no-liveness-probe", pod::no_liveness_probe(obj, objs, ctx, param(cfg, "no-liveness-probe")));
         }
@@ -313,5 +322,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "host-ipc", "host-network", "host-pid", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "no-liveness-probe", "no-read-only-root-fs", "no-readiness-probe", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "writable-host-mount"]
+    ["default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "host-ipc", "host-network", "host-pid", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-read-only-root-fs", "no-readiness-probe", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "writable-host-mount"]
 }
