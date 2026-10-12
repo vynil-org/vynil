@@ -35,7 +35,7 @@ metadata:
 spec:
   source:
     list:
-    - "docker.io/sebt3/vynil"
+    - "ghcr.io/vynil-org/vynil"
   maturity: stable
   schedule: "0 3 * * *"
 ---
@@ -64,7 +64,7 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: install
-        image: docker.io/sebt3/vynil-agent:0.7.9
+        image: ghcr.io/vynil-org/vynil-agent:0.7.9
         imagePullPolicy: IfNotPresent
         args:
         - system
@@ -97,7 +97,7 @@ spec:
           name: package
       initContainers:
       - name: scan
-        image: docker.io/sebt3/vynil-agent:0.7.9
+        image: ghcr.io/vynil-org/vynil-agent:0.7.9
         imagePullPolicy: IfNotPresent
         args:
         - box
@@ -122,16 +122,16 @@ spec:
         - name: RUST_LOG
           value: info,controller=info,agent=info
       - name: unpack
-        image: docker.io/sebt3/vynil-agent:0.7.9
+        image: ghcr.io/vynil-org/vynil-agent:0.7.9
         imagePullPolicy: IfNotPresent
         args:
         - package
         - unpack
         env:
         - name: REGISTRY
-          value: docker.io
+          value: ghcr.io
         - name: IMAGE
-          value: sebt3/vynil
+          value: vynil-org/vynil
         - name: TAG
           value: 0.7.9
         - name: LOG_LEVEL

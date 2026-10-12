@@ -8,6 +8,8 @@ Purpose:
   L'étape de bootstrap privilégiée qui prépare un cluster pour Vynil : elle crée les ressources du
   namespace `vynil-system`, un service account cluster-admin utilisé uniquement pour la mise en place
   initiale de la réconciliation, et le `@JukeBox` de démarrage pointant vers la source de paquets de confiance.
+  Ce `@JukeBox` n'est qu'une graine : dès que le paquet système `vynil` est installé, il en prend la
+  propriété et le garde convergé (voir /box/vynil/systems/jukebox.yaml.hbs.sdd).
 
 Structure:
   ./bootstrap.yaml: Service account, ClusterRole cluster-admin et binding, et JukeBox de démarrage
@@ -17,15 +19,40 @@ Owns:
   ./bootstrap.yaml
   ./kustomization.yaml
 
+References:
+  /box/vynil/vynil.sdd
+  /box/vynil/systems/jukebox.yaml.hbs.sdd
+
 Must:
   Lier `vynil-bootstrap` à cluster-admin uniquement dans le namespace `vynil-system`.
-  Épingler le tag de l'image `docker.io/sebt3/vynil-agent` via la kustomization.
+  Épingler le tag de l'image `ghcr.io/vynil-org/vynil-agent` via la kustomization, et utiliser
+    cette même image pour les conteneurs du Job de bootstrap.
   Déclarer la liste de sources du `@JukeBox` de démarrage avec `maturity: stable`.
+  Nommer ce `@JukeBox` `vynil`, déclarer sa source en `list` de l'unique image
+    `ghcr.io/vynil-org/vynil` et son `schedule` à `0 3 * * *` : valeurs strictement identiques à
+    celles que le paquet `vynil` rend, pour que son adoption par le paquet soit sans effet.
+  Faire dérouler l'`unpack` du Job de bootstrap depuis `REGISTRY` `ghcr.io` et `IMAGE`
+    `vynil-org/vynil`, la source que déclare le `@JukeBox`.
+  Garder la création du `@JukeBox` : l'opérateur en a besoin pour résoudre le paquet avant que
+    celui-ci ait pu s'installer et le reprendre.
 
 Must not:
   Accorder des droits cluster-admin en dehors du service account de bootstrap.
   Référencer des tags d'image de développement ou mutables sans override explicite.
+  Référencer `docker.io/sebt3` : cette origine est gelée, elle n'est plus une source de bootstrap.
+  Redéfinir ici autre chose que la graine du `@JukeBox` : toute évolution ultérieure de ce
+    `@JukeBox` se fait dans le paquet, pas dans le bootstrap.
+
+Tasks:
+  [x] #0 Basculer les images (`agent`, `controller`, `unpack`) et `kustomization.yaml` sur
+    `ghcr.io/vynil-org/vynil-agent`, la source du `@JukeBox` sur `ghcr.io/vynil-org/vynil` et les
+    variables `REGISTRY` / `IMAGE` de l'`unpack` sur `ghcr.io` / `vynil-org/vynil`.
 
 Done when:
   `kustomize build ./deploy/bootstrap` produit le service account scopé au namespace, le cluster
-    binding, et le JukeBox stable.
+    binding, et le JukeBox stable, sans aucune référence à `docker.io/sebt3`.
+
+Scenario: Bootstrap seed equals the package's JukeBox
+  Given le rendu de ./bootstrap.yaml et le rendu de /box/vynil/systems/jukebox.yaml.hbs
+  When on compare les `spec.source` et `spec.schedule` des deux `@JukeBox` `vynil`
+  Then ils sont égaux champ à champ
