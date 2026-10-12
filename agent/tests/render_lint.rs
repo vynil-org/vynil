@@ -2316,6 +2316,28 @@ fn cluster_admin_binding_is_reported() {
 }
 
 #[test]
+fn read_access_to_secrets_is_reported() {
+    // Scénario « read access to secrets is reported ». Écart mesuré : kube-linter ne signale pas
+    // le Role seul, mais la liaison qui l'accorde (RoleBinding). Le Role sans liaison : aucun
+    // constat. Le constat nomme donc la liaison.
+    let role = rbac_object(
+        "Role",
+        "reader",
+        "app",
+        &json!([ { "apiGroups": [""], "resources": ["secrets"], "verbs": ["get"] } ]),
+    );
+    let binding = rbac_binding("RoleBinding", "read-secrets", "app", "Role", "reader");
+    assert_eq!(
+        check_findings("access-to-secrets", std::slice::from_ref(&role), "#{}"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        check_findings("access-to-secrets", &[role, binding], "#{}"),
+        vec!["RoleBinding/read-secrets"]
+    );
+}
+
+#[test]
 fn wildcard_in_rules_counts_each_occurrence_like_kube_linter() {
     // Mesuré : un constat par élément `*` de resources ou de verbs. Trois occurrences, trois
     // constats ; apiGroups et nonResourceURLs ne comptent pas.
@@ -2358,6 +2380,92 @@ fn rbac_objects_outside_v1_or_outside_scope_are_silent() {
         check_findings("wildcard-in-rules", &[beta, homonym, cm], "#{}"),
         Vec::<String>::new()
     );
+}
+
+#[test]
+fn a_binding_resolves_its_role_by_name_in_its_own_namespace() {
+    // Mesuré : un RoleBinding ne désigne qu'un Role de son namespace (jamais un ClusterRole) ; un
+    // ClusterRoleBinding ne désigne qu'un ClusterRole, quel que soit son namespace (jamais un Role).
+    let secrets = json!([ { "apiGroups": [""], "resources": ["secrets"], "verbs": ["get"] } ]);
+    let role_app = rbac_object("Role", "reader", "app", &secrets);
+    let cr = rbac_object("ClusterRole", "cr-reader", "", &secrets);
+    let cr_other_ns = rbac_object("ClusterRole", "cr-other", "other", &secrets);
+    let rb_other = rbac_binding("RoleBinding", "rb-other", "other", "Role", "reader");
+    let rb_to_cr = rbac_binding("RoleBinding", "rb-to-cr", "app", "ClusterRole", "cr-reader");
+    let crb_to_role = rbac_binding("ClusterRoleBinding", "crb-to-role", "", "Role", "reader");
+    let crb_to_cr = rbac_binding("ClusterRoleBinding", "crb-to-cr", "", "ClusterRole", "cr-other");
+    let objs = [
+        role_app,
+        cr,
+        cr_other_ns,
+        rb_other,
+        rb_to_cr,
+        crb_to_role,
+        crb_to_cr,
+    ];
+    assert_eq!(check_findings("access-to-secrets", &objs, "#{}"), vec![
+        "ClusterRoleBinding/crb-to-cr"
+    ]);
+}
+
+#[test]
+fn access_to_secrets_honours_custom_verbs_and_resources_like_kube_linter() {
+    // Sortie de kube-linter v0.8.3 avec un check personnalisé (template access-to-resources,
+    // resources ["^pods$"], verbs ["^update$"]) sur la fixture access-to-secrets : seules les
+    // liaisons dont une règle porte update ET pods (ou *) concordent.
+    let objs = fixture_objects("access-to-secrets");
+    let got = check_findings(
+        "access-to-secrets",
+        &objs,
+        r#"#{ resources: ["^pods$"], verbs: ["^update$"] }"#,
+    );
+    assert_eq!(got, vec![
+        "RoleBinding/rb-s-pods-update",
+        "RoleBinding/rb-s-star-update"
+    ]);
+}
+
+#[test]
+fn access_to_secrets_pairs_a_verb_and_a_resource_within_one_rule() {
+    // Sortie de kube-linter v0.8.3 avec un check personnalisé (resources ["^secrets$"], verbs
+    // ["^get$"]) : la liaison de `s-cross-rule` (get sur configmaps dans une règle, secrets dans une
+    // autre) n'est pas signalée ; `*` concorde avec tout.
+    let objs = fixture_objects("access-to-secrets");
+    let got = check_findings(
+        "access-to-secrets",
+        &objs,
+        r#"#{ resources: ["^secrets$"], verbs: ["^get$"] }"#,
+    );
+    assert_eq!(got, vec![
+        "ClusterRoleBinding/crb-cr-secrets-get",
+        "ClusterRoleBinding/crb-cr-secrets-star-ns-other",
+        "ClusterRoleBinding/crb-kind-role",
+        "RoleBinding/rb-s-apps-group",
+        "RoleBinding/rb-s-get",
+        "RoleBinding/rb-s-get-api-other",
+        "RoleBinding/rb-s-get-kind-clusterrole",
+        "RoleBinding/rb-s-get-no-subjects",
+        "RoleBinding/rb-s-get-two-subjects",
+        "RoleBinding/rb-s-star-resource",
+        "RoleBinding/rb-s-star-verb",
+        "RoleBinding/rb-s-two-rules",
+    ]);
+}
+
+#[test]
+fn access_to_create_pods_honours_custom_resources_and_verbs_like_kube_linter() {
+    // Sortie de kube-linter v0.8.3 avec un check personnalisé (resources ["^deployments$"], verbs
+    // ["^update$"]) sur la fixture access-to-create-pods.
+    let objs = fixture_objects("access-to-create-pods");
+    let got = check_findings(
+        "access-to-create-pods",
+        &objs,
+        r#"#{ resources: ["^deployments$"], verbs: ["^update$"] }"#,
+    );
+    assert_eq!(got, vec![
+        "RoleBinding/rb-c-deployments-update",
+        "RoleBinding/rb-c-star-update"
+    ]);
 }
 
 #[test]

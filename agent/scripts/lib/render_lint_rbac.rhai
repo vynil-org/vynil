@@ -24,6 +24,36 @@ private fn text(v) {
     if type_of(v) == "string" { v } else { "" }
 }
 
+// Éléments chaînes d'un tableau ; `[]` si la valeur n'est pas un tableau.
+private fn strings(v) {
+    let out = [];
+    if type_of(v) == "array" {
+        for x in v {
+            if type_of(x) == "string" { out.push(x); }
+        }
+    }
+    out
+}
+
+// Paramètre tableau, ou `fallback` si absent ou qui n'est pas un tableau.
+private fn list_param(params, key, fallback) {
+    let v = field(params, key);
+    if type_of(v) == "array" { v } else { fallback }
+}
+
+// Vrai quand `value` correspond à au moins un motif (regex) de `patterns`.
+private fn matches_any(value, patterns) {
+    for pattern in patterns {
+        if type_of(pattern) == "string" && regex_is_match(pattern, value) { return true; }
+    }
+    false
+}
+
+// Namespace et nom d'un objet (chaîne vide si absents).
+private fn ns_of(obj) {
+    text(field(field(obj, "metadata"), "namespace"))
+}
+
 private fn name_of(obj) {
     text(field(field(obj, "metadata"), "name"))
 }
@@ -94,4 +124,88 @@ fn cluster_admin_role_binding(obj, objs, ctx, params) {
         "roleRef",
         `ClusterRoleBinding "${name}" : lie le rôle cluster-admin ; créer un rôle dédié aux seuls droits nécessaires à ce sujet`
     )]
+}
+
+// Rôle désigné par une liaison, ou `()`. RoleBinding : le Role de même namespace et de même nom.
+// ClusterRoleBinding : le ClusterRole de même nom, quel que soit son namespace. Premier trouvé.
+private fn bound_role(obj, objs) {
+    let rref = field(obj, "roleRef");
+    let wanted = text(field(rref, "name"));
+    if wanted == "" { return (); }
+    let namespaced = rbac_v1(obj, ["RoleBinding"]);
+    let ns = ns_of(obj);
+    for o in objs {
+        if namespaced {
+            if rbac_v1(o, ["Role"]) && ns_of(o) == ns && name_of(o) == wanted { return o; }
+        } else if rbac_v1(o, ["ClusterRole"]) && name_of(o) == wanted {
+            return o;
+        }
+    }
+    ()
+}
+
+// Constat unique d'une liaison dont le rôle désigné a une règle où un verbe ET une ressource
+// concordent (dans la même règle). Une paire est `[verbe] access to [ressource]`, comme l'outil.
+// `*` concorde avec tout ; sinon la liste de motifs (regex) du paramètre, ou la liste par défaut.
+private fn access_findings(check, obj, objs, params, resources, verbs) {
+    import "render_lint" as render_lint;
+    if !rbac_v1(obj, ["RoleBinding", "ClusterRoleBinding"]) { return []; }
+    let role = bound_role(obj, objs);
+    if role == () { return []; }
+    let verb_patterns = list_param(params, "verbs", verbs);
+    let resource_patterns = list_param(params, "resources", resources);
+    let rules = field(role, "rules");
+    if type_of(rules) != "array" { return []; }
+    let detail = "";
+    let count = 0;
+    for rule in rules {
+        if type_of(rule) != "map" { continue; }
+        for v in strings(field(rule, "verbs")) {
+            for r in strings(field(rule, "resources")) {
+                let verb_ok = v == "*" || matches_any(v, verb_patterns);
+                let resource_ok = r == "*" || matches_any(r, resource_patterns);
+                if verb_ok && resource_ok {
+                    if count > 0 { detail += ", "; }
+                    detail += `[${v}] access to [${r}]`;
+                    count += 1;
+                }
+            }
+        }
+    }
+    if count == 0 { return []; }
+    let role_name = name_of(role);
+    [render_lint::finding(
+        check,
+        "error",
+        obj,
+        "roleRef",
+        `${text(field(obj, "kind"))} "${name_of(obj)}" lie le rôle "${role_name}" qui accorde ${detail} ; retirer ces droits ou restreindre verbes et ressources`
+    )]
+}
+
+// Vérification access-to-create-pods : une liaison dont le rôle permet de créer des pods ou des
+// charges de travail (ressources et verbes par défaut de kube-linter). `cronjob` est au singulier
+// tel quel : mesuré, `cronjobs` (pluriel) n'est pas concerné.
+fn access_to_create_pods(obj, objs, ctx, params) {
+    access_findings(
+        "access-to-create-pods",
+        obj,
+        objs,
+        params,
+        ["^pods$", "^deployments$", "^statefulsets$", "^replicasets$", "^cronjob$", "^jobs$", "^daemonsets$"],
+        ["^create$"]
+    )
+}
+
+// Vérification access-to-secrets : une liaison dont le rôle donne accès aux secrets. Le motif
+// `^*$` de la liste par défaut concorde avec tout verbe (mesuré : `update`, `foo` et `""` aussi).
+fn access_to_secrets(obj, objs, ctx, params) {
+    access_findings(
+        "access-to-secrets",
+        obj,
+        objs,
+        params,
+        ["^secrets$"],
+        ["^get$", "^list$", "^delete$", "^create$", "^watch$", "^*$"]
+    )
 }

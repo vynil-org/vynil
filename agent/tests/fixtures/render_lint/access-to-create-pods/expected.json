@@ -1,0 +1,110 @@
+[
+  {
+    "rule": "access-to-create-pods",
+    "kind": "ClusterRoleBinding",
+    "namespace": null,
+    "name": "crb-cr-create-deployments"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "ClusterRoleBinding",
+    "namespace": null,
+    "name": "crb-cr-create-pods"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "ClusterRoleBinding",
+    "namespace": null,
+    "name": "crb-kind-role"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-api-other"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-apps-group-pods-create"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-cronjob"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-daemonsets"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-deployments"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-jobs"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-no-subjects"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-pods"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-pods-get-and-create"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-pods-star-verb"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-replicasets"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-star-resource-create"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-statefulsets"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-two-create-rules"
+  },
+  {
+    "rule": "access-to-create-pods",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-c-two-rules"
+  }
+]

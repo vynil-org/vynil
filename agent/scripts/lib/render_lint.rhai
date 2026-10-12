@@ -220,6 +220,12 @@ fn all(objs, ctx, opts) {
     let cfg = settings(opts);
     let raw = [];
     for obj in objs {
+        if enabled(cfg, "access-to-create-pods") {
+            raw = run_check(raw, cfg, "access-to-create-pods", rbac::access_to_create_pods(obj, objs, ctx, param(cfg, "access-to-create-pods")));
+        }
+        if enabled(cfg, "access-to-secrets") {
+            raw = run_check(raw, cfg, "access-to-secrets", rbac::access_to_secrets(obj, objs, ctx, param(cfg, "access-to-secrets")));
+        }
         if enabled(cfg, "cluster-admin-role-binding") {
             raw = run_check(raw, cfg, "cluster-admin-role-binding", rbac::cluster_admin_role_binding(obj, objs, ctx, param(cfg, "cluster-admin-role-binding")));
         }
@@ -398,5 +404,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["cluster-admin-role-binding", "dangling-horizontalpodautoscaler", "dangling-ingress", "dangling-networkpolicy", "dangling-networkpolicypeer-podselector", "dangling-service", "dangling-servicemonitor", "default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "exposed-services", "host-ipc", "host-network", "host-pid", "hpa-minimum-three-replicas", "invalid-target-ports", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-node-affinity", "no-read-only-root-fs", "no-readiness-probe", "no-rolling-update-strategy", "non-isolated-pod", "pdb-max-unavailable", "pdb-min-available", "pdb-unhealthy-pod-eviction-policy", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "required-annotation-email", "required-label-owner", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "use-namespace", "wildcard-in-rules", "writable-host-mount"]
+    ["access-to-create-pods", "access-to-secrets", "cluster-admin-role-binding", "dangling-horizontalpodautoscaler", "dangling-ingress", "dangling-networkpolicy", "dangling-networkpolicypeer-podselector", "dangling-service", "dangling-servicemonitor", "default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "exposed-services", "host-ipc", "host-network", "host-pid", "hpa-minimum-three-replicas", "invalid-target-ports", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-node-affinity", "no-read-only-root-fs", "no-readiness-probe", "no-rolling-update-strategy", "non-isolated-pod", "pdb-max-unavailable", "pdb-min-available", "pdb-unhealthy-pod-eviction-policy", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "required-annotation-email", "required-label-owner", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "use-namespace", "wildcard-in-rules", "writable-host-mount"]
 }

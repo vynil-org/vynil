@@ -5,12 +5,10 @@ oracle_version: v0.8.3
 checks:
   - name: access-to-create-pods
     theme: rbac
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: access-to-secrets
     theme: rbac
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: cluster-admin-role-binding
     theme: rbac
     status: ported
