@@ -20,8 +20,7 @@ checks:
     status: ported
   - name: dangling-ingress
     theme: network
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: dangling-networkpolicy
     theme: network
     status: deferred
@@ -78,8 +77,7 @@ checks:
     status: ported
   - name: invalid-target-ports
     theme: network
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: job-ttl-seconds-after-finished
     theme: workload
     status: ported

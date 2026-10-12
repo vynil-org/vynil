@@ -1925,7 +1925,12 @@ fn exposed_services_honours_forbidden_types_like_kube_linter() {
 fn the_network_batch_does_not_raise_on_unexpected_shapes() {
     // Formes inattendues (spec, sélecteur, type, ports, gabarit, jobTemplate) : aucune levée,
     // aucun constat du thème network.
-    let functions = ["dangling_service", "exposed_services"];
+    let functions = [
+        "dangling_service",
+        "exposed_services",
+        "invalid_target_ports",
+        "dangling_ingress",
+    ];
     let odd = vec![
         json!({ "apiVersion": "v1", "kind": "Service", "metadata": { "name": "a", "namespace": "app" }, "spec": "oops" }),
         json!({ "apiVersion": "v1", "kind": "Service", "metadata": { "name": "b", "namespace": "app" }, "spec": { "selector": "x", "type": 4 } }),
@@ -1935,6 +1940,12 @@ fn the_network_batch_does_not_raise_on_unexpected_shapes() {
         json!({ "apiVersion": "v1", "kind": "Pod", "metadata": { "name": "e", "namespace": "app", "labels": { "app": 3 } }, "spec": 4 }),
         json!({ "apiVersion": "apps/v1", "kind": "Deployment", "metadata": { "name": "f", "namespace": "app" }, "spec": { "template": "y" } }),
         json!({ "apiVersion": "batch/v1", "kind": "CronJob", "metadata": { "name": "g", "namespace": "app" }, "spec": { "jobTemplate": "z" } }),
+        json!({ "apiVersion": "networking.k8s.io/v1", "kind": "Ingress", "metadata": { "name": "h", "namespace": "app" }, "spec": { "rules": "oops", "defaultBackend": 3 } }),
+        json!({ "apiVersion": "networking.k8s.io/v1", "kind": "Ingress", "metadata": { "name": "i", "namespace": "app" }, "spec": { "rules": [ { "http": { "paths": [ { "backend": { "service": "junk" } } ] } } ] } }),
+        json!({ "apiVersion": "networking.k8s.io/v1", "kind": "Ingress", "metadata": { "name": "j", "namespace": "app" }, "spec": "x" }),
+        json!({ "apiVersion": "v1", "kind": "Pod", "metadata": { "name": "k", "namespace": "app" }, "spec": { "containers": [ { "name": "c", "ports": "oops" } ] } }),
+        json!({ "apiVersion": "v1", "kind": "Pod", "metadata": { "name": "l", "namespace": "app" }, "spec": { "containers": [ { "name": "c", "ports": [ { "name": "Bad_Name", "containerPort": "80" } ] } ] } }),
+        json!({ "apiVersion": "v1", "kind": "Service", "metadata": { "name": "m", "namespace": "app" }, "spec": { "ports": [ { "port": 80, "targetPort": { "x": 1 } } ] } }),
     ];
     let mut rhai = lib_script();
     set_objs(&mut rhai, &Value::Array(odd));
@@ -1950,4 +1961,109 @@ fn the_network_batch_does_not_raise_on_unexpected_shapes() {
         ),
     );
     assert_eq!(found, json!([]), "aucun constat sur des formes inattendues");
+}
+
+#[test]
+fn ingress_without_backend_service_is_dangling() {
+    // Scénario de render_lint_network.sdd : le backend nomme un Service absent de la liste.
+    let ingress = json!({
+        "apiVersion": "networking.k8s.io/v1", "kind": "Ingress",
+        "metadata": { "name": "web", "namespace": "app" },
+        "spec": { "rules": [ { "host": "a.example.test", "http": { "paths": [ {
+            "path": "/", "pathType": "Prefix",
+            "backend": { "service": { "name": "web", "port": { "number": 80 } } }
+        } ] } } ] }
+    });
+    let got = check_findings("dangling-ingress", &[ingress], "#{}");
+    assert_eq!(got, vec!["Ingress/web"]);
+}
+
+#[test]
+fn a_named_target_port_missing_from_the_containers_is_not_reported_like_kube_linter() {
+    // Le scénario « named target port must exist » de render_lint_network.sdd ne décrit pas
+    // l'outil : kube-linter v0.8.3 ne vérifie pas qu'un targetPort nommé existe dans les
+    // conteneurs (mesuré : targetPort "nope" absent du gabarit, aucun constat). Seul le format IANA
+    // du nom est examiné. Ce test fige le comportement mesuré.
+    let dep = deployment_with_pod_spec(
+        "web",
+        &json!({ "containers": [ { "name": "web", "image": "registry.example.test/web:1.4.2",
+            "ports": [ { "name": "http", "containerPort": 8080 } ] } ] }),
+    );
+    let svc = json!({
+        "apiVersion": "v1", "kind": "Service",
+        "metadata": { "name": "web", "namespace": "app" },
+        "spec": { "selector": { "app": "web" }, "ports": [ { "port": 80, "targetPort": "nope" } ] }
+    });
+    let got = check_findings("invalid-target-ports", &[dep, svc], "#{}");
+    assert!(got.is_empty(), "targetPort absent des conteneurs : {got:?}");
+}
+
+#[test]
+fn invalid_target_ports_resolves_like_kube_linter() {
+    // Sortie de kube-linter v0.8.3 sur la fixture invalid-target-ports : un constat par règle IANA
+    // violée (un nom peut en violer plusieurs, ex. HTTP : caractères et lettre), par port et par
+    // conteneur (init inclus) ; genres apps (toutes versions), batch, noyau RC et Pod ; le groupe
+    // extensions et les groupes tiers sont ignorés ; un nom de port vide n'est pas examiné ; un
+    // Service mal formé est ignoré.
+    let objs = fixture_objects("invalid-target-ports");
+    let got = check_findings("invalid-target-ports", &objs, "#{}");
+    let want = vec![
+        "CronJob/cron-bad",
+        "DaemonSet/ds-bad",
+        "Deployment/dep-bad",
+        "Deployment/dep-beta-bad",
+        "Job/job-bad",
+        "Job/job-bad",
+        "Pod/pod-bad",
+        "Pod/pod-multi",
+        "Pod/pod-multi",
+        "Pod/pod-multi",
+        "Pod/pod-multi",
+        "ReplicaSet/rs-bad",
+        "ReplicationController/rc-bad",
+        "Service/t-digits",
+        "Service/t-double",
+        "Service/t-empty",
+        "Service/t-empty",
+        "Service/t-long",
+        "Service/t-space",
+        "Service/t-trail",
+        "Service/t-upper",
+        "Service/t-upper",
+        "StatefulSet/sts-bad",
+    ];
+    assert_eq!(got, want);
+}
+
+#[test]
+fn dangling_ingress_resolves_like_kube_linter() {
+    // Sortie de kube-linter v0.8.3 sur la fixture dangling-ingress : seul networking.k8s.io/v1 est
+    // examiné ; un constat par backend non résolu (defaultBackend et chaque chemin) ; le namespace
+    // est comparé ; le port est comparé au nom (prioritaire) ou au numéro, un port absent valant 0 ;
+    // un Service mal formé ou d'un groupe tiers n'est pas une cible ; un Ingress mal formé est
+    // ignoré en entier.
+    let objs = fixture_objects("dangling-ingress");
+    let got = check_findings("dangling-ingress", &objs, "#{}");
+    let want = vec![
+        "Ingress/ko-default",
+        "Ingress/ko-default-and-rule",
+        "Ingress/ko-default-and-rule",
+        "Ingress/ko-empty-name-named",
+        "Ingress/ko-empty-svc-name",
+        "Ingress/ko-malformed-svc",
+        "Ingress/ko-missing",
+        "Ingress/ko-multi",
+        "Ingress/ko-multi",
+        "Ingress/ko-no-port-field",
+        "Ingress/ko-noport-name",
+        "Ingress/ko-noport-number",
+        "Ingress/ko-number-null",
+        "Ingress/ko-number-zero",
+        "Ingress/ko-other-ns",
+        "Ingress/ko-port-name",
+        "Ingress/ko-port-number",
+        "Ingress/ko-target-port-number",
+        "Ingress/ko-tiers-svc",
+    ];
+    assert_eq!(got, want);
 }

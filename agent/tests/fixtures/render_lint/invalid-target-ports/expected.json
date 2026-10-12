@@ -1,0 +1,140 @@
+[
+  {
+    "rule": "invalid-target-ports",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-bad"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "ds-bad"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "dep-bad"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "dep-beta-bad"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-bad"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-bad"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-bad"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-multi"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-multi"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-multi"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-multi"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "ReplicaSet",
+    "namespace": "app",
+    "name": "rs-bad"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "ReplicationController",
+    "namespace": "app",
+    "name": "rc-bad"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "t-digits"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "t-double"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "t-empty"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "t-empty"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "t-long"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "t-trail"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "t-upper"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "t-upper"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "Service",
+    "namespace": "other",
+    "name": "t-space"
+  },
+  {
+    "rule": "invalid-target-ports",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "sts-bad"
+  }
+]
