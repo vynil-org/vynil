@@ -353,3 +353,25 @@ spec:
             - containerPort: 8080
           livenessProbe:
             httpGet: {path: /healthz, port: 8080}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: protocole-vide
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: vide}
+  template:
+    metadata:
+      labels: {app: vide}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 8080
+              protocol: ""
+          livenessProbe:
+            httpGet: {path: /healthz, port: 8080}

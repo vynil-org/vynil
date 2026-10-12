@@ -418,14 +418,16 @@ private fn probe_missing_findings(rule, probe_key, label, obj) {
 }
 
 // Vrai quand le port `port` d'une sonde est exposé par le conteneur : un entier doit être le
-// `containerPort` d'un port TCP (protocole absent ou exactement `TCP`), une chaîne le `name` d'un
-// port TCP. Un port absent vaut 0 pour kube-linter et n'est jamais exposé. Un port UDP ne compte pas.
+// `containerPort` d'un port TCP, une chaîne le `name` d'un port TCP. Un protocole absent ou vide vaut
+// TCP ; toute autre valeur (UDP, ou `tcp` en minuscules) ne compte pas. Un port absent vaut 0 pour
+// kube-linter et n'est jamais exposé.
 private fn port_exposed(container, port) {
     let ports = field(container, "ports");
     if type_of(ports) != "array" { return false; }
     for p in ports {
         let proto = field(p, "protocol");
-        if !(proto == () || proto == "TCP") { continue; }
+        let have = if type_of(proto) == "string" && proto != "" { proto } else { "TCP" };
+        if have != "TCP" { continue; }
         let number = field(p, "containerPort");
         if type_of(port) == "i64" && type_of(number) == "i64" && number == port { return true; }
         let pname = field(p, "name");
