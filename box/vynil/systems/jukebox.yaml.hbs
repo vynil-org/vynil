@@ -1,0 +1,9 @@
+apiVersion: vynil.solidite.fr/v1
+kind: JukeBox
+metadata:
+  name: vynil
+spec:
+  source:
+    list:
+    - "ghcr.io/vynil-org/vynil"
+  schedule: "0 3 * * *"

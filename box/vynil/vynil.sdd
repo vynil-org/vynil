@@ -7,13 +7,16 @@ Platform: Vynil package/Handlebars/Rhai
 Purpose:
   Le paquet d'auto-hébergement Vynil : un paquet `system` qui installe et configure le
   contrôleur Vynil, son serveur de diagnostic, RBAC, classes de priorité, certificats dans un
-  cluster, et se publie en image OCI consommée via source `@JukeBox`.
+  cluster, possède le `@JukeBox` `vynil` d'où il est lui-même tiré, et se publie en image OCI
+  consommée via source `@JukeBox`.
 
 Structure:
   ./package.yaml: Manifeste du paquet — nom, type `system`, catégorie `core`, images, ressources,
     requirements, recommendations et options
   ./systems/*.yaml.hbs: Manifestes Kubernetes rendus (controller, service, rbac, diagnostics,
-    certificats, priorités)
+    certificats, priorités, jukebox)
+  ./systems/jukebox.yaml.hbs: Le `@JukeBox` `vynil`, repris en propriété par le paquet (via
+    ./systems/jukebox.yaml.hbs.sdd)
   ./crds/crd.yaml: Lot CRD livré par ce paquet, généré depuis les types CRD Rust
   ./tests/: Manifestes test du paquet Vynil exécutés par `agent package test`
 
@@ -26,15 +29,28 @@ Owns:
 Must:
   Garder `app_version` et les trois tags `images` cohérents avec la version du workspace dans
     /Cargo.toml et les images publiées agent, operator, server.
+  Référencer les trois images dans `package.yaml` depuis le registry `ghcr.io`, dépôts
+    `vynil-org/vynil-agent`, `vynil-org/vynil-operator` et `vynil-org/vynil-server`.
   Déclarer les recommendations CRD de monitoring et cert-manager, les diagnostics en
     dépendent.
   Générer ./crds/crd.yaml depuis les types CRD Rust via `cargo cmd generate_crd`, jamais à la main.
   Rendre chaque manifeste avec helpers de contexte Handlebars Vynil, `instance.appslug` pour
-    nommage des ressources.
+    nommage des ressources, à la seule exception du `@JukeBox` `vynil` dont le nom est littéral.
+  Livrer dans ./systems/ le `@JukeBox` `vynil` : le bootstrap le pose, le paquet en devient
+    propriétaire dès sa première installation ou mise à jour et le garde convergé sur la source
+    de référence du paquet. Son contrat exact vit dans ./systems/jukebox.yaml.hbs.sdd.
+  Livrer ce `@JukeBox` dans toutes les versions ultérieures : le retirer d'une version le fait
+    supprimer des clusters qui ont installé la précédente.
 
 Must not:
   Éditer ./crds/crd.yaml à la main, ou laisser diverger des types Rust qui le génèrent.
   Accorder cluster-admin au serveur de diagnostic au-delà du strict nécessaire en lecture tenant.
+  Faire dépendre la résolution du paquet `vynil` d'une source autre que celle que ce paquet
+    déclare dans son propre `@JukeBox`.
+
+References:
+  ./systems/jukebox.yaml.hbs.sdd
+  /deploy/bootstrap/bootstrap.sdd
 
 Depends on:
   /agent/Dockerfile.sdd
@@ -48,3 +64,29 @@ Done when:
 Tasks:
   [ ] #0 Confirmer ./tests/ couvre install, upgrade, uninstall pour les variantes core et
     monitoring.
+  [x] #1 Ajouter dans ./tests/ts-core.yaml les assertions du scénario « The package owns the
+    vynil JukeBox » ci-dessous, avant d'écrire ./systems/jukebox.yaml.hbs.
+  [x] #2 Écrire ./systems/jukebox.yaml.hbs (contrat dans ./systems/jukebox.yaml.hbs.sdd).
+  [x] #3 Basculer `images.*.registry` et `images.*.repository` de ./package.yaml sur
+    `ghcr.io` / `vynil-org/vynil-*`.
+  [ ] #4 Publier la release de transition aux deux endroits : `docker.io/sebt3/vynil` (dernière
+    publication) et `ghcr.io/vynil-org/vynil`, pour que les clusters encore sur l'ancienne source
+    reçoivent cette version, qui re-pointe leur `@JukeBox`. Les versions suivantes ne sont
+    publiées que sur `ghcr.io`.
+  [?] La désinstallation de l'instance `vynil` supprime le `@JukeBox` `vynil` avec les autres
+    objets suivis, donc le catalogue disparaît avec le contrôleur. Décider plus tard si c'est
+    voulu ou si le `@JukeBox` doit survivre (annotation de conservation).
+
+Scenario: The package owns the vynil JukeBox
+  Given l'instance de test installée avec le jeu `core`
+  When les systèmes du paquet sont rendus
+  Then exactement un objet de kind `JukeBox` nommé `vynil` est produit, sans namespace
+  And son `spec.source.list` vaut exactement `ghcr.io/vynil-org/vynil`
+  And son `spec.schedule` est `0 3 * * *`
+  And le même résultat est observé avec le jeu `no-monitoring`
+
+Scenario: The legacy source is migrated by an upgrade
+  Given un cluster dont le `@JukeBox` `vynil` pointe sur `docker.io/sebt3/vynil`
+  When la release de transition est installée par le contrôleur depuis cette ancienne source
+  Then le `@JukeBox` `vynil` pointe sur `ghcr.io/vynil-org/vynil` sans intervention manuelle
+  And les images agent, operator et server de l'instance viennent de `ghcr.io/vynil-org`

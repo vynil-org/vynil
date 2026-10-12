@@ -11,14 +11,14 @@ metadata:
   type: system
 images:
   agent:
-    registry: docker.io
-    repository: sebt3/vynil-agent
+    registry: ghcr.io
+    repository: vynil-org/vynil-agent
   controller:
-    registry: docker.io
-    repository: sebt3/vynil-operator
+    registry: ghcr.io
+    repository: vynil-org/vynil-operator
   diag:
-    registry: docker.io
-    repository: sebt3/vynil-server
+    registry: ghcr.io
+    repository: vynil-org/vynil-server
 resources:
   controller:
     requests:

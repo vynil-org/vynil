@@ -1,0 +1,109 @@
+Spec: GabaritJukeBoxVynil
+
+Platform: Handlebars (moteur vynil-core 0.7.7, rendu par @get_objects de /agent/scripts/lib/install_from_dir.rhai)
+
+Purpose:
+  Faire du paquet système `vynil` le propriétaire du `@JukeBox` nommé `vynil` : l'objet
+    cluster-scoped qui désigne la source d'où les clusters tirent le paquet `vynil` lui-même. Le
+    bootstrap ne fait que le poser (graine) ; dès que le paquet s'installe ou se met à jour, ce
+    gabarit le reprend en main et le fait converger vers la source de référence. C'est ce qui rend
+    automatique le changement d'origine du paquet : la release qui déplace la source embarque
+    elle-même le nouveau `@JukeBox`.
+
+Owns:
+  ./jukebox.yaml.hbs
+
+Exposes:
+  Un unique document `@JukeBox` rendu dans le flux de ./ (répertoire `systems/`), appliqué par
+    @install_obj de /agent/scripts/lib/install_from_dir.rhai avec @allow_cluster à `true`.
+
+Accepts:
+  Aucune donnée de contexte : le gabarit est rendu sans lire la carte Handlebars. Le nom et la
+    source sont des littéraux (voir Must).
+
+Returns:
+  Un document YAML unique :
+    `apiVersion: vynil.solidite.fr/v1`
+    `kind: JukeBox`
+    `metadata.name: vynil` — sans `namespace` (ressource cluster-scoped)
+    `spec.source.list: ["ghcr.io/vynil-org/vynil"]`
+    `spec.schedule: "0 3 * * *"`
+
+Raises:
+  `kind: JukeBox is unknown from the apiServer.` (levée de @install_obj) si le CRD @JukeBox n'est
+    pas encore présent ; l'étape CRD de l'installation système précède l'étape `systems/`, ce cas
+    n'arrive donc que sur un paquet installé sans son lot de CRD.
+
+Handles:
+  Objet absent : créé par le server-side apply.
+  Objet présent posé par le bootstrap (même `source`, même `schedule`) : apply sans différence,
+    aucune relance de scan.
+  Objet présent avec une `source` héritée (`docker.io/sebt3/vynil`) : `spec.source` est remplacée
+    par la valeur du gabarit, et l'opérateur relance un scan sur la nouvelle source.
+  Champs absents du gabarit (`spec.maturity`, `spec.pull_secret`) : non déclarés donc jamais
+    touchés par l'apply, la valeur posée par le bootstrap ou par l'utilisateur est conservée.
+
+Must:
+  Nommer l'objet `vynil`, littéralement : c'est le nom que le bootstrap crée et que
+    `SystemInstance.spec.jukebox` référence par défaut. Ne pas le dériver de `instance.appslug`
+    (qui rendrait un autre nom et créerait un second `@JukeBox`).
+  Ne déclarer que `spec.source` et `spec.schedule`. `schedule` est obligatoire dans le CRD
+    (@JukeBoxSpec::schedule est un @String requis) ; `maturity` et `pull_secret` sont volontairement
+    omis pour ne pas écraser le choix de l'utilisateur.
+  Déclarer la `source` en variante `list` d'une seule image, `ghcr.io/vynil-org/vynil`, et un
+    `schedule` identique à celui du bootstrap (/deploy/bootstrap/bootstrap.sdd) — la graine et
+    le paquet doivent rendre exactement les mêmes valeurs pour que l'adoption soit sans effet.
+  Rester présent dans toutes les versions ultérieures du paquet : l'objet est suivi dans
+    `status.systems` de l'instance et supprimé du cluster dès qu'une version cesse de le livrer
+    (voir @remove de /agent/scripts/lib/install_from_dir.rhai) ainsi qu'à la désinstallation.
+
+Must not:
+  Poser un `namespace`, des `ownerReferences` ou des labels de selector : c'est un objet
+    cluster-scoped partagé, hors du périmètre du namespace de l'instance.
+  Lister d'autres images que le paquet `vynil` : `spec.source.list` est un tableau atomique, le
+    server-side apply le remplace en entier ; toute autre source vit dans son propre `@JukeBox`.
+  Déclarer `maturity` ou `pull_secret`.
+
+References:
+  /deploy/bootstrap/bootstrap.sdd
+  /box/vynil/vynil.sdd
+  /common/src/jukebox.sdd
+
+Tasks:
+  [x] #0 Écrire ./jukebox.yaml.hbs conformément à Returns, après les tests de la box (voir
+      /box/vynil/vynil.sdd Scenario).
+  [?] Le contexte système construit par /agent/scripts/lib/build_context.rhai fige
+      `instance.package.jukebox` à la constante `"box"` au lieu du `spec.jukebox` de l'instance.
+      Tant que ce n'est pas corrigé, le nom du `@JukeBox` ne peut pas suivre l'instance : décider
+      plus tard si le nom littéral `vynil` suffit ou si le contexte doit exposer le jukebox réel.
+
+Done when:
+  `agent package test ./box/vynil` rend exactement un `@JukeBox` `vynil` portant la source et le
+    schedule de Returns, et le gabarit ne déclare aucun autre champ de `spec`.
+
+Scenario: Adoption of the bootstrap seed on a fresh install
+  Given un cluster où le bootstrap a créé le `@JukeBox` `vynil` avec la source
+    `ghcr.io/vynil-org/vynil`, `maturity: stable` et `schedule: "0 3 * * *"`
+  When le paquet `vynil` s'installe et applique ce gabarit
+  Then l'objet ne change pas de contenu : même `source`, même `schedule`, `maturity` toujours
+    `stable`
+  And aucun scan supplémentaire n'est déclenché par l'adoption
+
+Scenario: Legacy source is rewritten on upgrade
+  Given un cluster dont le `@JukeBox` `vynil` porte `list: ["docker.io/sebt3/vynil"]` et
+    `maturity: beta`
+  When la release de transition s'installe et applique ce gabarit
+  Then `spec.source.list` vaut exactement `["ghcr.io/vynil-org/vynil"]`
+  And `spec.maturity` vaut toujours `beta`
+  And `spec.pull_secret`, s'il était posé, est inchangé
+
+Scenario: Extra entries in the list are dropped
+  Given un `@JukeBox` `vynil` dont la liste contient aussi `registry.example.com/org/autre`
+  When le gabarit s'applique
+  Then la liste ne contient plus que `ghcr.io/vynil-org/vynil`
+  And l'entrée supprimée doit être redéclarée par l'utilisateur dans un `@JukeBox` à lui
+
+Scenario: The JukeBox follows the instance lifecycle
+  Given l'instance `vynil` a appliqué ce gabarit et l'a enregistré dans `status.systems`
+  When une version ultérieure du paquet cesse de livrer le gabarit, ou que l'instance est supprimée
+  Then le `@JukeBox` `vynil` est supprimé du cluster avec les autres objets suivis
