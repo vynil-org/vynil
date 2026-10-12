@@ -1670,3 +1670,27 @@ fn the_workload_batch_does_not_raise_on_unexpected_shapes() {
     );
     assert_eq!(found, json!([]), "aucun constat sur des formes inattendues");
 }
+
+#[test]
+fn a_secret_or_configmap_reference_resolves_only_to_the_core_kind() {
+    // Un ConfigMap d'un groupe tiers, portant le nom référencé, n'est pas le ConfigMap du noyau :
+    // la référence reste sans objet et doit être signalée. Le ConfigMap du noyau la résout.
+    let consumer = deployment_with_pod_spec(
+        "ev-tiers",
+        &json!({ "containers": [ { "name": "web", "image": "registry.example.test/web:1.4.2", "env": [
+            { "name": "U", "valueFrom": { "configMapKeyRef": { "name": "cfg", "key": "k" } } }
+        ] } ] }),
+    );
+    let tiers_configmap = json!({
+        "apiVersion": "example.io/v1", "kind": "ConfigMap",
+        "metadata": { "name": "cfg", "namespace": "app" }, "data": { "k": "v" }
+    });
+    let core_configmap = json!({
+        "apiVersion": "v1", "kind": "ConfigMap",
+        "metadata": { "name": "cfg", "namespace": "app" }, "data": { "k": "v" }
+    });
+    let unresolved = check_findings("env-value-from", &[consumer.clone(), tiers_configmap], "#{}");
+    assert_eq!(unresolved, vec!["Deployment/ev-tiers".to_string()]);
+    let resolved = check_findings("env-value-from", &[consumer, core_configmap], "#{}");
+    assert!(resolved.is_empty(), "ConfigMap du noyau : {resolved:?}");
+}

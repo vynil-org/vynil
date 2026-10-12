@@ -725,13 +725,15 @@ private fn dns_option_found(dns, key, value) {
     false
 }
 
-// Noms des objets de genre `kind` dans la liste `objs` (tous namespaces confondus : kube-linter
-// ne rapproche une référence de son objet que par le nom et le genre).
+// Noms des objets de genre `kind` du groupe du noyau dans la liste `objs` (tous namespaces
+// confondus : kube-linter ne rapproche une référence de son objet que par le nom et le genre).
+// Secret et ConfigMap sont du groupe du noyau : un kind homonyme d'un autre groupe ne compte pas.
 private fn known_names(objs, kind) {
+    import "render_lint" as render_lint;
     let names = [];
     if type_of(objs) != "array" { return names; }
     for o in objs {
-        if field(o, "kind") == kind {
+        if render_lint::kind_of_group(o, [kind], "") {
             let n = text(field(field(o, "metadata"), "name"));
             if n != "" { names.push(n); }
         }
