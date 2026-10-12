@@ -75,6 +75,12 @@ Must:
     ./render_lint.rhai importe les modules thématiques, un import en tête ferait un cycle.
   Prendre pour `rule` d'un constat le nom kube-linter exact, tirets compris, pour qu'une liste
     `exclude` ou une annotation de suppression soit portable d'un outil à l'autre.
+  Identifier un objet par son groupe d'API ET son kind, jamais par le kind seul : `Pod` et
+    `ReplicationController` du groupe noyau, `Deployment`, `StatefulSet`, `DaemonSet` et
+    `ReplicaSet` du groupe `apps`, `Job` et `CronJob` du groupe `batch`, toutes versions
+    confondues. Un objet de l'ancien groupe `extensions` ou d'un groupe tiers qui porte un kind
+    homonyme (`argoproj.io` `Job`, par exemple) est ignoré par les vérifications de workload, comme
+    l'outil de référence le fait.
   Appliquer `severity` après exécution de la vérification, sans qu'elle ait à le savoir.
   Avec `require_reason` vrai, ne pas supprimer un constat dont l'annotation est vide et
     ajouter à sa place un constat `suppression-without-reason` de sévérité `error`
@@ -150,3 +156,11 @@ Scenario: severity override applies after the check
   When @all s'exécute
   Then les constats `latest-tag` sont `warn` et les autres restent `error`
   Test @severity-override-applies-after-the-check
+
+Scenario: a kind is only recognised in its own API group
+  Given un Deployment `apps/v1`, un Deployment `extensions/v1beta1` et une ressource tierce de
+    groupe `example.io` et de kind `Deployment`, tous trois d'image `nginx:latest`
+  When @pod_templates est évalué sur chacun
+  Then seul le Deployment `apps/v1` porte un gabarit de pod ; les deux autres rendent un
+    tableau vide
+  Test @a-kind-is-only-recognised-in-its-own-api-group
