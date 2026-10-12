@@ -31,10 +31,11 @@ private fn string_param(params, key, fallback) {
     if type_of(v) == "string" { v } else { fallback }
 }
 
-// Groupe d'une apiVersion : `apps` pour `apps/v1`, chaîne vide pour `v1`.
+// Groupe d'une apiVersion, et identification d'un objet par groupe et kind : délégués au noyau
+// (render_lint::api_group_of, render_lint::kind_of_group), seul endroit où cette règle vit.
 private fn group_of(api) {
-    let parts = api.split("/");
-    if parts.len() == 2 { parts[0] } else { "" }
+    import "render_lint" as render_lint;
+    render_lint::api_group_of(api)
 }
 
 // Version d'une apiVersion : `v1` pour `apps/v1` comme pour `v1`.
@@ -45,8 +46,8 @@ private fn version_of(api) {
 
 // Vrai quand l'objet a l'un des genres `kinds` dans le groupe d'API `group`.
 private fn kind_of_group(obj, kinds, group) {
-    let kind = text(field(obj, "kind"));
-    (kind in kinds) && (group_of(text(field(obj, "apiVersion"))) == group)
+    import "render_lint" as render_lint;
+    render_lint::kind_of_group(obj, kinds, group)
 }
 
 // Objets de la famille DeploymentLike de kube-linter : ceux qui embarquent un gabarit de pod.

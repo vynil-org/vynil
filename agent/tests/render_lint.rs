@@ -143,6 +143,91 @@ fn pod_templates_cover_every_workload_shape() {
     assert_eq!(none, json!([]));
 }
 
+/// Objet portant un gabarit de pod (`Pod`, `CronJob` ou genre à `spec.template`) avec un
+/// conteneur `nginx:latest`, pour `apiVersion` et `kind` donnés.
+fn measured_object(api_version: &str, kind: &str) -> Value {
+    let pod_spec = || json!({ "containers": [ { "name": "web", "image": "nginx:latest" } ] });
+    let template = json!({ "metadata": { "labels": { "app": "m" } }, "spec": pod_spec() });
+    let spec = match kind {
+        "Pod" => pod_spec(),
+        "CronJob" => json!({
+            "schedule": "0 3 * * *",
+            "jobTemplate": { "spec": { "template": template } }
+        }),
+        _ => json!({
+            "replicas": 3,
+            "selector": { "matchLabels": { "app": "m" } },
+            "template": template
+        }),
+    };
+    json!({
+        "apiVersion": api_version,
+        "kind": kind,
+        "metadata": { "name": "m", "namespace": "m" },
+        "spec": spec
+    })
+}
+
+/// Nombre de gabarits de pod rendus par `pod_templates` pour `obj`.
+fn pod_template_count(rhai: &mut Script, obj: &Value) -> usize {
+    set_obj(rhai, obj);
+    eval_json(
+        rhai,
+        r#"import "render_lint" as render_lint; render_lint::pod_templates(obj)"#,
+    )
+    .as_array()
+    .map_or(0, Vec::len)
+}
+
+#[test]
+fn a_kind_is_only_recognised_in_its_own_api_group() {
+    let mut rhai = lib_script();
+    assert_eq!(
+        pod_template_count(&mut rhai, &measured_object("apps/v1", "Deployment")),
+        1
+    );
+    assert_eq!(
+        pod_template_count(&mut rhai, &measured_object("extensions/v1beta1", "Deployment")),
+        0
+    );
+    assert_eq!(
+        pod_template_count(&mut rhai, &measured_object("example.io/v1", "Deployment")),
+        0
+    );
+}
+
+/// Table mesurée contre kube-linter v0.8.3 (`latest-tag`, image `nginx:latest`) : pour chaque
+/// `apiVersion` et `kind`, `true` quand l'outil signale l'objet, donc quand il porte un gabarit.
+#[test]
+fn pod_templates_follow_the_tool_on_every_measured_group_and_kind() {
+    let table = [
+        ("apps/v1", "Deployment", true),
+        ("apps/v1beta1", "Deployment", true),
+        ("apps/v1beta2", "Deployment", true),
+        ("extensions/v1beta1", "Deployment", false),
+        ("apps/v1", "StatefulSet", true),
+        ("apps/v1beta1", "StatefulSet", true),
+        ("apps/v1", "DaemonSet", true),
+        ("extensions/v1beta1", "DaemonSet", false),
+        ("apps/v1", "ReplicaSet", true),
+        ("extensions/v1beta1", "ReplicaSet", false),
+        ("v1", "ReplicationController", true),
+        ("batch/v1", "Job", true),
+        ("argoproj.io/v1alpha1", "Job", false),
+        ("batch/v1", "CronJob", true),
+        ("batch/v1beta1", "CronJob", true),
+        ("v1", "Pod", true),
+        ("v1beta1", "Pod", false),
+        ("example.io/v1", "Deployment", false),
+        ("example.io/v1", "Pod", false),
+    ];
+    let mut rhai = lib_script();
+    for (api, kind, signalled) in table {
+        let count = pod_template_count(&mut rhai, &measured_object(api, kind));
+        assert_eq!(count > 0, signalled, "{api} {kind}");
+    }
+}
+
 #[test]
 fn containers_include_init_containers_with_full_paths() {
     let mut rhai = lib_script();

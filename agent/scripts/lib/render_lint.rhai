@@ -41,20 +41,36 @@ private fn identity(oref) {
     `${oref.apiVersion}|${oref.kind}|${text(field(oref, "namespace"))}|${oref.name}`
 }
 
+// Groupe d'API d'une apiVersion : partie avant `/` (`apps` pour `apps/v1`), ou `""` (groupe du
+// noyau) pour `v1`. Une apiVersion sans `/` qui n'est pas `v1` (`v1beta1`) n'a pas de groupe : `()`.
+// Toutes les versions d'un même groupe sont équivalentes, comme dans kube-linter.
+fn api_group_of(api) {
+    let parts = api.split("/");
+    if parts.len() == 2 { parts[0] } else if api == "v1" { "" } else { () }
+}
+
+// Vrai quand l'objet a l'un des genres `kinds` dans le groupe d'API `group` (`""` pour le noyau).
+// Seule identification d'un objet par son genre : un kind seul ne suffit jamais.
+fn kind_of_group(obj, kinds, group) {
+    let kind = text(field(obj, "kind"));
+    (kind in kinds) && (api_group_of(text(field(obj, "apiVersion"))) == group)
+}
+
 // Gabarits de pod d'un objet : `#{ pod, path }`. `path` est `spec.template`, `spec.jobTemplate.spec.template`
 // ou "" pour un Pod. Tableau vide pour un objet sans pod.
 fn pod_templates(obj) {
-    let kind = text(field(obj, "kind"));
     let spec = field(obj, "spec");
     let path = "";
     let template = ();
-    if kind == "Pod" {
+    if kind_of_group(obj, ["Pod"], "") {
         if type_of(spec) != "map" { return []; }
         return [#{ pod: obj, path: "" }];
-    } else if kind in ["Deployment", "StatefulSet", "DaemonSet", "ReplicaSet", "ReplicationController", "Job"] {
+    } else if kind_of_group(obj, ["Deployment", "StatefulSet", "DaemonSet", "ReplicaSet"], "apps")
+        || kind_of_group(obj, ["Job"], "batch")
+        || kind_of_group(obj, ["ReplicationController"], "") {
         path = "spec.template";
         template = field(spec, "template");
-    } else if kind == "CronJob" {
+    } else if kind_of_group(obj, ["CronJob"], "batch") {
         path = "spec.jobTemplate.spec.template";
         template = field(field(field(spec, "jobTemplate"), "spec"), "template");
     } else {
