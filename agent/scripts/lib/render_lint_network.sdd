@@ -31,14 +31,23 @@ Must:
     de kube-linter, et appliquer les mêmes valeurs par défaut.
   Ne signaler que ce que la vérification définit : une vérification n'infère aucune règle
     voisine.
+  Reproduire, pour chaque relation entre objets, ce que l'outil de référence fait, mesuré et non
+    supposé : le groupe d'API compte pour la version (`apps/v1beta1` vaut `apps/v1`) sauf
+    `networking.k8s.io/v1`, `monitoring.coreos.com/v1` et `policy/v1` qui exigent la version
+    exacte ; le namespace est comparé (dangling-service, dangling-ingress, les NetworkPolicy)
+    sauf pour `dangling-servicemonitor` et `dangling-horizontalpodautoscaler` qui l'ignorent ; le
+    groupe `extensions` (Deployment, ReplicaSet, DaemonSet) est compté par `dangling-service` et
+    les deux vérifications de NetworkPolicy, et exclu par `invalid-target-ports` et
+    `non-isolated-pod`.
 
 Tasks:
   [ ] Porter les vérifications du thème par lots, chacune avec sa fixture
       `/agent/tests/fixtures/render_lint/{nom}/` et son statut mis à jour dans le catalogue ; un lot
       est livrable seul tant que le harnais d'oracle reste vert.
-  [?] Une vérification de l'oracle qui dépend de ressources externes à la liste d'objets
-      (un `ServiceMonitor` pour des CRD tierces par exemple) : décider si elle est portée sur
-      la seule liste d'objets du test ou marquée `deferred` avec sa raison.
+  [x] `dangling-servicemonitor` est portée sur la seule liste d'objets. Décision issue d'une
+      mesure : l'outil ne lit que les `ServiceMonitor` et les Services présents dans la liste, la
+      CRD n'a pas à exister. Une vérification qui dépend d'une ressource absente de la liste reste
+      `deferred` avec sa raison (`scc-deny-privileged-container`, `non-existent-service-account`).
 
 Done when:
   Chaque entrée `theme: network` du catalogue est `ported`, `deferred` avec raison, ou
@@ -51,11 +60,21 @@ Scenario: service selecting no pod is dangling
   Then un constat de règle `dangling-service` nomme le Service
   Test @service-selecting-no-pod-is-dangling
 
-Scenario: named target port must exist
-  Given un Service dont `targetPort` nomme un port absent des conteneurs ciblés
+Scenario: a target port name must follow the IANA rules
+  Given un Service dont `targetPort` est une chaîne qui enfreint les règles de nommage IANA
+    (plus de quinze caractères, majuscules, tiret en tête ou en fin, deux tirets consécutifs,
+    aucune lettre)
   When la vérification `invalid_target_ports` s'exécute
-  Then un constat nomme le Service et le nom de port
-  Test @named-target-port-must-exist
+  Then un constat par règle enfreinte nomme le Service et le nom de port
+  Test @a-target-port-name-must-follow-the-iana-rules
+
+Scenario: a named target port absent from the containers is not reported
+  Given un Service dont `targetPort` nomme, au format IANA valide, un port que les conteneurs
+    ciblés ne déclarent pas
+  When la vérification `invalid_target_ports` s'exécute
+  Then aucun constat n'est rendu : l'outil de référence n'examine que le format du nom, jamais
+    son existence dans les conteneurs
+  Test @a-named-target-port-absent-from-the-containers-is-not-reported
 
 Scenario: ingress without backend service is dangling
   Given un Ingress dont le backend nomme un Service absent de la liste
