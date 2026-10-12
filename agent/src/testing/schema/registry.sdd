@@ -72,7 +72,7 @@ Handles:
   CRD sans `openAPIV3Schema` (version sans schéma) — non enregistrée, le couple reste inconnu.
 
 Tasks:
-  [ ] Couvrir chaque scénario par un test de même nom, sur des fixtures de CRD.
+  [x] Couvrir chaque scénario par un test de même nom, sur des fixtures de CRD.
   [?] Les CRD des dépendances du package (`requirements`) ne sont pas dérivées
       automatiquement : leurs schémas doivent figurer dans le répertoire de schémas.
       Décider si vynil doit les chercher lui-même.
