@@ -48,11 +48,32 @@ The script may define one or both of these functions. A function that is not def
 
 | Function | Called | Arguments | Returns |
 |---|---|---|---|
-| `lint(objs, ctx)` | Once per test, after its install and asserts | `objs`: copy of the objects created by the test, in creation order; `ctx`: test context | array of findings |
+| `lint(objs, ctx)` | Once per test, after its install and asserts | `objs`: map of copies of the objects created by the test, by section (see below); `ctx`: test context | array of findings |
 | `lint_suite(ctx)` | Once per invocation, after the suite | `ctx`: suite context | array of findings |
 
 `lint` is not called for a test whose `value_script` or install step failed: the failure is already
 reported on the test, and a partial render would produce misleading findings.
+
+### The `objs` map
+
+`objs` is a map with a fixed set of keys. Every key is always present; a key with no object holds an
+empty array, so a script never has to test for a missing key.
+
+| Key | Holds |
+|---|---|
+| `all` | Every object created by the test, in creation order |
+| `crds`, `systems`, `befores`, `vitals`, `scalables`, `others`, `posts` | The objects the package declared in that section |
+| `unsectioned` | The objects that no section declares, in the order of `all` |
+
+A section is what the package itself declared while installing, by calling
+`instance.set_status_<section>` (for example `set_status_scalables`). The declaration is read back from
+the `status` of the instance after the install. The lint never guesses a section from the object's `kind`:
+a `Deployment` that the package did not declare as scalable is in `unsectioned`, not in `scalables`.
+
+An entry designates an object when `kind`, `name` and `namespace` match (a missing `namespace` must be
+missing on both sides), and `apiVersion` when the entry carries one. The `crds` section lists CRD names
+only. An object designated by several sections appears in each of them. If the status cannot be read, every
+section is empty and every object is in `unsectioned`; the test is not failed for it.
 
 Each call runs in a fresh Rhai engine, with no state shared between tests. The script receives copies:
 it cannot modify the objects of the test. The available functions are the data-manipulation functions
@@ -295,8 +316,8 @@ fn team_label(objs) {
 }
 
 fn lint(objs, ctx) {
-    let findings = team_label(objs);
-    findings += render_lint::all(objs, ctx, #{
+    let findings = team_label(objs.all);
+    findings += render_lint::all(objs.all, ctx, #{
         exclude: ["latest-tag"],
         severity: #{ "no-read-only-root-fs": "warn" },
         ignore_prefix: "ignore-check.example/",
@@ -315,7 +336,7 @@ agent package test -p ./my-package --all --lint-dir ./distribution/lint
 A Deployment without a `team` label produces a failed row `lint:team-label`. An annotation
 `ignore-check.example/team-label: "legacy"` on that Deployment does not suppress it, because the house
 rule builds its finding directly and does not go through `render_lint::apply_suppressions`. To make a house rule
-suppressible, pass its findings through `render_lint::apply_suppressions(findings, objs, opts)`.
+suppressible, pass its findings through `render_lint::apply_suppressions(findings, objs.all, opts)`.
 
 ## Limits
 

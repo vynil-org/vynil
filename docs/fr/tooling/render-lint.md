@@ -48,11 +48,33 @@ Le script peut définir une de ces fonctions ou les deux. Une fonction non défi
 
 | Fonction | Appelée | Arguments | Retourne |
 |---|---|---|---|
-| `lint(objs, ctx)` | Une fois par test, après son install et ses asserts | `objs` : copie des objets créés par le test, dans l'ordre de création ; `ctx` : contexte du test | tableau de constats |
+| `lint(objs, ctx)` | Une fois par test, après son install et ses asserts | `objs` : carte de copies des objets créés par le test, par section (voir ci-dessous) ; `ctx` : contexte du test | tableau de constats |
 | `lint_suite(ctx)` | Une fois par invocation, après la suite | `ctx` : contexte de suite | tableau de constats |
 
 `lint` n'est pas appelée pour un test dont l'étape `value_script` ou l'install a échoué : l'échec est
 déjà signalé sur le test, et un rendu partiel produirait des constats trompeurs.
+
+### La carte `objs`
+
+`objs` est une carte aux clés fixes. Chaque clé est toujours présente ; une clé sans objet porte un
+tableau vide, si bien qu'un script n'a jamais à tester l'absence d'une clé.
+
+| Clé | Contient |
+|---|---|
+| `all` | Tous les objets créés par le test, dans l'ordre de création |
+| `crds`, `systems`, `befores`, `vitals`, `scalables`, `others`, `posts` | Les objets que le paquet a déclarés dans cette section |
+| `unsectioned` | Les objets qu'aucune section ne déclare, dans l'ordre de `all` |
+
+Une section est ce que le paquet a lui-même déclaré pendant l'installation, en appelant
+`instance.set_status_<section>` (par exemple `set_status_scalables`). La déclaration est relue dans le
+`status` de l'instance après l'install. Le lint ne déduit jamais une section du `kind` de l'objet : un
+`Deployment` que le paquet n'a pas déclaré comme scalable est dans `unsectioned`, pas dans `scalables`.
+
+Une entrée désigne un objet quand `kind`, `name` et `namespace` coïncident (un `namespace` absent doit l'être
+des deux côtés), et `apiVersion` quand l'entrée en porte un. La section `crds` ne liste que des noms de
+CRD. Un objet désigné par plusieurs sections figure dans chacune d'elles. Si le `status` ne peut pas être
+lu, toutes les sections sont vides et tous les objets sont dans `unsectioned` ; le test n'échoue pas pour
+autant.
 
 Chaque appel s'exécute dans un moteur Rhai neuf, sans état partagé entre tests. Le script reçoit des
 copies : il ne peut pas modifier les objets du test. Les fonctions disponibles sont les fonctions de
@@ -301,8 +323,8 @@ fn team_label(objs) {
 }
 
 fn lint(objs, ctx) {
-    let findings = team_label(objs);
-    findings += render_lint::all(objs, ctx, #{
+    let findings = team_label(objs.all);
+    findings += render_lint::all(objs.all, ctx, #{
         exclude: ["latest-tag"],
         severity: #{ "no-read-only-root-fs": "warn" },
         ignore_prefix: "ignore-check.example/",
@@ -321,7 +343,7 @@ agent package test -p ./my-package --all --lint-dir ./distribution/lint
 Un Deployment sans label `team` produit une ligne en échec `lint:team-label`. Une annotation
 `ignore-check.example/team-label: "legacy"` posée sur ce Deployment ne la supprime pas, parce que la règle
 maison construit son constat directement et ne passe pas par `render_lint::apply_suppressions`. Pour rendre une
-règle maison supprimable, faire passer ses constats par `render_lint::apply_suppressions(findings, objs, opts)`.
+règle maison supprimable, faire passer ses constats par `render_lint::apply_suppressions(findings, objs.all, opts)`.
 
 ## Limites
 
