@@ -71,10 +71,10 @@ Scenario: read access to secrets is reported
     constat (mesuré)
   Test @read-access-to-secrets-is-reported
 
-Scenario: a service account must exist in the object list
+Scenario: a service account is looked up in the workload namespace only
   Given un Deployment dont `serviceAccountName` nomme un ServiceAccount absent de la liste, dans
     le même namespace
   When la vérification `non_existent_service_account` s'exécute
   Then un constat nomme le Deployment ; le compte `default` ou vide n'est jamais signalé, et un
     ServiceAccount présent dans un autre namespace ne compte pas
-  Test @a-service-account-must-exist-in-the-object-list
+  Test @a-service-account-is-looked-up-in-the-workload-namespace-only
