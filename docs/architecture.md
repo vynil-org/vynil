@@ -23,7 +23,7 @@ vynil/
 
 The generic, vynil-agnostic toolbox, extracted from `common` so it can be reused outside vynil
 (kuberest, kydah). Published as [`vynil-core`](https://crates.io/crates/vynil-core) on crates.io;
-`common` consumes it as a regular crates.io dependency. Source: https://github.com/sebt3/vynil-core.
+`common` consumes it as a regular crates.io dependency. Source: https://github.com/vynil-org/vynil-core.
 
 - **Rhai engine**: `Script` (`new_bare`) + generic helpers (datetime, hashes, password, ed25519,
   semver, glob, shell, serde-YAML, base64/json, file I/O)
@@ -359,7 +359,7 @@ changes in string and collection manipulation functions.
 |---|---|---|
 | `CONTROLLER_BASE_DIR` | `./operator` | Handlebars templates directory |
 | `VYNIL_NAMESPACE` | `vynil-system` | Vynil system namespace |
-| `AGENT_IMAGE` | `docker.io/sebt3/vynil-agent:0.6.0` | Agent image for Jobs |
+| `AGENT_IMAGE` | `ghcr.io/vynil-org/vynil-agent:0.7.10` | Agent image for Jobs |
 | `AGENT_ACCOUNT` | `vynil-agent` | Job ServiceAccount |
 | `AGENT_LOG_LEVEL` | `info` | Log level |
 | `TENANT_LABEL` | `vynil.solidite.fr/tenant` | Tenant label key |
@@ -382,4 +382,4 @@ changes in string and collection manipulation functions.
 | `actix-web` | 4.12 | Metrics HTTP server |
 | `prometheus-client` | ~0.22 | Prometheus metrics |
 
-> Workspace version at time of writing: **0.7.7** (Rust 2024 edition, BSD-3-Clause license).
+> Workspace version at time of writing: **0.7.10** (Rust 2024 edition, BSD-3-Clause license).

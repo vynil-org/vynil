@@ -1,6 +1,6 @@
 site_name: Vynil
 site_description: Kubernetes package manager — documentation
-repo_url: https://github.com/sebt3/vynil
+repo_url: https://github.com/vynil-org/vynil
 docs_dir: docs
 
 theme:

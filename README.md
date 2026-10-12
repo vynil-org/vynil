@@ -30,7 +30,7 @@ Dive in: [Building a distribution](docs/distribution.md) ·
 ## Installation
 ```
 kubectl create ns vynil-system
-kubectl apply -k github.com/sebt3/vynil//deploy
+kubectl apply -k github.com/vynil-org/vynil//deploy
 ```
 
 ## Shell completion

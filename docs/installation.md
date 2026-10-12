@@ -4,13 +4,13 @@
 
 - A Kubernetes cluster and `kubectl` configured (cluster-admin rights for the initial
   installation — see the security note below).
-- Network access to the OCI registry hosting the packages (default `docker.io/sebt3/vynil`).
+- Network access to the OCI registry hosting the packages (default `ghcr.io/vynil-org/vynil`).
 
 ## Installing the operator
 
 ```bash
 kubectl create ns vynil-system
-kubectl apply -k github.com/sebt3/vynil//deploy
+kubectl apply -k github.com/vynil-org/vynil//deploy
 ```
 
 The `deploy/` kustomize installs:
@@ -18,7 +18,7 @@ The `deploy/` kustomize installs:
 - the **CRDs** (`deploy/crd/`): `JukeBox`, `SystemInstance`, `ServiceInstance`,
   `TenantInstance`;
 - the **bootstrap** (`deploy/bootstrap/`): a `vynil-bootstrap` ServiceAccount, a
-  `JukeBox` named `vynil` pointing to `docker.io/sebt3/vynil`, a `vynil`
+  `JukeBox` named `vynil` pointing to `ghcr.io/vynil-org/vynil`, a `vynil`
   `SystemInstance`, and a bootstrap Job that scans the JukeBox then installs the
   `core/vynil` package (which in turn deploys the operator itself).
 

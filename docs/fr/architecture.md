@@ -333,7 +333,7 @@ Ces tests servent de filet de régression lors des mises à jour de la version R
 |---|---|---|
 | `CONTROLLER_BASE_DIR` | `./operator` | Répertoire des templates Handlebars |
 | `VYNIL_NAMESPACE` | `vynil-system` | Namespace système de Vynil |
-| `AGENT_IMAGE` | `docker.io/sebt3/vynil-agent:0.6.0` | Image de l'agent pour les Jobs |
+| `AGENT_IMAGE` | `ghcr.io/vynil-org/vynil-agent:0.7.10` | Image de l'agent pour les Jobs |
 | `AGENT_ACCOUNT` | `vynil-agent` | ServiceAccount des Jobs |
 | `AGENT_LOG_LEVEL` | `info` | Niveau de log |
 | `TENANT_LABEL` | `vynil.solidite.fr/tenant` | Clé du label tenant |
@@ -356,4 +356,4 @@ Ces tests servent de filet de régression lors des mises à jour de la version R
 | `actix-web` | 4.12 | Serveur HTTP métriques |
 | `prometheus-client` | ~0.22 | Métriques Prometheus |
 
-> Version du workspace au moment de la rédaction : **0.7.7** (édition Rust 2024, licence BSD-3-Clause).
+> Version du workspace au moment de la rédaction : **0.7.10** (édition Rust 2024, licence BSD-3-Clause).

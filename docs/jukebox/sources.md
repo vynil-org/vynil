@@ -12,7 +12,7 @@ The simplest form: a list of OCI images to scan directly.
 spec:
   source:
     list:
-    - "docker.io/sebt3/vynil"
+    - "ghcr.io/vynil-org/vynil"
     - "registry.example.com/org/another-set"
   maturity: stable
   schedule: "0 3 * * *"  # daily rescan at 3am
