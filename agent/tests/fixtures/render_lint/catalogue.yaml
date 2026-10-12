@@ -81,8 +81,7 @@ checks:
     status: ported
   - name: host-pid
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: hpa-minimum-three-replicas
     theme: workload
     status: deferred
@@ -163,12 +162,10 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: privilege-escalation-container
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: privileged-container
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: privileged-ports
     theme: pod
     status: deferred
@@ -195,8 +192,7 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: run-as-non-root
     theme: pod
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: scc-deny-privileged-container
     theme: pod
     status: deferred

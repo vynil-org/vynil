@@ -215,6 +215,18 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "host-network") {
             raw = run_check(raw, cfg, "host-network", pod::host_network(obj, objs, ctx, param(cfg, "host-network")));
         }
+        if enabled(cfg, "host-pid") {
+            raw = run_check(raw, cfg, "host-pid", pod::host_pid(obj, objs, ctx, param(cfg, "host-pid")));
+        }
+        if enabled(cfg, "privilege-escalation-container") {
+            raw = run_check(raw, cfg, "privilege-escalation-container", pod::privilege_escalation_container(obj, objs, ctx, param(cfg, "privilege-escalation-container")));
+        }
+        if enabled(cfg, "privileged-container") {
+            raw = run_check(raw, cfg, "privileged-container", pod::privileged_container(obj, objs, ctx, param(cfg, "privileged-container")));
+        }
+        if enabled(cfg, "run-as-non-root") {
+            raw = run_check(raw, cfg, "run-as-non-root", pod::run_as_non_root(obj, objs, ctx, param(cfg, "run-as-non-root")));
+        }
         if enabled(cfg, "latest-tag") {
             raw = run_check(raw, cfg, "latest-tag", pod::latest_tag(obj, objs, ctx, param(cfg, "latest-tag")));
         }
@@ -228,5 +240,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["docker-sock", "drop-net-raw-capability", "host-ipc", "host-network", "latest-tag", "no-read-only-root-fs"]
+    ["docker-sock", "drop-net-raw-capability", "host-ipc", "host-network", "host-pid", "latest-tag", "no-read-only-root-fs", "privilege-escalation-container", "privileged-container", "run-as-non-root"]
 }

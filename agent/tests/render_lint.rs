@@ -256,7 +256,9 @@ fn exclude_and_only_select_checks() {
         &mut rhai,
         r#"import "render_lint" as render_lint; render_lint::all(objs, #{}, #{exclude: ["latest-tag"]})"#,
     );
-    assert_eq!(rules(&excluded), vec!["no-read-only-root-fs".to_string()]);
+    // Le jeu de vérifications grandit à mesure des lots : on ne vérifie que la sélection.
+    assert!(!rules(&excluded).contains(&"latest-tag".to_string()));
+    assert!(rules(&excluded).contains(&"no-read-only-root-fs".to_string()));
     let only = eval_json(
         &mut rhai,
         r#"import "render_lint" as render_lint; render_lint::all(objs, #{}, #{only: ["latest-tag"]})"#,
@@ -602,4 +604,182 @@ fn host_checks_are_silent_on_non_workloads() {
         pod_findings(&mut rhai, "docker_sock", &configmap, "#{}"),
         json!([])
     );
+}
+
+#[test]
+fn init_containers_are_checked_like_containers() {
+    // Scénario de render_lint_pod.sdd : un conteneur d'init sans runAsNonRoot est signalé, et
+    // son chemin finit par `initContainers[0]`.
+    let mut rhai = lib_script();
+    let obj = json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "init", "namespace": "app" },
+        "spec": {
+            "initContainers": [ { "name": "prepare", "image": "x:1" } ],
+            "containers": [ { "name": "web", "image": "x:1", "securityContext": { "runAsNonRoot": true } } ]
+        }
+    });
+    let found = pod_findings(&mut rhai, "run_as_non_root", &obj, "#{}");
+    assert_eq!(rules(&found), vec!["run-as-non-root"]);
+    assert!(
+        found[0]["path"]
+            .as_str()
+            .unwrap_or_default()
+            .ends_with("initContainers[0]")
+    );
+}
+
+#[test]
+fn run_as_non_root_inherits_the_pod_setting_and_the_container_overrides_it() {
+    let mut rhai = lib_script();
+    let inherits = json!({
+        "apiVersion": "apps/v1", "kind": "Deployment",
+        "metadata": { "name": "herite", "namespace": "app" },
+        "spec": { "selector": { "matchLabels": { "app": "herite" } }, "template": {
+            "metadata": { "labels": { "app": "herite" } },
+            "spec": {
+                "securityContext": { "runAsNonRoot": true },
+                "containers": [ { "name": "web", "image": "x:1" } ]
+            }
+        } }
+    });
+    assert_eq!(
+        pod_findings(&mut rhai, "run_as_non_root", &inherits, "#{}"),
+        json!([])
+    );
+    let overridden = json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "surcharge", "namespace": "app" },
+        "spec": {
+            "securityContext": { "runAsNonRoot": false },
+            "containers": [ { "name": "web", "image": "x:1", "securityContext": { "runAsNonRoot": true } } ]
+        }
+    });
+    assert_eq!(
+        pod_findings(&mut rhai, "run_as_non_root", &overridden, "#{}"),
+        json!([])
+    );
+}
+
+#[test]
+fn run_as_non_root_uses_the_inherited_user_when_the_container_sets_none() {
+    // runAsNonRoot vrai au pod, runAsUser 0 au pod : le conteneur en hérite et est signalé.
+    let mut rhai = lib_script();
+    let obj = json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "racine", "namespace": "app" },
+        "spec": {
+            "securityContext": { "runAsNonRoot": true, "runAsUser": 0 },
+            "containers": [ { "name": "web", "image": "x:1" } ]
+        }
+    });
+    let found = pod_findings(&mut rhai, "run_as_non_root", &obj, "#{}");
+    assert_eq!(rules(&found), vec!["run-as-non-root"]);
+    assert!(
+        found[0]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("runAsUser")
+    );
+}
+
+#[test]
+fn privilege_escalation_matches_sys_admin_exactly_and_init_containers() {
+    let mut rhai = lib_script();
+    let prefixed = pod_with_init_capabilities(&["CAP_SYS_ADMIN"], &["ALL"]);
+    assert_eq!(
+        pod_findings(&mut rhai, "privilege_escalation_container", &prefixed, "#{}"),
+        json!([])
+    );
+    let init_escalation = json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "init", "namespace": "app" },
+        "spec": {
+            "initContainers": [ { "name": "prepare", "image": "x:1",
+                "securityContext": { "allowPrivilegeEscalation": true } } ],
+            "containers": [ { "name": "web", "image": "x:1" } ]
+        }
+    });
+    let found = pod_findings(
+        &mut rhai,
+        "privilege_escalation_container",
+        &init_escalation,
+        "#{}",
+    );
+    assert_eq!(rules(&found), vec!["privilege-escalation-container"]);
+    assert!(
+        found[0]["path"]
+            .as_str()
+            .unwrap_or_default()
+            .ends_with("initContainers[0].securityContext")
+    );
+}
+
+#[test]
+fn privilege_escalation_is_silent_when_the_field_is_unset() {
+    let mut rhai = lib_script();
+    let obj = json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "nu", "namespace": "app" },
+        "spec": { "containers": [ { "name": "web", "image": "x:1", "securityContext": { "runAsNonRoot": true } } ] }
+    });
+    assert_eq!(
+        pod_findings(&mut rhai, "privilege_escalation_container", &obj, "#{}"),
+        json!([])
+    );
+}
+
+#[test]
+fn privileged_container_flags_an_init_container_and_ignores_false() {
+    let mut rhai = lib_script();
+    let obj = json!({
+        "apiVersion": "v1", "kind": "Pod",
+        "metadata": { "name": "init", "namespace": "app" },
+        "spec": {
+            "initContainers": [ { "name": "prepare", "image": "x:1",
+                "securityContext": { "privileged": true } } ],
+            "containers": [ { "name": "web", "image": "x:1", "securityContext": { "privileged": false } } ]
+        }
+    });
+    let found = pod_findings(&mut rhai, "privileged_container", &obj, "#{}");
+    assert_eq!(rules(&found), vec!["privileged-container"]);
+    assert!(
+        found[0]["path"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("spec.initContainers[0]")
+    );
+}
+
+#[test]
+fn host_pid_flags_the_pod_spec_of_a_daemonset_and_ignores_false() {
+    let mut rhai = lib_script();
+    let on = host_flag_object("DaemonSet", "hostPID", true);
+    let found = pod_findings(&mut rhai, "host_pid", &on, "#{}");
+    assert_eq!(rules(&found), vec!["host-pid"]);
+    assert_eq!(found[0]["path"], json!("spec.template.spec.hostPID"));
+    let off = host_flag_object("DaemonSet", "hostPID", false);
+    assert_eq!(pod_findings(&mut rhai, "host_pid", &off, "#{}"), json!([]));
+}
+
+#[test]
+fn pod_checks_of_this_batch_are_silent_on_non_workloads() {
+    let mut rhai = lib_script();
+    let configmap = json!({
+        "apiVersion": "v1", "kind": "ConfigMap",
+        "metadata": { "name": "cm", "namespace": "app" },
+        "data": { "privileged": "true", "runAsNonRoot": "true", "hostPID": "true" }
+    });
+    for function in [
+        "host_pid",
+        "privilege_escalation_container",
+        "privileged_container",
+        "run_as_non_root",
+    ] {
+        assert_eq!(
+            pod_findings(&mut rhai, function, &configmap, "#{}"),
+            json!([]),
+            "{function}"
+        );
+    }
 }

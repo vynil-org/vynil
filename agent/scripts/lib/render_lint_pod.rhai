@@ -44,6 +44,11 @@ private fn drops_capability(drops, cap) {
     false
 }
 
+// Vrai quand la liste `list` contient exactement `value`.
+private fn contains_value(list, value) {
+    type_of(list) == "array" && value in list
+}
+
 // Constats « pod partagé avec l'hôte » : le champ booléen `field_name` de la spec du pod vaut
 // `true`. Un constat par objet.
 private fn host_flag_findings(rule, field_name, what, obj) {
@@ -164,6 +169,107 @@ fn host_ipc(obj, objs, ctx, params) {
 // Namespace réseau de l'hôte partagé (`hostNetwork: true`).
 fn host_network(obj, objs, ctx, params) {
     host_flag_findings("host-network", "hostNetwork", "l'espace réseau de l'hôte", obj)
+}
+
+// Namespace des processus de l'hôte partagé (`hostPID: true`).
+fn host_pid(obj, objs, ctx, params) {
+    host_flag_findings("host-pid", "hostPID", "l'espace des processus de l'hôte", obj)
+}
+
+// Conteneur qui permet l'escalade de privilèges : `allowPrivilegeEscalation: true`, ou
+// `privileged: true`, ou la capacité `SYS_ADMIN` ajoutée (égalité exacte, comme kube-linter).
+// Un constat par conteneur, pour la première condition qui s'applique.
+fn privilege_escalation_container(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            let sc = field(c.container, "securityContext");
+            let reason = "";
+            if field(sc, "allowPrivilegeEscalation") == true {
+                reason = "allowPrivilegeEscalation: true";
+            } else if field(sc, "privileged") == true {
+                reason = "privileged: true";
+            } else if contains_value(field(field(sc, "capabilities"), "add"), "SYS_ADMIN") {
+                reason = "capacité SYS_ADMIN ajoutée";
+            }
+            if reason != "" {
+                findings.push(render_lint::finding(
+                    "privilege-escalation-container",
+                    "error",
+                    obj,
+                    c.path + ".securityContext",
+                    `conteneur "${field(c.container, "name")}" de ${kind} "${name}" : ${reason} ; permet l'escalade de privilèges, définir allowPrivilegeEscalation: false et privileged: false, et retirer SYS_ADMIN`
+                ));
+            }
+        }
+    }
+    findings
+}
+
+// Conteneur (initialisation comprise) en mode privilégié : `privileged: true`.
+fn privileged_container(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        for c in render_lint::containers(entry) {
+            if field(field(c.container, "securityContext"), "privileged") == true {
+                findings.push(render_lint::finding(
+                    "privileged-container",
+                    "error",
+                    obj,
+                    c.path + ".securityContext.privileged",
+                    `conteneur "${field(c.container, "name")}" de ${kind} "${name}" : mode privilégié (privileged: true) ; passer privileged à false ou le retirer`
+                ));
+            }
+        }
+    }
+    findings
+}
+
+// Conteneur (initialisation comprise) qui ne garantit pas l'exécution sans root. `runAsNonRoot`
+// est celui du conteneur, à défaut celui du pod ; `runAsUser` suit la même règle. Un constat par
+// conteneur : « non défini à true », sinon « runAsUser à 0 ».
+fn run_as_non_root(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let findings = [];
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    for entry in render_lint::pod_templates(obj) {
+        let pod_sc = field(field(field(entry, "pod"), "spec"), "securityContext");
+        for c in render_lint::containers(entry) {
+            let cname = field(c.container, "name");
+            let sc = field(c.container, "securityContext");
+            let nonroot = field(sc, "runAsNonRoot");
+            if nonroot == () { nonroot = field(pod_sc, "runAsNonRoot"); }
+            if nonroot != true {
+                findings.push(render_lint::finding(
+                    "run-as-non-root",
+                    "error",
+                    obj,
+                    c.path,
+                    `conteneur "${cname}" de ${kind} "${name}" : runAsNonRoot n'est pas à true ; définir runAsNonRoot: true (sur le conteneur ou le pod) et un runAsUser non nul`
+                ));
+                continue;
+            }
+            let uid = field(sc, "runAsUser");
+            if uid == () { uid = field(pod_sc, "runAsUser"); }
+            if type_of(uid) == "i64" && uid == 0 {
+                findings.push(render_lint::finding(
+                    "run-as-non-root",
+                    "error",
+                    obj,
+                    c.path,
+                    `conteneur "${cname}" de ${kind} "${name}" : runAsNonRoot est à true mais runAsUser vaut 0 ; définir un runAsUser non nul`
+                ));
+            }
+        }
+    }
+    findings
 }
 
 // Image d'un conteneur d'un objet qui utilise un tag `latest` ou pas de tag.
