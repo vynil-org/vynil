@@ -17,8 +17,7 @@ checks:
     reason: "porté dans un lot ultérieur"
   - name: dangling-horizontalpodautoscaler
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: dangling-ingress
     theme: network
     status: deferred
@@ -78,8 +77,7 @@ checks:
     status: ported
   - name: hpa-minimum-three-replicas
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: invalid-target-ports
     theme: network
     status: deferred

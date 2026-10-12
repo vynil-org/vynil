@@ -1,0 +1,282 @@
+# Cibles présentes (dans le namespace app) : workloads des genres résolubles.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: db, namespace: app}
+spec:
+  replicas: 3
+  serviceName: db
+  selector: {matchLabels: {app: db}}
+  template:
+    metadata: {labels: {app: db}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: agent, namespace: app}
+spec:
+  selector: {matchLabels: {app: agent}}
+  template:
+    metadata: {labels: {app: agent}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata: {name: rs-web, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: rs-web}}
+  template:
+    metadata: {labels: {app: rs-web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: migrate, namespace: app}
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata: {labels: {app: migrate}}
+    spec: {restartPolicy: Never, containers: [{name: migrate, image: "registry.example.test/migrate:3.1.0"}]}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: nightly, namespace: app}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: nightly}}
+        spec: {restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+# Cible d'un namespace autre que celui du HPA : l'outil ne tient pas compte du namespace.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: onlyother, namespace: other}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: onlyother}}
+  template:
+    metadata: {labels: {app: onlyother}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Version antérieure du groupe apps : cible de h-version-match.
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata: {name: legacy, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: legacy}}
+  template:
+    metadata: {labels: {app: legacy}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Groupe tiers homonyme d'un Deployment : n'est pas une cible de apps/v1.
+apiVersion: example.io/v1
+kind: Deployment
+metadata: {name: tiers, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: tiers}}
+  template:
+    metadata: {labels: {app: tiers}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Objets de genres non résolubles comme cible : Service, ReplicationController, Pod.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-web, namespace: app}
+spec:
+  selector: {app: web}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: rc-web, namespace: app}
+spec:
+  replicas: 3
+  selector: {app: rc-web}
+  template:
+    metadata: {labels: {app: rc-web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: pod-web, namespace: app}
+spec:
+  containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# HPA dont la cible existe : conforme.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-deploy-ok, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: 3
+  maxReplicas: 9
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-sts-ok, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: StatefulSet, name: db}
+  minReplicas: 3
+  maxReplicas: 9
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-ds-ok, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: DaemonSet, name: agent}
+  minReplicas: 3
+  maxReplicas: 9
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-rs-ok, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: ReplicaSet, name: rs-web}
+  minReplicas: 3
+  maxReplicas: 9
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-job-ok, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: batch/v1, kind: Job, name: migrate}
+  minReplicas: 3
+  maxReplicas: 9
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-cron-ok, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: batch/v1, kind: CronJob, name: nightly}
+  minReplicas: 3
+  maxReplicas: 9
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-version-match, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1beta2, kind: Deployment, name: legacy}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Cible absente : non conforme.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-missing, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: nope}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Cible présente dans un autre namespace seulement : non signalée (l'outil ignore le namespace).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-other-ns-target, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: onlyother}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Cible absente, HPA dans un autre namespace : non conforme.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-other-ns-missing, namespace: other}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: nope}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Groupe tiers : le Deployment example.io/v1 tiers n'est pas la cible apps/v1.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-tiers-group, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: tiers}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Version : le Deployment est apps/v1beta2, la cible déclarée apps/v1.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-version-mismatch, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: legacy}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Genre : la cible web est un Deployment, pas un StatefulSet.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-kind-mismatch, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: StatefulSet, name: web}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Genre non résolu : un Service n'est pas une cible.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-svc, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: v1, kind: Service, name: svc-web}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Genre non résolu : un ReplicationController n'est pas une cible.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-rc, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: v1, kind: ReplicationController, name: rc-web}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Genre non résolu : un Pod n'est pas une cible.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-pod, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: v1, kind: Pod, name: pod-web}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Groupe extensions : le Deployment d'extensions/v1beta1 n'existe pas dans la liste.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-ext, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: extensions/v1beta1, kind: Deployment, name: web}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Version d'HPA autoscaling/v1 : la vérification s'applique à tout le groupe autoscaling.
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata: {name: h-v1-missing, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: nope}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Référence sans apiVersion : aucune cible ne correspond.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: h-noapi, namespace: app}
+spec:
+  scaleTargetRef: {kind: Deployment, name: web}
+  minReplicas: 3
+  maxReplicas: 9

@@ -218,6 +218,9 @@ fn all(objs, ctx, opts) {
     let cfg = settings(opts);
     let raw = [];
     for obj in objs {
+        if enabled(cfg, "dangling-horizontalpodautoscaler") {
+            raw = run_check(raw, cfg, "dangling-horizontalpodautoscaler", workload::dangling_horizontalpodautoscaler(obj, objs, ctx, param(cfg, "dangling-horizontalpodautoscaler")));
+        }
         if enabled(cfg, "default-service-account") {
             raw = run_check(raw, cfg, "default-service-account", pod::default_service_account(obj, objs, ctx, param(cfg, "default-service-account")));
         }
@@ -250,6 +253,9 @@ fn all(objs, ctx, opts) {
         }
         if enabled(cfg, "host-pid") {
             raw = run_check(raw, cfg, "host-pid", pod::host_pid(obj, objs, ctx, param(cfg, "host-pid")));
+        }
+        if enabled(cfg, "hpa-minimum-three-replicas") {
+            raw = run_check(raw, cfg, "hpa-minimum-three-replicas", workload::hpa_minimum_three_replicas(obj, objs, ctx, param(cfg, "hpa-minimum-three-replicas")));
         }
         if enabled(cfg, "job-ttl-seconds-after-finished") {
             raw = run_check(raw, cfg, "job-ttl-seconds-after-finished", workload::job_ttl_seconds_after_finished(obj, objs, ctx, param(cfg, "job-ttl-seconds-after-finished")));
@@ -345,5 +351,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "host-ipc", "host-network", "host-pid", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-node-affinity", "no-read-only-root-fs", "no-readiness-probe", "no-rolling-update-strategy", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "use-namespace", "writable-host-mount"]
+    ["dangling-horizontalpodautoscaler", "default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "host-ipc", "host-network", "host-pid", "hpa-minimum-three-replicas", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-node-affinity", "no-read-only-root-fs", "no-readiness-probe", "no-rolling-update-strategy", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "use-namespace", "writable-host-mount"]
 }

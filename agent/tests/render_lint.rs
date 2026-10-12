@@ -1575,6 +1575,76 @@ fn minimum_three_replicas_honours_min_replicas_like_kube_linter() {
     assert_eq!(got, want);
 }
 
+fn hpa(name: &str, target: &Value) -> Value {
+    json!({
+        "apiVersion": "autoscaling/v2", "kind": "HorizontalPodAutoscaler",
+        "metadata": { "name": name, "namespace": "app" },
+        "spec": { "scaleTargetRef": target, "minReplicas": 3, "maxReplicas": 9 }
+    })
+}
+
+#[test]
+fn cross_object_check_uses_the_object_list() {
+    // Scénario de render_lint_workload.sdd : la cible du HPA n'est pas dans la liste d'objets.
+    let hpa = hpa(
+        "web",
+        &json!({ "apiVersion": "apps/v1", "kind": "Deployment", "name": "missing" }),
+    );
+    let got = check_findings("dangling-horizontalpodautoscaler", &[hpa], "#{}");
+    assert_eq!(got, vec!["HorizontalPodAutoscaler/web"]);
+}
+
+#[test]
+fn a_matching_target_is_not_dangling() {
+    let target = single_replica_deployment();
+    let hpa = hpa(
+        "web",
+        &json!({ "apiVersion": "apps/v1", "kind": "Deployment", "name": "web" }),
+    );
+    let got = check_findings("dangling-horizontalpodautoscaler", &[target, hpa], "#{}");
+    assert!(got.is_empty(), "cible présente : {got:?}");
+}
+
+#[test]
+fn dangling_horizontalpodautoscaler_resolves_by_group_version_and_kind_like_kube_linter() {
+    // Sortie de kube-linter v0.8.3 sur la fixture dangling-horizontalpodautoscaler : le groupe
+    // (example.io Deployment ne résout pas apps/v1), la version (apps/v1beta2 ne résout pas
+    // apps/v1), le genre (Service, ReplicationController, Pod ne sont pas des cibles) et le
+    // namespace (h-other-ns-target résolu sur une cible d'un autre namespace) sont mesurés.
+    let objs = fixture_objects("dangling-horizontalpodautoscaler");
+    let got = check_findings("dangling-horizontalpodautoscaler", &objs, "#{}");
+    let want = vec![
+        "HorizontalPodAutoscaler/h-ext",
+        "HorizontalPodAutoscaler/h-kind-mismatch",
+        "HorizontalPodAutoscaler/h-missing",
+        "HorizontalPodAutoscaler/h-noapi",
+        "HorizontalPodAutoscaler/h-other-ns-missing",
+        "HorizontalPodAutoscaler/h-pod",
+        "HorizontalPodAutoscaler/h-rc",
+        "HorizontalPodAutoscaler/h-svc",
+        "HorizontalPodAutoscaler/h-tiers-group",
+        "HorizontalPodAutoscaler/h-v1-missing",
+        "HorizontalPodAutoscaler/h-version-mismatch",
+    ];
+    assert_eq!(got, want);
+}
+
+#[test]
+fn hpa_minimum_replicas_honours_min_replicas_like_kube_linter() {
+    // Paramètre non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
+    // `{minReplicas: 2}` (template hpa-minimum-replicas) sur la fixture hpa-minimum-three-replicas :
+    // absent, null, one et zero restent signalés ; two, v1 et v2beta2 (deux réplicas) ne le sont plus.
+    let objs = fixture_objects("hpa-minimum-three-replicas");
+    let got = check_findings("hpa-minimum-three-replicas", &objs, "#{minReplicas: 2}");
+    let want = vec![
+        "HorizontalPodAutoscaler/absent-hpa",
+        "HorizontalPodAutoscaler/null-hpa",
+        "HorizontalPodAutoscaler/one-hpa",
+        "HorizontalPodAutoscaler/zero-hpa",
+    ];
+    assert_eq!(got, want);
+}
+
 #[test]
 fn no_anti_affinity_honours_min_replicas_like_kube_linter() {
     // Paramètre non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
@@ -1638,8 +1708,13 @@ fn the_workload_batch_does_not_raise_on_unexpected_shapes() {
         "mismatching_selector",
         "deprecated_service_account_field",
         "use_namespace",
+        "dangling_horizontalpodautoscaler",
+        "hpa_minimum_three_replicas",
     ];
     let odd = vec![
+        json!({ "apiVersion": "autoscaling/v2", "kind": "HorizontalPodAutoscaler", "metadata": { "name": "h", "namespace": "app" },
+                "spec": { "scaleTargetRef": "y", "minReplicas": "x" } }),
+        json!({ "apiVersion": "autoscaling/v2", "kind": "HorizontalPodAutoscaler", "metadata": { "name": "i", "namespace": "app" }, "spec": 4 }),
         json!({ "apiVersion": "apps/v1", "kind": "Deployment", "metadata": { "name": "a", "namespace": "app" }, "spec": "oops" }),
         json!({ "apiVersion": "apps/v1", "kind": "Deployment", "metadata": { "name": "b", "namespace": "app" },
                 "spec": { "replicas": "trois", "selector": "x", "strategy": 3, "template": "y" } }),

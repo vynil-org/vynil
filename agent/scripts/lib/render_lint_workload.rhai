@@ -392,3 +392,79 @@ fn use_namespace(obj, objs, ctx, params) {
         `${kind} "${name}" : déployé dans le namespace par défaut ; le placer dans un namespace dédié (metadata.namespace)`
     )]
 }
+
+// Genres de workload qui peuvent être la cible d'un HorizontalPodAutoscaler, par groupe d'API.
+// Mesuré sur kube-linter v0.8.3 : Deployment, StatefulSet, DaemonSet, ReplicaSet (apps) ; Job,
+// CronJob (batch). Un Pod et un ReplicationController ne sont jamais résolus comme cible.
+private fn scalable_kinds(group) {
+    if group == "apps" {
+        ["Deployment", "StatefulSet", "DaemonSet", "ReplicaSet"]
+    } else if group == "batch" {
+        ["Job", "CronJob"]
+    } else {
+        []
+    }
+}
+
+// Vrai quand un objet de `objs` est la cible `api`/`kind`/`name` d'une référence de HPA. La
+// résolution compare l'apiVersion exacte (groupe ET version, mesuré : une cible apps/v1beta2 ne
+// résout pas une référence apps/v1) et le genre dans le groupe ; le namespace n'entre pas en jeu
+// (mesuré : une cible d'un autre namespace est résolue). Une apiVersion sans groupe ne résout rien.
+private fn target_exists(objs, api, kind, name) {
+    import "render_lint" as render_lint;
+    let group = render_lint::api_group_of(api);
+    if type_of(group) != "string" || !(kind in scalable_kinds(group)) { return false; }
+    for o in objs {
+        if text(field(field(o, "metadata"), "name")) == name
+            && text(field(o, "apiVersion")) == api
+            && render_lint::kind_of_group(o, [kind], group) {
+            return true;
+        }
+    }
+    false
+}
+
+// HorizontalPodAutoscaler dont la cible `spec.scaleTargetRef` n'existe pas dans la liste d'objets.
+// Seule vérification de ce module qui lit `objs` : la résolution se fait entre objets.
+fn dangling_horizontalpodautoscaler(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !kind_of_group(obj, ["HorizontalPodAutoscaler"], "autoscaling") { return []; }
+    let spec = field(obj, "spec");
+    let target = field(spec, "scaleTargetRef");
+    if type_of(target) != "map" { return []; }
+    let api = text(field(target, "apiVersion"));
+    let kind = text(field(target, "kind"));
+    let tname = text(field(target, "name"));
+    if target_exists(objs, api, kind, tname) { return []; }
+    let name = text(field(field(obj, "metadata"), "name"));
+    [render_lint::finding(
+        "dangling-horizontalpodautoscaler",
+        "error",
+        obj,
+        "spec.scaleTargetRef",
+        `HorizontalPodAutoscaler "${name}" : la cible ${kind} "${tname}" (${api}) est absente de la liste d'objets ; créer la cible ou corriger spec.scaleTargetRef`
+    )]
+}
+
+// HorizontalPodAutoscaler dont `spec.minReplicas` est inférieur à `minReplicas` (défaut 3). Absent
+// ou nul : 1, valeur par défaut de Kubernetes. Une valeur qui n'est pas un entier (chaîne, décimal)
+// est une forme inattendue : pas de constat. Tous les groupes autoscaling sont concernés.
+fn hpa_minimum_three_replicas(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !kind_of_group(obj, ["HorizontalPodAutoscaler"], "autoscaling") { return []; }
+    let spec = field(obj, "spec");
+    if type_of(spec) != "map" { return []; }
+    let raw = field(spec, "minReplicas");
+    let minimum = if raw == () { 1 } else { raw };
+    if type_of(minimum) != "i64" { return []; }
+    let want = int_param(params, "minReplicas", 3);
+    if minimum >= want { return []; }
+    let name = text(field(field(obj, "metadata"), "name"));
+    [render_lint::finding(
+        "hpa-minimum-three-replicas",
+        "error",
+        obj,
+        "spec.minReplicas",
+        `HorizontalPodAutoscaler "${name}" : minReplicas ${minimum}, minimum ${want} ; porter spec.minReplicas à au moins ${want}`
+    )]
+}
