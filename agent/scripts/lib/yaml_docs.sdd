@@ -32,6 +32,9 @@ Handles:
     légitime) avec son type.
 
 Must:
+  Être le seul appelant de @yaml_decode_multi sous /agent/scripts : tout autre script décode un
+    texte multi-document par @decode, jamais par @yaml_decode_multi en direct (les fixtures de
+    /agent/tests/sample/ sont hors périmètre, ce ne sont pas des scripts livrés).
   Déléguer le décodage à @yaml_decode_multi ; ne pas réimplémenter de parseur.
   Préserver l'ordre des documents.
   Ne pas muter les cartes retournées.
@@ -68,6 +71,11 @@ Scenario: YAML invalide
   Given le texte `"kind: [unclosed\n"`
   When @decode est appelé
   Then l'interpréteur lève une erreur commençant par `YamlError:`
+
+Scenario: aucun script livré n'appelle yaml_decode_multi en direct
+  Given tous les fichiers `.rhai` sous /agent/scripts, commentaires retirés
+  When on cherche `yaml_decode_multi(`
+  Then seul ./yaml_docs.rhai en contient
 
 Tasks:
   [x] Écrire `yaml_docs.rhai` et ses tests dans `agent/tests/rhai_lib.rs` (un test par scénario,

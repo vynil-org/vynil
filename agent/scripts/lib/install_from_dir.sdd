@@ -87,7 +87,7 @@ Raises:
   Kind inconnu — @install_obj/@install_allowed_obj : `kind: <obj.kind> is unknown from the
     apiServer.` — `throw` verbatim (point final compris) après `log_debug(@yaml_encode(@obj))`, quand
     `@api.exist()`@bool vaut false, c.-à-d. que la discovery core n'a jamais résolu le kind.
-  Lane de parsing — @get_objects : toute défaillance de @file_read, @yaml_decode_multi ou de rendu
+  Lane de parsing — @get_objects : toute défaillance de @file_read, @yd::decode ou de rendu
     `.hbs` est loggée comme `While parsing <file> :` via `log_error` et relancée avec `throw;` — c'est
     le texte d'erreur propre à l'engine qui voyage ; seul le contexte du fichier est ajouté.
   Les erreurs de @register_partial_dir/@register_helper_dir se propagent hors de @get_objects sans
@@ -103,16 +103,19 @@ Raises:
     plus tôt dans la boucle ont été attendus, les autres jamais, et l'erreur se propage à la lane appelante.
 
 Handles:
-  Les documents qui ne sont pas des cartes, n'ont pas de `kind`, n'ont pas de `metadata`, ou portent
-    un `metadata` non-cartes — `log_warn` `No kind for an object in file <file>` + `log_debug(@yaml_encode(doc))`,
-    jetés ; le texte du warn ne nomme que le cas kind-manquant même quand `kind` est présent et que
-    c'est `metadata` qui a échoué (Tasks).
+  Les documents vides ou non-cartes (un `{{#if}}` faux entre deux `---`, un scalaire) sont écartés par
+    @yd::decode de ./yaml_docs.sdd, en `log_debug` seulement : ce n'est pas un défaut du paquet.
+  Les cartes qui n'ont pas de `kind`, n'ont pas de `metadata`, ou portent un `metadata` non-cartes —
+    `log_warn` `No kind for an object in file <file>` + `log_debug(@yaml_encode(doc))`, jetées ; le
+    texte du warn ne nomme que le cas kind-manquant même quand `kind` est présent et que c'est
+    `metadata` qui a échoué (Tasks).
   Les fichiers dont le nom ne finit par aucun de `.yaml`, `.yml`, `.yaml.hbs`, `.yml.hbs` (test de
     suffixe case-sensitive) — zéro objet, zéro log. Les entrées de répertoire dans @dir suivent le même
     test de suffixe : ignorées, sauf si leur nom finit par un suffixe de manifest, où la défaillance IO
     de @file_read prend la lane parse-throw.
-  Les fichiers YAML multi-documents découpés sur `---` via @yaml_decode_multi et chaque document est
-    qualifié individuellement — les documents séparateurs vides atteignent le warn de rejet.
+  Les fichiers YAML multi-documents découpés sur `---` via @yd::decode (jamais @yaml_decode_multi en
+    direct, voir ./yaml_docs.sdd) et chaque carte est qualifiée individuellement — les documents
+    séparateurs vides sont écartés avant la qualification, sans warn.
   @dir vide ou un répertoire de seuls fichiers non-manifestes — @get_object retourne `[]`, chaque lane
     est un no-op propre retournant des tableaux vides.
   Applies cluster-scoped — @install_obj exige @allow_cluster ; @install_allowed_obj ne les applique jamais. Tous deux `log_warn` `Ignoring <kind> <name> as it is a clusterwide resource type.` sans
@@ -167,7 +170,7 @@ Must:
 Depends on:
   L'API moteur de vynil-core — @k8s_resource/@exist/@scope/@apply/@get_obj et la moitié K8sObject
     @delete/@wait_deleted/@original_kind du registrar core `k8sgeneric` ; @read_dir et @file_read du jeu
-    de helpers core `fs` ; @yaml_decode_multi/@yaml_encode du registrar `yaml` ;
+    de helpers core `fs` ; @yaml_encode du registrar `yaml` ; @yd::decode de ./yaml_docs.sdd ;
     @log_debug/@log_info/@log_warn/@log_error et @json_encode des helpers core-common ; @print/@type_of
     comme builtins rhai. Les surfaces `k8sraw`, `k8sworkload`, `http` et `image` existent sur les mêmes
     engines mais ce fichier ne les nomme jamais.
@@ -249,10 +252,11 @@ Scenario: tenant remaps out-of-allowed namespaces
   Aucun test mappé n'existe.
 
 Scenario: unqualified documents are warned and dropped
-  Given un fichier YAML tenant un document scalaire ou une carte sans `metadata`
+  Given un fichier YAML tenant un document vide, un document scalaire et une carte sans `metadata`
   When @get_objects s'exécute
-  Then `No kind for an object in file <file>` est warné, le document est dumpé en YAML en debug,
-    et seules des cartes qualifiées sont retournées
+  Then `No kind for an object in file <file>` est warné pour la seule carte, qui est dumpée en YAML
+    en debug ; le document vide et le scalaire sont écartés sans warn ; seules des cartes
+    qualifiées sont retournées
   Aucun test mappé n'existe.
 
 Scenario: remove prunes only stale previous entries

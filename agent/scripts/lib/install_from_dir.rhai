@@ -1,3 +1,4 @@
+import "yaml_docs" as yd;
 fn get_first() { [
     "Tenant",
     "Namespace",
@@ -39,9 +40,9 @@ fn get_objects(context, dir) {
         let objects = [];
         try {
             objects = if file.ends_with(".yaml") || file.ends_with(".yml") {
-                yaml_decode_multi(file_read(file))
+                yd::decode(file_read(file))
             } else if file.ends_with(".yaml.hbs") || file.ends_with(".yml.hbs") {
-                yaml_decode_multi(hbs.render_named(file, file_read(file), context))
+                yd::decode(hbs.render_named(file, file_read(file), context))
             } else {[]};
         } catch(e) {
             log_error(`While parsing ${file} :`);
