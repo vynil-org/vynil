@@ -4,18 +4,24 @@
 
 use std::sync::{Arc, Mutex};
 
-use client::testing::schema::{registry::SchemaRegistry, rhai::schema_rhai_register};
+use client::testing::{
+    lint::patterns,
+    schema::{registry::SchemaRegistry, rhai::schema_rhai_register},
+};
 use common::rhaihandler::Script;
 use serde_json::{Value, json};
 
+/// Moteur de la bibliothèque avec `regex_is_match` câblée comme dans le runner de lint.
 fn lib_script() -> Script {
     let base = env!("CARGO_MANIFEST_DIR");
-    Script::new_mock(
+    let mut rhai = Script::new_mock(
         vec![format!("{base}/scripts/lib")],
         vec![],
         vec![],
         Arc::new(Mutex::new(Vec::new())),
-    )
+    );
+    patterns::register(&mut rhai.engine);
+    rhai
 }
 
 /// Moteur de la bibliothèque avec `schema_known` / `schema_validate` câblés comme dans le
@@ -275,6 +281,15 @@ fn severity_override_applies_after_the_check() {
     assert_eq!(latest.map(|f| f["severity"].clone()), Some(json!("warn")));
     let ro = findings.iter().find(|f| f["rule"] == "no-read-only-root-fs");
     assert_eq!(ro.map(|f| f["severity"].clone()), Some(json!("error")));
+}
+
+// ===== patterns.sdd =====
+
+#[test]
+fn the_library_engine_offers_regex_is_match() {
+    let mut rhai = lib_script();
+    let found = eval_json(&mut rhai, r#"regex_is_match("^app$", "app")"#);
+    assert_eq!(found, json!(true));
 }
 
 // ===== render_lint_pod.sdd (vérifications portées en C0) =====

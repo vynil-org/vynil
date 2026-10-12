@@ -14,6 +14,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use client::testing::lint::patterns;
 use common::rhaihandler::Script;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -61,13 +62,16 @@ fn read_catalogue(path: &Path) -> Catalogue {
     serde_yaml::from_str(&text).expect("catalogue valide")
 }
 
+/// Moteur de la bibliothèque avec `regex_is_match` câblée comme dans le runner de lint.
 fn library(lib: &Path) -> Script {
-    Script::new_mock(
+    let mut rhai = Script::new_mock(
         vec![lib.display().to_string()],
         vec![],
         vec![],
         Arc::new(Mutex::new(Vec::new())),
-    )
+    );
+    patterns::register(&mut rhai.engine);
+    rhai
 }
 
 /// Objets d'un fichier multi-documents, sans les documents vides.
