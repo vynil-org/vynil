@@ -65,7 +65,7 @@ Handles:
   Document instance scalaire ou tableau — @strip_nulls le traverse sans erreur.
 
 Tasks:
-  [ ] Couvrir chaque scénario par un test de même nom.
+  [x] Couvrir chaque scénario par un test de même nom.
   [?] `x-kubernetes-embedded-resource` n'est pas interprété (traité comme mot-clé inconnu).
       Décider, sur un échantillon de CRD réelles de la distribution, si un objet embarqué doit
       être exempté du mode strict ou validé contre `apiVersion`/`kind`.
