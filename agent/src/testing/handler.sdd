@@ -286,7 +286,7 @@ Handles:
     @PoisonError::into_inner, les objets restent évalués.
 
 Tasks:
-  [ ] Couvrir la voie lint par des tests de même nom que les scénarios lint ci-dessous.
+  [x] Couvrir la voie lint par des tests de même nom que les scénarios lint ci-dessous.
   [ ] Couvrir ce fichier par des tests — pas de module #[cfg(test)] ici et les seuls tests
       côté agent siègent aujourd'hui dans ./result.rs ; mapper chaque scénario vers un test du même nom :
       scan-apiVersion-gate-skips-correct-spelling, duplicate-names-abort-load-later-file-named,

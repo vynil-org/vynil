@@ -115,6 +115,13 @@ impl LintRunner {
     }
 
     /// Appelle `lint(objs, ctx)` ; `ctx.test.name` nomme les suppressions.
+    /// Vrai si la distribution définit `lint_suite` (le hook de suite n'a alors qu'un
+    /// enregistrement de suite à produire, même sans constat).
+    #[must_use]
+    pub const fn has_suite_hook(&self) -> bool {
+        self.has_suite_hook
+    }
+
     #[must_use]
     pub fn run_test(&self, ctx: &serde_json::Value, objects: &[Dynamic]) -> LintOutcome {
         if !self.has_test_hook {
