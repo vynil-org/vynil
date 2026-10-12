@@ -197,6 +197,66 @@ fn no_extensions_v1beta(obj, objs, ctx, params) {
     )]
 }
 
+// Workload sans affinité de nœud : `nodeAffinity` absent du champ `affinity` du pod. Une affinité
+// vide (`nodeAffinity: {}`) compte comme définie.
+fn no_node_affinity(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !deployment_like(obj) { return []; }
+    let templates = render_lint::pod_templates(obj);
+    if templates.len() == 0 { return []; }
+    let spec = pod_spec(templates[0]);
+    if type_of(spec) != "map" || malformed(field(spec, "affinity")) { return []; }
+    if field(field(spec, "affinity"), "nodeAffinity") != () { return []; }
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    [render_lint::finding(
+        "no-node-affinity",
+        "error",
+        obj,
+        pod_spec_path(templates[0]) + ".affinity",
+        `${kind} "${name}" : aucune affinité de nœud ; définir spec.affinity.nodeAffinity pour choisir les nœuds d'exécution`
+    )]
+}
+
+// Stratégie de mise à jour absente ou dont le type ne correspond pas à `strategyTypeRegex`
+// (défaut `^(RollingUpdate|Rolling)$`). Un Deployment lit `spec.strategy`, un StatefulSet ou un
+// DaemonSet lit `spec.updateStrategy` ; les autres genres ne sont pas concernés.
+fn no_rolling_update_strategy(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    let field_name = if kind_of_group(obj, ["Deployment"], "apps") {
+        "strategy"
+    } else if kind_of_group(obj, ["StatefulSet", "DaemonSet"], "apps") {
+        "updateStrategy"
+    } else {
+        ""
+    };
+    if field_name == "" { return []; }
+    let regex = string_param(params, "strategyTypeRegex", "^(RollingUpdate|Rolling)$");
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    let path = "spec." + field_name + ".type";
+    let spec = field(obj, "spec");
+    if type_of(spec) != "map" || malformed(field(spec, field_name)) { return []; }
+    let stype = field(field(spec, field_name), "type");
+    if type_of(stype) != "string" || stype == "" {
+        return [render_lint::finding(
+            "no-rolling-update-strategy",
+            "error",
+            obj,
+            path,
+            `${kind} "${name}" : aucun type de stratégie (${path}) ; définir un type qui corresponde à ${regex}`
+        )];
+    }
+    if regex_is_match(regex, stype) { return []; }
+    [render_lint::finding(
+        "no-rolling-update-strategy",
+        "error",
+        obj,
+        path,
+        `${kind} "${name}" : stratégie ${stype} (${path}) ; utiliser un type qui corresponde à ${regex}, par exemple RollingUpdate`
+    )]
+}
+
 // Job autonome sans `ttlSecondsAfterFinished`, ou CronJob dont le gabarit de Job en définit un
 // (ils entrent en conflit avec successfulJobsHistoryLimit). Une valeur nulle compte comme absente.
 fn job_ttl_seconds_after_finished(obj, objs, ctx, params) {
@@ -312,5 +372,22 @@ fn deprecated_service_account_field(obj, objs, ctx, params) {
         obj,
         path,
         `${kind} "${name}" : serviceAccount "${sa}" et serviceAccountName "${san}" diffèrent ; supprimer serviceAccount et garder serviceAccountName`
+    )]
+}
+
+// Objet dans le namespace par défaut (absent, vide ou `default`) : genres DeploymentLike et Service.
+fn use_namespace(obj, objs, ctx, params) {
+    import "render_lint" as render_lint;
+    if !(deployment_like(obj) || kind_of_group(obj, ["Service"], "")) { return []; }
+    let ns = text(field(field(obj, "metadata"), "namespace"));
+    if ns != "" && ns != "default" { return []; }
+    let kind = text(field(obj, "kind"));
+    let name = text(field(field(obj, "metadata"), "name"));
+    [render_lint::finding(
+        "use-namespace",
+        "error",
+        obj,
+        "metadata.namespace",
+        `${kind} "${name}" : déployé dans le namespace par défaut ; le placer dans un namespace dédié (metadata.namespace)`
     )]
 }

@@ -199,8 +199,6 @@ fn all(objs, ctx) { all(objs, ctx, #{}) }
 fn all(objs, ctx, opts) {
     import "render_lint_pod" as pod;
     import "render_lint_workload" as workload;
-    // Les lots suivants ajoutent ici un `import` par thème et un appel par vérification, dans
-    // l'ordre alphabétique global des noms (voir `checks`).
     let cfg = settings(opts);
     let raw = [];
     for obj in objs {
@@ -261,11 +259,17 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "no-liveness-probe") {
             raw = run_check(raw, cfg, "no-liveness-probe", pod::no_liveness_probe(obj, objs, ctx, param(cfg, "no-liveness-probe")));
         }
+        if enabled(cfg, "no-node-affinity") {
+            raw = run_check(raw, cfg, "no-node-affinity", workload::no_node_affinity(obj, objs, ctx, param(cfg, "no-node-affinity")));
+        }
         if enabled(cfg, "no-read-only-root-fs") {
             raw = run_check(raw, cfg, "no-read-only-root-fs", pod::no_read_only_root_fs(obj, objs, ctx, param(cfg, "no-read-only-root-fs")));
         }
         if enabled(cfg, "no-readiness-probe") {
             raw = run_check(raw, cfg, "no-readiness-probe", pod::no_readiness_probe(obj, objs, ctx, param(cfg, "no-readiness-probe")));
+        }
+        if enabled(cfg, "no-rolling-update-strategy") {
+            raw = run_check(raw, cfg, "no-rolling-update-strategy", workload::no_rolling_update_strategy(obj, objs, ctx, param(cfg, "no-rolling-update-strategy")));
         }
         if enabled(cfg, "priority-class-name") {
             raw = run_check(raw, cfg, "priority-class-name", pod::priority_class_name(obj, objs, ctx, param(cfg, "priority-class-name")));
@@ -312,6 +316,9 @@ fn all(objs, ctx, opts) {
         if enabled(cfg, "unset-memory-requirements") {
             raw = run_check(raw, cfg, "unset-memory-requirements", pod::unset_memory_requirements(obj, objs, ctx, param(cfg, "unset-memory-requirements")));
         }
+        if enabled(cfg, "use-namespace") {
+            raw = run_check(raw, cfg, "use-namespace", workload::use_namespace(obj, objs, ctx, param(cfg, "use-namespace")));
+        }
         if enabled(cfg, "writable-host-mount") {
             raw = run_check(raw, cfg, "writable-host-mount", pod::writable_host_mount(obj, objs, ctx, param(cfg, "writable-host-mount")));
         }
@@ -322,5 +329,5 @@ fn all(objs, ctx, opts) {
 // Noms des vérifications portées, triés. Doit correspondre aux entrées `ported` du catalogue
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
-    ["default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "host-ipc", "host-network", "host-pid", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-read-only-root-fs", "no-readiness-probe", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "writable-host-mount"]
+    ["default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "host-ipc", "host-network", "host-pid", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-node-affinity", "no-read-only-root-fs", "no-readiness-probe", "no-rolling-update-strategy", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "use-namespace", "writable-host-mount"]
 }

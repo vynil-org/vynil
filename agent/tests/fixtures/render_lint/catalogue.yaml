@@ -110,8 +110,7 @@ checks:
     status: ported
   - name: no-node-affinity
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: no-read-only-root-fs
     theme: pod
     status: ported
@@ -120,8 +119,7 @@ checks:
     status: ported
   - name: no-rolling-update-strategy
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: non-existent-service-account
     theme: rbac
     status: deferred
@@ -209,8 +207,7 @@ checks:
     status: ported
   - name: use-namespace
     theme: workload
-    status: deferred
-    reason: "porté dans un lot ultérieur"
+    status: ported
   - name: wildcard-in-rules
     theme: rbac
     status: deferred

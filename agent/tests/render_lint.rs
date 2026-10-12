@@ -1502,6 +1502,30 @@ fn no_anti_affinity_honours_min_replicas_like_kube_linter() {
 }
 
 #[test]
+fn no_rolling_update_strategy_honours_the_regex_like_kube_linter() {
+    // Paramètre non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
+    // `{strategyTypeRegex: "^Recreate$"}` sur la fixture no-rolling-update-strategy : les
+    // stratégies RollingUpdate deviennent des constats (`ok-rolling`, `ok-sts`, `ok-ds`), et
+    // `dep-recreate` ne l'est plus.
+    let objs = fixture_objects("no-rolling-update-strategy");
+    let got = check_findings(
+        "no-rolling-update-strategy",
+        &objs,
+        r#"#{strategyTypeRegex: "^Recreate$"}"#,
+    );
+    let want = vec![
+        "DaemonSet/ds-none",
+        "DaemonSet/ok-ds",
+        "Deployment/beta-dep",
+        "Deployment/dep-none",
+        "Deployment/ok-rolling",
+        "StatefulSet/ok-sts",
+        "StatefulSet/sts-ondelete",
+    ];
+    assert_eq!(got, want);
+}
+
+#[test]
 fn no_extensions_v1beta_honours_group_and_version_like_kube_linter() {
     // Paramètres non par défaut. Sortie de kube-linter v0.8.3 avec le check personnalisé
     // `{group: apps, version: "v1beta.+"}` sur la fixture no-extensions-v1beta : seul le
@@ -1513,4 +1537,51 @@ fn no_extensions_v1beta_honours_group_and_version_like_kube_linter() {
         r#"#{group: "apps", version: "v1beta.+"}"#,
     );
     assert_eq!(got, vec!["Deployment/beta-apps-dep"]);
+}
+
+#[test]
+fn the_workload_batch_does_not_raise_on_unexpected_shapes() {
+    // Formes inattendues (spec, gabarit, sélecteur, affinité, stratégie, champs de mauvais type) :
+    // aucune levée, et aucun constat du thème workload.
+    let functions = [
+        "minimum_three_replicas",
+        "no_anti_affinity",
+        "no_extensions_v1beta",
+        "no_node_affinity",
+        "no_rolling_update_strategy",
+        "job_ttl_seconds_after_finished",
+        "mismatching_selector",
+        "deprecated_service_account_field",
+        "use_namespace",
+    ];
+    let odd = vec![
+        json!({ "apiVersion": "apps/v1", "kind": "Deployment", "metadata": { "name": "a", "namespace": "app" }, "spec": "oops" }),
+        json!({ "apiVersion": "apps/v1", "kind": "Deployment", "metadata": { "name": "b", "namespace": "app" },
+                "spec": { "replicas": "trois", "selector": "x", "strategy": 3, "template": "y" } }),
+        json!({ "apiVersion": "apps/v1", "kind": "StatefulSet", "metadata": { "name": "c", "namespace": "app" },
+                "spec": { "replicas": "uno", "updateStrategy": "z", "selector": { "matchLabels": "x", "matchExpressions": "y" },
+                          "template": { "metadata": { "labels": { "app": "c" } }, "spec": { "affinity": "z", "serviceAccount": 4, "containers": "w" } } } }),
+        json!({ "apiVersion": "batch/v1", "kind": "CronJob", "metadata": { "name": "d", "namespace": "app" },
+                "spec": { "jobTemplate": "oops" } }),
+        json!({ "apiVersion": "batch/v1", "kind": "Job", "metadata": { "name": "e", "namespace": "app" },
+                "spec": { "ttlSecondsAfterFinished": "100", "selector": { "matchExpressions": [ "x" ] },
+                          "template": { "spec": { "affinity": { "nodeAffinity": 5 }, "containers": [ "x" ] } } } }),
+        json!({ "apiVersion": "v1", "kind": "Pod", "metadata": { "name": "f", "namespace": "app" }, "spec": 7 }),
+        json!({ "apiVersion": "v1", "kind": "ReplicationController", "metadata": { "name": "g", "namespace": "app" },
+                "spec": { "replicas": 2.5, "template": { "spec": { "affinity": "z" } } } }),
+    ];
+    let mut rhai = lib_script();
+    set_objs(&mut rhai, &Value::Array(odd));
+    let only = functions
+        .iter()
+        .map(|f| format!("\"{}\"", f.replace('_', "-")))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let found = eval_json(
+        &mut rhai,
+        &format!(
+            r#"import "render_lint" as render_lint; render_lint::all(objs, #{{}}, #{{only: [{only}]}})"#
+        ),
+    );
+    assert_eq!(found, json!([]), "aucun constat sur des formes inattendues");
 }

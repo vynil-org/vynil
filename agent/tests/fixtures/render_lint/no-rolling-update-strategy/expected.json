@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "no-rolling-update-strategy",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "ds-none"
+  },
+  {
+    "rule": "no-rolling-update-strategy",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "beta-dep"
+  },
+  {
+    "rule": "no-rolling-update-strategy",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "dep-none"
+  },
+  {
+    "rule": "no-rolling-update-strategy",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "dep-recreate"
+  },
+  {
+    "rule": "no-rolling-update-strategy",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "sts-ondelete"
+  }
+]
