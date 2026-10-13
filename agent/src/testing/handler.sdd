@@ -440,3 +440,11 @@ Scenario: lint sections follow what the package declared
   Then le constat porte sur le Deployment et pas sur le ConfigMap, et un objet créé hors de
     toute section ne figure que dans `objs.all` et `objs.unsectioned`
   Test @lint-sections-follow-what-the-package-declared
+
+Scenario: an unreadable status fails a lint sections row
+  Given un handler configuré par @with_lint et une lecture du `status` de l'instance qui échoue
+  When les sections du lint sont construites
+  Then toutes les sections sont vides, tous les objets sont dans `objs.unsectioned`, et une
+    ligne `lint:sections` en échec porte l'erreur de lecture, en plus des lignes du script
+  And un `status` lu avec succès sans aucune section déclarée ne produit aucune ligne
+  Test @an-unreadable-status-fails-a-lint-sections-row

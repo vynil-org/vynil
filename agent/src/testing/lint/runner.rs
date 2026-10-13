@@ -18,9 +18,21 @@ const TEST_HOOK: &str = "lint";
 const SUITE_HOOK: &str = "lint_suite";
 const SUITE_TEST_NAME: &str = "(suite)";
 const EXECUTION_RULE: &str = "lint:execution";
-/// Borne d'opérations par appel du script. Valeur provisoire : à mesurer sur le script réel
-/// de la distribution (décision `[?]` de runner.sdd).
-const MAX_OPERATIONS: u64 = 10_000_000;
+/// Budget d'opérations d'un appel : `OPERATIONS_BASE` plus `OPERATIONS_PER_OBJECT` par objet
+/// reçu. Une charge honnête croît avec la taille du rendu ; la borne ne sert qu'à arrêter un
+/// script qui boucle. Valeurs à mesurer sur le script réel de la distribution (décision `[?]`
+/// de runner.sdd).
+const OPERATIONS_BASE: u64 = 10_000_000;
+const OPERATIONS_PER_OBJECT: u64 = 50_000;
+/// Bornes mémoire du moteur : le budget d'opérations ne protège pas d'un `s += s`.
+const MAX_STRING_SIZE: usize = 16 * 1024 * 1024;
+const MAX_ARRAY_SIZE: usize = 1_000_000;
+const MAX_MAP_SIZE: usize = 100_000;
+
+/// Budget d'opérations d'un appel qui reçoit `object_count` objets.
+const fn operations_budget(object_count: usize) -> u64 {
+    OPERATIONS_BASE.saturating_add(OPERATIONS_PER_OBJECT.saturating_mul(object_count as u64))
+}
 
 /// Résultat d'un appel du script : lignes de verdict et inventaire de suppressions.
 #[derive(Clone, Debug, Default)]
@@ -44,7 +56,7 @@ pub struct LintRunner {
 /// réseau ni cluster ; fonctions `schema_*` seulement. Les imports suivent `lint_dir` puis
 /// `{script_dir}/lib`. Les sorties (`print`, `debug`) sont avalées pour ne pas polluer le
 /// rapport du test.
-fn build_engine(lint_dir: &Path, script_dir: &Path, schemas: &SchemaRegistry) -> Engine {
+fn build_engine(lint_dir: &Path, script_dir: &Path, schemas: &SchemaRegistry, max_operations: u64) -> Engine {
     let mut engine = Engine::new_raw();
     engine.register_global_module(rhai::packages::CorePackage::new().as_shared_module());
     engine.register_global_module(rhai::packages::LogicPackage::new().as_shared_module());
@@ -57,7 +69,10 @@ fn build_engine(lint_dir: &Path, script_dir: &Path, schemas: &SchemaRegistry) ->
     engine.register_global_module(rhai::packages::BasicIteratorPackage::new().as_shared_module());
     engine.on_print(|_| {});
     engine.on_debug(|_, _, _| {});
-    engine.set_max_operations(MAX_OPERATIONS);
+    engine.set_max_operations(max_operations);
+    engine.set_max_string_size(MAX_STRING_SIZE);
+    engine.set_max_array_size(MAX_ARRAY_SIZE);
+    engine.set_max_map_size(MAX_MAP_SIZE);
     engine.set_max_expr_depths(256, 128);
     engine.set_max_call_levels(512);
 
@@ -95,7 +110,7 @@ impl LintRunner {
                 path.display()
             )));
         }
-        let engine = build_engine(lint_dir, script_dir, &schemas);
+        let engine = build_engine(lint_dir, script_dir, &schemas, operations_budget(0));
         let ast = engine
             .compile_file(path.clone())
             .map_err(|e| common::Error::Other(format!("{}: {e}", path.display())))?;
@@ -134,7 +149,8 @@ impl LintRunner {
             .pointer("/test/name")
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default();
-        match self.call(TEST_HOOK, ctx, Some(objects.to_dynamic())) {
+        let budget = operations_budget(objects.all.len());
+        match self.call(TEST_HOOK, ctx, Some(objects.to_dynamic()), budget) {
             Ok(value) => Self::outcome(TEST_HOOK, &value, test_name),
             Err(message) => execution_outcome(message),
         }
@@ -146,7 +162,7 @@ impl LintRunner {
         if !self.has_suite_hook {
             return LintOutcome::default();
         }
-        match self.call(SUITE_HOOK, ctx, None) {
+        match self.call(SUITE_HOOK, ctx, None, operations_budget(0)) {
             Ok(value) => Self::outcome(SUITE_HOOK, &value, SUITE_TEST_NAME),
             Err(message) => execution_outcome(message),
         }
@@ -154,12 +170,18 @@ impl LintRunner {
 
     /// Évalue le script dans un moteur neuf puis appelle `name` avec `objs` (si présent)
     /// puis `ctx`.
-    fn call(&self, name: &str, ctx: &serde_json::Value, objs: Option<Dynamic>) -> Result<Dynamic, String> {
+    fn call(
+        &self,
+        name: &str,
+        ctx: &serde_json::Value,
+        objs: Option<Dynamic>,
+        max_operations: u64,
+    ) -> Result<Dynamic, String> {
         let ctx = rhai::serde::to_dynamic(ctx).map_err(|e| e.to_string())?;
         let mut args = Vec::with_capacity(2);
         args.extend(objs);
         args.push(ctx);
-        let engine = build_engine(&self.lint_dir, &self.script_dir, &self.schemas);
+        let engine = build_engine(&self.lint_dir, &self.script_dir, &self.schemas, max_operations);
         let mut scope = Scope::new();
         engine
             .run_ast_with_scope(&mut scope, &self.ast)
@@ -315,6 +337,25 @@ mod tests {
         let outcome = runner.run_test(&test_ctx("default"), &sections);
         let names: Vec<&str> = outcome.rows.iter().map(|r| r.name.as_str()).collect();
         assert_eq!(names, ["lint:all", "lint:befores", "lint:scalables"]);
+    }
+
+    #[test]
+    fn a_runaway_string_is_bounded() {
+        let (_fx, runner) = runner(r#"fn lint(objs, ctx) { let s = "x"; loop { s += s; } }"#);
+        let outcome = runner.run_test(&test_ctx("default"), &plain(vec![deployment("web")]));
+        assert_eq!(outcome.rows.len(), 1);
+        assert_eq!(outcome.rows[0].name, "lint:execution");
+        assert!(!outcome.rows[0].passed);
+    }
+
+    #[test]
+    fn the_operation_budget_grows_with_the_object_count() {
+        assert_eq!(operations_budget(0), OPERATIONS_BASE);
+        assert!(operations_budget(1_000) > operations_budget(100));
+        assert!(
+            operations_budget(usize::MAX) >= OPERATIONS_BASE,
+            "pas de débordement"
+        );
     }
 
     #[test]
