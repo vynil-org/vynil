@@ -67,7 +67,8 @@ Handles:
   Constat `warn` supprimé — inventorié, aucune ligne.
   `suppressed` vrai sans `reason`, ou avec une `reason` vide — élément invalide
     (`lint:invalid-finding`) : une exception se justifie, sinon une erreur deviendrait muette
-    sans trace de sa raison. Une `reason` est tolérée sur un constat non supprimé.
+    sans trace de sa raison. Une `reason` est tolérée sur un constat non supprimé. La politique « une annotation vide
+    supprime-t-elle ? » est celle de la bibliothèque (/agent/scripts/lib/render_lint.sdd).
   Tableau vide — aucune ligne, aucune suppression.
 
 Tasks:

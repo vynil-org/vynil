@@ -1,0 +1,80 @@
+# Spec fichier de ./multimap.rs — l'index partagé que la bibliothèque de lint construit une fois.
+
+Spec: LintMultimap
+
+Platform: Rust
+
+Purpose:
+  Offrir à la bibliothèque `render_lint` une table clé -> valeurs dont la copie ne recopie pas
+    le contenu. Rhai passe tout par valeur : un tableau d'objets passé à chacune des soixante
+    vérifications pour chacun des N objets est copié 60 x N fois, et c'est ce qui rendait la
+    bibliothèque quadratique en temps. Une poignée partagée se copie en temps constant ; la
+    bibliothèque y range, une fois par appel de `all`, ce que les vérifications qui croisent
+    plusieurs objets doivent retrouver (cibles de sélecteur, comptes de service, rôles…).
+    Le type ne porte aucune règle : ce qu'on y range et la manière de le lire restent du Rhai,
+    donc lisibles et copiables par une distribution pour ses règles maison.
+
+Owns:
+  ./multimap.rs
+
+Can modify:
+  ./mod.rs: déclaration `pub mod multimap;`
+
+References:
+  ./runner.sdd — enregistre ce type dans le moteur du script de lint.
+  ./patterns.sdd — l'autre fonction native offerte au script, dans le même esprit : pure.
+  /agent/scripts/lib/render_lint.sdd — la bibliothèque qui construit et lit l'index.
+
+Exposes:
+  @Multimap — type Rhai `Multimap`, copie par poignée.
+  @register — `(engine: &mut rhai::Engine)` : enregistre le type et les fonctions Rhai
+    `multimap() -> Multimap`, `put(key: String, value: Dynamic)`, `values(key: String) -> array`,
+    `first(key: String) -> Dynamic`, `has(key: String) -> bool`.
+
+Returns:
+  `values` : les valeurs rangées sous la clé, dans l'ordre d'insertion, tableau vide si la clé
+    est absente. `first` : la première valeur rangée sous la clé, `()` si la clé est absente.
+    `has` : vrai quand au moins une valeur est rangée sous la clé.
+
+Must:
+  Se copier par poignée : deux copies d'un @Multimap voient les mêmes entrées, y compris une
+    entrée ajoutée après la copie. C'est la raison d'être du type.
+  Conserver l'ordre d'insertion des valeurs d'une clé : les constats de la bibliothèque en
+    dépendent pour rester déterministes.
+  Ne jamais paniquer, y compris sur un verrou empoisonné.
+  Ne rien exposer de l'ordre d'itération de la table : aucune fonction ne liste les clés.
+
+Must not:
+  Porter de la politique ou de la connaissance de Kubernetes : c'est un conteneur.
+  Sortir du moteur : aucune persistance, aucun partage entre deux appels du script (le moteur
+    est neuf à chaque appel).
+
+Tasks:
+  [x] Couvrir chaque scénario par un test de même nom.
+
+Done when:
+  Chaque scénario a un test passant et le harnais statique est vert.
+
+Scenario: values come back in insertion order
+  Given un @Multimap où deux valeurs sont rangées sous `ns`, une sous `other`
+  When `values("ns")` s'exécute
+  Then les deux valeurs de `ns` reviennent dans l'ordre d'insertion
+  Test @values-come-back-in-insertion-order
+
+Scenario: an absent key is empty and first is unit
+  Given un @Multimap vide
+  When `values`, `first` et `has` s'exécutent sur une clé absente
+  Then `values` est un tableau vide, `first` vaut `()` et `has` est faux
+  Test @an-absent-key-is-empty-and-first-is-unit
+
+Scenario: a copy shares the content
+  Given un @Multimap passé par valeur à une fonction Rhai
+  When la fonction interroge `has`
+  Then elle voit les entrées de l'appelant
+  Test @a-copy-shares-the-content
+
+Scenario: the handle survives a map copy
+  Given une carte Rhai qui contient un @Multimap, copiée, puis une valeur rangée par la copie
+  When la carte d'origine est interrogée
+  Then elle voit la valeur rangée par la copie
+  Test @the-handle-survives-a-map-copy

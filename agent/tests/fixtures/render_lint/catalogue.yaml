@@ -1,197 +1,262 @@
 # Inventaire des vérifications de l'oracle (kube-linter v0.8.3), attribuées à un thème.
 # Généré depuis `kube-linter checks list --format json` ; ne pas éditer à la main sans relancer
-# le test d'inventaire (lint_oracle.rs).
+# le test d'inventaire (lint_oracle.rs). `default` : la vérification est active par défaut chez
+# kube-linter (champ « Enabled by default » de `kube-linter checks list`) ; `render_lint::all`
+# n'exécute que celles-là tant que `include_optional` n'est pas vrai.
 oracle_version: v0.8.3
 checks:
   - name: access-to-create-pods
     theme: rbac
     status: ported
+    default: false
   - name: access-to-secrets
     theme: rbac
     status: ported
+    default: false
   - name: cluster-admin-role-binding
     theme: rbac
     status: ported
+    default: false
   - name: dangling-horizontalpodautoscaler
     theme: workload
     status: ported
+    default: false
   - name: dangling-ingress
     theme: network
     status: ported
+    default: false
   - name: dangling-networkpolicy
     theme: network
     status: ported
+    default: false
   - name: dangling-networkpolicypeer-podselector
     theme: network
     status: ported
+    default: false
   - name: dangling-service
     theme: network
     status: ported
+    default: true
   - name: dangling-servicemonitor
     theme: network
     status: ported
+    default: false
   - name: default-service-account
     theme: pod
     status: ported
+    default: false
   - name: deprecated-service-account-field
     theme: workload
     status: ported
+    default: true
   - name: dnsconfig-options
     theme: pod
     status: ported
+    default: false
   - name: docker-sock
     theme: pod
     status: ported
+    default: true
   - name: drop-net-raw-capability
     theme: pod
     status: ported
+    default: true
   - name: duplicate-env-var
     theme: pod
     status: ported
+    default: true
   - name: env-value-from
     theme: pod
     status: ported
+    default: false
   - name: env-var-secret
     theme: pod
     status: ported
+    default: true
   - name: exposed-services
     theme: network
     status: ported
+    default: false
   - name: host-ipc
     theme: pod
     status: ported
+    default: true
   - name: host-network
     theme: pod
     status: ported
+    default: true
   - name: host-pid
     theme: pod
     status: ported
+    default: true
   - name: hpa-minimum-three-replicas
     theme: workload
     status: ported
+    default: false
   - name: invalid-target-ports
     theme: network
     status: ported
+    default: true
   - name: job-ttl-seconds-after-finished
     theme: workload
     status: ported
+    default: true
   - name: latest-tag
     theme: pod
     status: ported
+    default: true
   - name: liveness-port
     theme: pod
     status: ported
+    default: true
   - name: minimum-three-replicas
     theme: workload
     status: ported
+    default: false
   - name: mismatching-selector
     theme: workload
     status: ported
+    default: true
   - name: no-anti-affinity
     theme: workload
     status: ported
+    default: true
   - name: no-extensions-v1beta
     theme: workload
     status: ported
+    default: true
   - name: no-liveness-probe
     theme: pod
     status: ported
+    default: false
   - name: no-node-affinity
     theme: workload
     status: ported
+    default: false
   - name: no-read-only-root-fs
     theme: pod
     status: ported
+    default: true
   - name: no-readiness-probe
     theme: pod
     status: ported
+    default: false
   - name: no-rolling-update-strategy
     theme: workload
     status: ported
+    default: false
   - name: non-existent-service-account
     theme: rbac
     status: ported
+    default: true
   - name: non-isolated-pod
     theme: network
     status: ported
+    default: false
   - name: pdb-max-unavailable
     theme: workload
     status: ported
+    default: true
   - name: pdb-min-available
     theme: workload
     status: ported
+    default: true
   - name: pdb-unhealthy-pod-eviction-policy
     theme: workload
     status: ported
+    default: true
   - name: priority-class-name
     theme: pod
     status: ported
+    default: false
   - name: privilege-escalation-container
     theme: pod
     status: ported
+    default: true
   - name: privileged-container
     theme: pod
     status: ported
+    default: true
   - name: privileged-ports
     theme: pod
     status: ported
+    default: false
   - name: read-secret-from-env-var
     theme: pod
     status: ported
+    default: false
   - name: readiness-port
     theme: pod
     status: ported
+    default: true
   - name: required-annotation-email
     theme: workload
     status: ported
+    default: false
   - name: required-label-owner
     theme: workload
     status: ported
+    default: false
   - name: restart-policy
     theme: pod
     status: ported
+    default: false
   - name: run-as-non-root
     theme: pod
     status: ported
+    default: true
   - name: scc-deny-privileged-container
     theme: pod
     status: deferred
+    default: false
     reason: "dépend de la CRD tierce SecurityContextConstraints (OpenShift), absente de la liste d'objets par défaut"
   - name: schema-validation
     theme: pod
     status: excluded
+    default: false
     reason: "couvert par la bibliothèque render_lint_schema (schema_validate), composée séparément par la distribution, hors de @all"
   - name: sensitive-host-mounts
     theme: pod
     status: ported
+    default: true
   - name: sorted-keys
     theme: workload
     status: deferred
+    default: false
     reason: "ordre des clés perdu avant la vérification : les objets de lint sont des cartes Rhai (BTreeMap, keys() trié) ; mesuré : yaml_decode et yaml_decode_multi sur `b: 1` puis `a: 2` donnent keys() = [a, b], et une carte littérale ou JSON aussi ; seul yaml_decode_ordered garde l'ordre ([b, a]) mais ce n'est pas le type des objets de lint. kube-linter lit l'ordre source (signale `Keys are not sorted at root`), impossible à reproduire fidèlement"
   - name: ssh-port
     theme: pod
     status: ported
+    default: true
   - name: startup-port
     theme: pod
     status: ported
+    default: true
   - name: unsafe-proc-mount
     theme: pod
     status: ported
+    default: false
   - name: unsafe-sysctls
     theme: pod
     status: ported
+    default: true
   - name: unset-cpu-requirements
     theme: pod
     status: ported
+    default: true
   - name: unset-memory-requirements
     theme: pod
     status: ported
+    default: true
   - name: use-namespace
     theme: workload
     status: ported
+    default: false
   - name: wildcard-in-rules
     theme: rbac
     status: ported
+    default: false
   - name: writable-host-mount
     theme: pod
     status: ported
+    default: false

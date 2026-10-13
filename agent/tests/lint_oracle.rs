@@ -14,7 +14,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use client::testing::lint::patterns;
+use client::testing::lint::{multimap, patterns};
 use common::rhaihandler::Script;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -38,6 +38,8 @@ struct Entry {
     name: String,
     theme: String,
     status: String,
+    #[serde(default)]
+    default: bool,
     reason: Option<String>,
 }
 
@@ -71,6 +73,7 @@ fn library(lib: &Path) -> Script {
         Arc::new(Mutex::new(Vec::new())),
     );
     patterns::register(&mut rhai.engine);
+    multimap::register(&mut rhai.engine);
     rhai
 }
 
@@ -120,7 +123,8 @@ fn catalogue_problems(catalogue: &Path, lib: &Path, fixtures: &Path) -> Vec<Stri
             problems.push(format!("module `render_lint_{theme}.rhai` absent"));
             continue;
         }
-        for function in public_functions(&module) {
+        // `index` est le constructeur d'index du thème, pas une vérification.
+        for function in public_functions(&module).into_iter().filter(|f| f != "index") {
             let listed = catalogue
                 .checks
                 .iter()
@@ -272,6 +276,29 @@ fn real_catalogue_is_consistent() {
         listed,
         ported_names(),
         "checks() doit lister exactement les entrées portées"
+    );
+}
+
+#[test]
+fn the_default_set_matches_the_catalogue() {
+    let mut rhai = library(&lib_dir());
+    let value = rhai
+        .eval(r#"import "render_lint" as render_lint; render_lint::default_checks()"#)
+        .expect("default_checks() doit s'évaluer");
+    let listed: Vec<String> = rhai::serde::from_dynamic(&value).expect("tableau de noms");
+    let mut sorted = listed.clone();
+    sorted.sort();
+    assert_eq!(listed, sorted, "default_checks() doit être trié");
+    let mut expected: Vec<String> = read_catalogue(&catalogue_path())
+        .checks
+        .into_iter()
+        .filter(|e| e.status == "ported" && e.default)
+        .map(|e| e.name)
+        .collect();
+    expected.sort();
+    assert_eq!(
+        listed, expected,
+        "default_checks() doit lister exactement les entrées portées actives par défaut"
     );
 }
 

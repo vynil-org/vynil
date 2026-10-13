@@ -1,11 +1,47 @@
 //! Fonction `regex_is_match` offerte au script de lint (spec : `patterns.sdd`).
 
-use regex::RegexBuilder;
+use regex::{Regex, RegexBuilder};
 use rhai::{Dynamic, Engine, EvalAltResult, Position};
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock, PoisonError},
+};
 
 /// Taille maximale du programme compilé d'un motif (octets). Au-delà, le motif est refusé
 /// plutôt que de consommer la mémoire du processus.
 const COMPILED_SIZE_LIMIT: usize = 1 << 20;
+
+/// Nombre maximal de motifs compilés conservés : au-delà, le cache est vidé. La bibliothèque
+/// n'utilise que quelques dizaines de motifs, ce plafond ne borne que les cas pathologiques.
+const CACHE_LIMIT: usize = 512;
+
+/// Motifs déjà compilés. Un `Regex` se copie par poignée ; le cache ne change jamais le
+/// résultat d'un appel, seulement son coût.
+fn cache() -> &'static Mutex<HashMap<String, Regex>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Regex>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn compiled(pattern: &str) -> Result<Regex, regex::Error> {
+    if let Some(regex) = cache()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(pattern)
+    {
+        return Ok(regex.clone());
+    }
+    // Compilé hors du verrou : deux fils peuvent compiler le même motif, le résultat est identique.
+    let regex = RegexBuilder::new(pattern)
+        .size_limit(COMPILED_SIZE_LIMIT)
+        .build()?;
+    let mut cache = cache().lock().unwrap_or_else(PoisonError::into_inner);
+    if cache.len() >= CACHE_LIMIT {
+        cache.clear();
+    }
+    cache.insert(pattern.to_string(), regex.clone());
+    drop(cache);
+    Ok(regex)
+}
 
 /// Enregistre `regex_is_match(pattern, text) -> bool` dans `engine`.
 pub fn register(engine: &mut Engine) {
@@ -15,15 +51,12 @@ pub fn register(engine: &mut Engine) {
 /// Vrai quand `pattern` trouve une correspondance dans `text`. Motif invalide ou trop grand :
 /// erreur d'exécution Rhai, jamais un panic.
 fn regex_is_match(pattern: &str, text: &str) -> Result<bool, Box<EvalAltResult>> {
-    let regex = RegexBuilder::new(pattern)
-        .size_limit(COMPILED_SIZE_LIMIT)
-        .build()
-        .map_err(|e| {
-            Box::new(EvalAltResult::ErrorRuntime(
-                Dynamic::from(format!("regex_is_match: invalid pattern {pattern}: {e}")),
-                Position::NONE,
-            ))
-        })?;
+    let regex = compiled(pattern).map_err(|e| {
+        Box::new(EvalAltResult::ErrorRuntime(
+            Dynamic::from(format!("regex_is_match: invalid pattern {pattern}: {e}")),
+            Position::NONE,
+        ))
+    })?;
     Ok(regex.is_match(text))
 }
 
@@ -45,6 +78,23 @@ mod tests {
     fn an_unanchored_pattern_matches_inside_the_text() {
         let found = eval(r#"regex_is_match("latest", "registry/app:latest")"#);
         assert!(found.expect("évaluation"));
+    }
+
+    #[test]
+    fn the_cache_never_changes_a_result_and_stays_bounded() {
+        let e = engine();
+        for i in 0..(CACHE_LIMIT * 2) {
+            let hit = e
+                .eval::<bool>(&format!(r#"regex_is_match("^p{i}$", "p{i}")"#))
+                .expect("évaluation");
+            assert!(hit);
+            let miss = e
+                .eval::<bool>(&format!(r#"regex_is_match("^p{i}$", "q{i}")"#))
+                .expect("évaluation");
+            assert!(!miss);
+        }
+        let size = cache().lock().unwrap_or_else(PoisonError::into_inner).len();
+        assert!(size <= CACHE_LIMIT, "{size}");
     }
 
     #[test]

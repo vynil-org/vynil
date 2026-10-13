@@ -1,3 +1,6 @@
+// Attribution : les vérifications de ce module reprennent la logique de kube-linter
+// (https://github.com/stackrox/kube-linter, licence Apache 2.0) : noms, paramètres, valeurs par
+// défaut et sémantique mesurée sur v0.8.3. Voir /NOTICE et /third_party/kube-linter/LICENSE.
 // Thème « pod » des vérifications portées de kube-linter (spec : render_lint_pod.sdd).
 // Chaque vérification est pure : elle ne lit que ses arguments et retourne un tableau de
 // constats, vide quand rien n'est à signaler. `render_lint` est importé dans le corps de chaque
@@ -112,14 +115,14 @@ private fn host_mount_findings(rule, obj, dirs) {
 }
 
 // Socket du démon Docker monté dans un conteneur (initialisation comprise).
-fn docker_sock(obj, objs, ctx, params) {
+fn docker_sock(obj, idx, ctx, params) {
     host_mount_findings("docker-sock", obj, list_param(params, "dirs", ["docker.sock$"]))
 }
 
 // Capacités NET_RAW : un conteneur qui ajoute une capacité interdite (ou `ALL`) produit un
 // constat par entrée ; un conteneur dont `capabilities` est renseigné sans retirer la capacité
 // interdite (ni `ALL`) produit un constat de retrait. Sans `securityContext.capabilities`, rien.
-fn drop_net_raw_capability(obj, objs, ctx, params) {
+fn drop_net_raw_capability(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let forbidden = list_param(params, "forbiddenCapabilities", ["NET_RAW"]);
     let findings = [];
@@ -163,7 +166,7 @@ fn drop_net_raw_capability(obj, objs, ctx, params) {
 
 // Répertoire hôte sensible monté (`/`, `/etc`, `/proc`, ...), initialisation comprise. Les
 // motifs `dirs` sont ceux de kube-linter, ancrés : `^/etc$` ne vise pas `/etc/foo`.
-fn sensitive_host_mounts(obj, objs, ctx, params) {
+fn sensitive_host_mounts(obj, idx, ctx, params) {
     host_mount_findings("sensitive-host-mounts", obj, list_param(params, "dirs", [
         "^/$", "^/boot$", "^/dev$", "^/etc$", "^/lib$", "^/proc$", "^/sys$", "^/usr$"
     ]))
@@ -171,7 +174,7 @@ fn sensitive_host_mounts(obj, objs, ctx, params) {
 
 // Conteneur (initialisation comprise) dont `procMount` vaut `Unmasked`, sans tenir compte de la
 // casse : kube-linter contourne alors le masquage /proc du runtime.
-fn unsafe_proc_mount(obj, objs, ctx, params) {
+fn unsafe_proc_mount(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let findings = [];
     let kind = text(field(obj, "kind"));
@@ -195,7 +198,7 @@ fn unsafe_proc_mount(obj, objs, ctx, params) {
 
 // Sysctl du pod dont le nom commence par un préfixe de `unsafeSysCtls` (préfixe brut, sensible
 // à la casse : `net` ne vise pas `net.core`, mais `net.` si). Un constat par entrée.
-fn unsafe_sysctls(obj, objs, ctx, params) {
+fn unsafe_sysctls(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let prefixes = list_param(params, "unsafeSysCtls", [
         "kernel.msg", "kernel.sem", "kernel.shm", "fs.mqueue.", "net."
@@ -230,24 +233,24 @@ fn unsafe_sysctls(obj, objs, ctx, params) {
 }
 
 // Namespace IPC de l'hôte partagé (`hostIPC: true`).
-fn host_ipc(obj, objs, ctx, params) {
+fn host_ipc(obj, idx, ctx, params) {
     host_flag_findings("host-ipc", "hostIPC", "l'espace IPC de l'hôte", obj)
 }
 
 // Namespace réseau de l'hôte partagé (`hostNetwork: true`).
-fn host_network(obj, objs, ctx, params) {
+fn host_network(obj, idx, ctx, params) {
     host_flag_findings("host-network", "hostNetwork", "l'espace réseau de l'hôte", obj)
 }
 
 // Namespace des processus de l'hôte partagé (`hostPID: true`).
-fn host_pid(obj, objs, ctx, params) {
+fn host_pid(obj, idx, ctx, params) {
     host_flag_findings("host-pid", "hostPID", "l'espace des processus de l'hôte", obj)
 }
 
 // Conteneur qui permet l'escalade de privilèges : `allowPrivilegeEscalation: true`, ou
 // `privileged: true`, ou la capacité `SYS_ADMIN` ajoutée (égalité exacte, comme kube-linter).
 // Un constat par conteneur, pour la première condition qui s'applique.
-fn privilege_escalation_container(obj, objs, ctx, params) {
+fn privilege_escalation_container(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let findings = [];
     let kind = text(field(obj, "kind"));
@@ -278,7 +281,7 @@ fn privilege_escalation_container(obj, objs, ctx, params) {
 }
 
 // Conteneur (initialisation comprise) en mode privilégié : `privileged: true`.
-fn privileged_container(obj, objs, ctx, params) {
+fn privileged_container(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let findings = [];
     let kind = text(field(obj, "kind"));
@@ -302,7 +305,7 @@ fn privileged_container(obj, objs, ctx, params) {
 // Conteneur (initialisation comprise) qui ne garantit pas l'exécution sans root. `runAsNonRoot`
 // est celui du conteneur, à défaut celui du pod ; `runAsUser` suit la même règle. Un constat par
 // conteneur : « non défini à true », sinon « runAsUser à 0 ».
-fn run_as_non_root(obj, objs, ctx, params) {
+fn run_as_non_root(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let findings = [];
     let kind = text(field(obj, "kind"));
@@ -341,7 +344,7 @@ fn run_as_non_root(obj, objs, ctx, params) {
 }
 
 // Image d'un conteneur d'un objet qui utilise un tag `latest` ou pas de tag.
-fn latest_tag(obj, objs, ctx, params) {
+fn latest_tag(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     // Défauts de kube-linter (`latest-tag`, paramètre BlockList) ; un BlockList fourni les remplace.
     let block = [".*:(latest)$", "^[^:]*$", "(.*/[^:]+)$"];
@@ -371,7 +374,7 @@ fn latest_tag(obj, objs, ctx, params) {
 
 // Conteneur (initialisation comprise) dont le système de fichiers racine n'est pas en lecture
 // seule : `securityContext.readOnlyRootFilesystem` doit valoir `true`.
-fn no_read_only_root_fs(obj, objs, ctx, params) {
+fn no_read_only_root_fs(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let findings = [];
     let kind = field(obj, "kind");
@@ -469,27 +472,27 @@ private fn probe_port_findings(rule, probe_key, label, obj) {
 }
 
 // Conteneur (initialisation exclue) sans sonde de vivacité.
-fn no_liveness_probe(obj, objs, ctx, params) {
+fn no_liveness_probe(obj, idx, ctx, params) {
     probe_missing_findings("no-liveness-probe", "livenessProbe", "vivacité", obj)
 }
 
 // Conteneur (initialisation exclue) sans sonde de disponibilité.
-fn no_readiness_probe(obj, objs, ctx, params) {
+fn no_readiness_probe(obj, idx, ctx, params) {
     probe_missing_findings("no-readiness-probe", "readinessProbe", "disponibilité", obj)
 }
 
 // Sonde de vivacité visant un port que le conteneur n'expose pas.
-fn liveness_port(obj, objs, ctx, params) {
+fn liveness_port(obj, idx, ctx, params) {
     probe_port_findings("liveness-port", "livenessProbe", "vivacité", obj)
 }
 
 // Sonde de disponibilité visant un port que le conteneur n'expose pas.
-fn readiness_port(obj, objs, ctx, params) {
+fn readiness_port(obj, idx, ctx, params) {
     probe_port_findings("readiness-port", "readinessProbe", "disponibilité", obj)
 }
 
 // Sonde de démarrage visant un port que le conteneur n'expose pas.
-fn startup_port(obj, objs, ctx, params) {
+fn startup_port(obj, idx, ctx, params) {
     probe_port_findings("startup-port", "startupProbe", "démarrage", obj)
 }
 
@@ -581,19 +584,19 @@ private fn requirement_findings(rule, resource, unit, obj, params, default_type,
 }
 
 // Demande de CPU absente ou dans la plage signalée. Défauts : requirementsType `request`, bornes 0.
-fn unset_cpu_requirements(obj, objs, ctx, params) {
+fn unset_cpu_requirements(obj, idx, ctx, params) {
     requirement_findings("unset-cpu-requirements", "cpu", "millicores", obj, params, "request", "lowerBoundMillis", "upperBoundMillis")
 }
 
 // Mémoire limite ou demande absente, ou dans la plage signalée (MB, voir `memory_mb`). Défauts :
 // requirementsType `limit`, bornes 0.
-fn unset_memory_requirements(obj, objs, ctx, params) {
+fn unset_memory_requirements(obj, idx, ctx, params) {
     requirement_findings("unset-memory-requirements", "memory", "MB", obj, params, "limit", "lowerBoundMB", "upperBoundMB")
 }
 
 // Port de conteneur (initialisation comprise) dans la plage privilégiée : 0 < containerPort < 1024,
 // quel que soit le protocole. `hostPort` n'est pas considéré. Un constat par port.
-fn privileged_ports(obj, objs, ctx, params) {
+fn privileged_ports(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let findings = [];
     let kind = text(field(obj, "kind"));
@@ -624,7 +627,7 @@ fn privileged_ports(obj, objs, ctx, params) {
 // Port SSH (`port`, défaut 22) exposé par un conteneur (initialisation comprise) avec le protocole
 // `protocol` (défaut `TCP`). Un port sans `protocol` vaut TCP ; `protocol` vide ou absent du
 // paramètre ne filtre pas le protocole. Un constat par port.
-fn ssh_port(obj, objs, ctx, params) {
+fn ssh_port(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let findings = [];
     let kind = text(field(obj, "kind"));
@@ -660,7 +663,7 @@ fn ssh_port(obj, objs, ctx, params) {
 // Répertoire hôte monté en écriture : un montage (initialisation comprise) qui référence un volume
 // `hostPath` et dont `readOnly` n'est pas `true`. Un `readOnly` qui n'est ni booléen ni absent est
 // ignoré (kube-linter ne décode pas ces objets). Un constat par montage.
-fn writable_host_mount(obj, objs, ctx, params) {
+fn writable_host_mount(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let findings = [];
     let kind = text(field(obj, "kind"));
@@ -728,22 +731,13 @@ private fn dns_option_found(dns, key, value) {
 // Noms des objets de genre `kind` du groupe du noyau dans la liste `objs` (tous namespaces
 // confondus : kube-linter ne rapproche une référence de son objet que par le nom et le genre).
 // Secret et ConfigMap sont du groupe du noyau : un kind homonyme d'un autre groupe ne compte pas.
-private fn known_names(objs, kind) {
-    import "render_lint" as render_lint;
-    let names = [];
-    if type_of(objs) != "array" { return names; }
-    for o in objs {
-        if render_lint::kind_of_group(o, [kind], "") {
-            let n = text(field(field(o, "metadata"), "name"));
-            if n != "" { names.push(n); }
-        }
-    }
-    names
+private fn known_name(idx, kind, name) {
+    idx.pod_names.has(`${kind}|${name}`)
 }
 
 // Compte de service par défaut : le nom du compte de service du pod correspond à `serviceAccount`
 // (défaut `^(|default)$` : absent, vide ou `default`). Un constat par pod.
-fn default_service_account(obj, objs, ctx, params) {
+fn default_service_account(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let pattern = string_param(params, "serviceAccount", "^(|default)$");
     let findings = [];
@@ -770,7 +764,7 @@ fn default_service_account(obj, objs, ctx, params) {
 // Option DNS attendue absente de `dnsConfig` (défaut : option `ndots` de valeur `2`). Une option
 // `dnsConfig` absente compte comme absente ; une `dnsConfig` de forme inconnue n'est pas signalée.
 // Un constat par pod.
-fn dnsconfig_options(obj, objs, ctx, params) {
+fn dnsconfig_options(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let key = string_param(params, "Key", "ndots");
     let value = string_param(params, "Value", "2");
@@ -800,7 +794,7 @@ fn dnsconfig_options(obj, objs, ctx, params) {
 
 // Classe de priorité du pod hors de la liste `acceptedPriorityClassNames` (défaut : les deux
 // classes système). Une classe absente ou vide n'est pas signalée. Un constat par pod.
-fn priority_class_name(obj, objs, ctx, params) {
+fn priority_class_name(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let accepted = list_param(params, "acceptedPriorityClassNames", ["system-cluster-critical", "system-node-critical"]);
     let findings = [];
@@ -825,7 +819,7 @@ fn priority_class_name(obj, objs, ctx, params) {
 
 // Politique de redémarrage du pod différente de `Always` ou `OnFailure`, absente comprise (kube-linter
 // n'accepte pas une politique vide). Un constat par pod.
-fn restart_policy(obj, objs, ctx, params) {
+fn restart_policy(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let findings = [];
     let kind = text(field(obj, "kind"));
@@ -850,7 +844,7 @@ fn restart_policy(obj, objs, ctx, params) {
 
 // Variable d'environnement déclarée plusieurs fois dans un même conteneur (initialisation comprise).
 // Un constat par nom dupliqué et par conteneur, quel que soit le nombre de répétitions.
-fn duplicate_env_var(obj, objs, ctx, params) {
+fn duplicate_env_var(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let findings = [];
     let kind = text(field(obj, "kind"));
@@ -887,10 +881,8 @@ fn duplicate_env_var(obj, objs, ctx, params) {
 // la liste d'objets (nom exact, genre compris), ou dont le nom correspond à un motif de
 // IgnoredSecrets / IgnoredConfigMaps (expressions régulières non ancrées, comme kube-linter). Un constat par référence
 // d'env (initialisation comprise) ; envFrom et volumes ne sont pas examinés.
-fn env_value_from(obj, objs, ctx, params) {
+fn env_value_from(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
-    let known_secrets = known_names(objs, "Secret");
-    let known_configmaps = known_names(objs, "ConfigMap");
     let ignored_secrets = list_param(params, "IgnoredSecrets", []);
     let ignored_configmaps = list_param(params, "IgnoredConfigMaps", []);
     let findings = [];
@@ -906,7 +898,7 @@ fn env_value_from(obj, objs, ctx, params) {
                 let vf = field(e, "valueFrom");
                 let sref = field(vf, "secretKeyRef");
                 let sname = field(sref, "name");
-                if type_of(sname) == "string" && !(sname in known_secrets) && !matches_any(sname, ignored_secrets) {
+                if type_of(sname) == "string" && !known_name(idx, "Secret", sname) && !matches_any(sname, ignored_secrets) {
                     findings.push(render_lint::finding(
                         "env-value-from",
                         "error",
@@ -917,7 +909,7 @@ fn env_value_from(obj, objs, ctx, params) {
                 }
                 let cref = field(vf, "configMapKeyRef");
                 let cmname = field(cref, "name");
-                if type_of(cmname) == "string" && !(cmname in known_configmaps) && !matches_any(cmname, ignored_configmaps) {
+                if type_of(cmname) == "string" && !known_name(idx, "ConfigMap", cmname) && !matches_any(cmname, ignored_configmaps) {
                     findings.push(render_lint::finding(
                         "env-value-from",
                         "error",
@@ -936,7 +928,7 @@ fn env_value_from(obj, objs, ctx, params) {
 // Variable d'environnement dont le nom correspond à `name` (défaut `(?i).*secret.*`) et dont la
 // valeur littérale correspond à `value` (défaut `.+`, donc non vide) : un secret en clair. La
 // valeur n'est jamais recopiée dans le message. Un constat par variable (initialisation comprise).
-fn env_var_secret(obj, objs, ctx, params) {
+fn env_var_secret(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let name_pattern = string_param(params, "name", "(?i).*secret.*");
     let value_pattern = string_param(params, "value", ".+");
@@ -971,7 +963,7 @@ fn env_var_secret(obj, objs, ctx, params) {
 
 // Variable d'environnement lue depuis un secret (`valueFrom.secretKeyRef`), initialisation comprise.
 // Un constat par variable. envFrom n'est pas examiné.
-fn read_secret_from_env_var(obj, objs, ctx, params) {
+fn read_secret_from_env_var(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let findings = [];
     let kind = text(field(obj, "kind"));
@@ -998,4 +990,19 @@ fn read_secret_from_env_var(obj, objs, ctx, params) {
         }
     }
     findings
+}
+
+// Entrées d'index de ce thème, construites une fois par `render_lint::index` :
+//   pod_names : `Secret|nom` et `ConfigMap|nom` -> vrai pour un objet du groupe du noyau, tous
+//               namespaces confondus (kube-linter ne rapproche une référence que par nom et genre).
+fn index(objs) {
+    import "render_lint" as render_lint;
+    let names = multimap();
+    for o in objs {
+        if render_lint::kind_of_group(o, ["Secret", "ConfigMap"], "") {
+            let n = text(field(field(o, "metadata"), "name"));
+            if n != "" { names.put(`${text(field(o, "kind"))}|${n}`, true); }
+        }
+    }
+    #{ pod_names: names }
 }

@@ -8,6 +8,13 @@ Vynil fournit le moteur et les types de données. Il n'embarque aucune règle : 
 décide de ce qui est vérifié, avec quelle sévérité, et de ce qui est exclu. Sans script de lint, le
 lint du rendu ne tourne pas et `agent package test` se comporte exactement comme avant.
 
+> **Statut.** La bibliothèque `render_lint` porte 60 des 63 vérifications de kube-linter v0.8.3. Les
+> trois autres ne sont pas portées, chacune pour une raison consignée : `scc-deny-privileged-container`
+> dépend d'une CRD tierce (`SecurityContextConstraints` d'OpenShift) absente de la liste d'objets ;
+> `sorted-keys` a besoin de l'ordre des clés du document source, perdu avant que les objets n'atteignent
+> le script ; `schema-validation` est couverte par `render_lint_schema`, composée séparément. La fonction
+> `checks()` de la bibliothèque fait foi.
+
 ## Activation
 
 Le lint du rendu s'active par `--lint-dir` sur `agent package test` (voir [Tests de paquet](test.md#lint-du-rendu)
@@ -31,9 +38,8 @@ agent package test -p ./my-package --all \
 1. le répertoire de lint lui-même ;
 2. `{script-dir}/lib`, où `script-dir` est le flag `--script-dir` (défaut `./agent/scripts`).
 
-Le répertoire de lint passe en premier : un module du même nom posé là remplace le module standard de
-l'agent, comme un paquet peut surcharger un fichier fourni par l'agent. Une distribution qui masque un
-module standard par inadvertance change donc ce que son propre script importe.
+Les bibliothèques `render_lint` et `render_lint_schema` sont donc prises dans le répertoire de scripts
+de l'agent, et non dans la distribution.
 
 Un `lint.rhai` absent, un script qui ne compile pas, ou un script qui ne définit ni `lint` ni
 `lint_suite` arrêtent la commande avec le code de sortie 3, avant toute sortie.
@@ -69,10 +75,8 @@ Une section est ce que le paquet a lui-même déclaré pendant l'installation, e
 Une entrée désigne un objet quand `kind`, `name` et `namespace` coïncident (un `namespace` absent doit l'être
 des deux côtés), et `apiVersion` quand l'entrée en porte un. La section `crds` ne liste que des noms de
 CRD. Un objet désigné par plusieurs sections figure dans chacune d'elles. Si le `status` ne peut pas être
-lu, toutes les sections sont vides, tous les objets sont dans `unsectioned`, et une ligne en échec
-`lint:sections` est ajoutée : une règle du type « pour chaque objet de `objs.scalables` » passerait sinon
-sans avoir rien vérifié. Un `status` lu avec succès mais qui ne déclare aucune section est légitime et
-n'ajoute aucune ligne.
+lu, toutes les sections sont vides et tous les objets sont dans `unsectioned` ; le test n'échoue pas pour
+autant.
 
 Chaque appel s'exécute dans un moteur Rhai neuf, sans état partagé entre tests. Le script reçoit des
 copies : il ne peut pas modifier les objets du test. Les fonctions disponibles sont les fonctions de
@@ -80,10 +84,8 @@ manipulation de données du moteur de base et les fonctions `schema_*`. Aucune f
 S3, shell ou fichier n'est enregistrée : un script qui en appelle une échoue avec une erreur de fonction
 inconnue.
 
-L'exécution est bornée pour qu'un script qui boucle ne bloque pas la suite : par un budget d'opérations,
-une base plus une part par objet reçu, et par une limite de taille des chaînes, tableaux et cartes (un
-script qui double une chaîne en boucle échoue au lieu d'épuiser la mémoire). Les valeurs du budget ne sont
-pas encore fixées par le contrat.
+L'exécution est bornée par une limite d'opérations pour qu'un script qui boucle ne bloque pas la suite.
+La valeur de cette limite n'est pas encore fixée par le contrat.
 
 ### Erreurs du script
 
@@ -154,7 +156,7 @@ Un constat est une carte renvoyée dans le tableau. Champs :
 | `path` | chaîne | non | Chemin pointé dans l'objet, par exemple `spec.template.spec.containers[0].image`. |
 | `source` | chaîne | non | Information libre sur l'origine. |
 | `suppressed` | booléen | non | Défaut `false`. Un constat supprimé est inventorié, pas rapporté. |
-| `reason` | chaîne | si `suppressed` vaut `true` | Raison donnée à une suppression. Doit alors être non vide. |
+| `reason` | chaîne | non | Raison donnée à une suppression. |
 | `origin` | chaîne | non | Provenance de la suppression, par exemple `annotation:{prefix}{rule}`. |
 
 Les clés inconnues sont ignorées.
@@ -176,7 +178,6 @@ Chaque constat devient une ligne du verdict du test :
 | supprimé (toute sévérité) | aucune | — | inventorié, voir ci-dessous |
 | élément invalide | `lint:invalid-finding` | non | description de l'invalidité |
 | erreur du script | `lint:execution` | non | l'erreur |
-| `status` de l'instance illisible | `lint:sections` | non | l'erreur de lecture |
 
 La description d'une ligne est `{kind} {namespace}/{name}`, ou `{kind} {name}` pour un objet non
 namespacé. Pour le hook de suite, les lignes appartiennent à un enregistrement nommé `(suite)`.
@@ -193,15 +194,15 @@ dans les spécifications.
 Un constat marqué `suppressed: true` ne fait jamais échouer un test. Il est conservé dans un inventaire,
 pour que chaque exception reste visible dans les rapports.
 
-Le moteur ne décide pas de ce qui est supprimé : le script positionne `suppressed` lui-même, par exemple à
-partir d'une annotation posée sur l'objet. Une suppression doit dire pourquoi : `suppressed: true` sans
-`reason` non vide est un constat invalide (`lint:invalid-finding`), pour qu'une erreur ne puisse jamais être
-réduite au silence sans trace de sa justification.
+Le moteur ne décide pas de ce qui est supprimé. La bibliothèque `render_lint` marque les constats comme
+supprimés à partir d'annotations posées sur l'objet (voir plus bas), mais un script peut aussi positionner
+`suppressed` lui-même.
 
 L'inventaire n'est rendu que s'il n'est pas vide :
 
 - **text** : après la ligne `Results:`, une ligne `Suppressed: {n}`, puis une ligne par suppression :
-  `  [SKIP] {test}: {rule} {kind} {namespace}/{name}: {reason}` ;
+  `  [SKIP] {test}: {rule} {kind} {namespace}/{name}: {reason}`, avec `(no reason)` quand la raison est
+  absente ;
 - **json** : après `summary`, un tableau `suppressions`. Chaque entrée a les clés `test`, `rule`, `kind`,
   `namespace`, `name`, `path`, `reason`, `origin` ; les champs absents valent `null` ;
 - **JUnit** : un élément `<system-out>` sur le `<testsuite>` du test concerné, une suppression par ligne.
@@ -216,16 +217,12 @@ Ces fonctions ne sont enregistrées dans le moteur du script de lint que si `--l
 | Fonction | Retourne |
 |---|---|
 | `schema_known(obj)` | `true` si un schéma existe pour l'`apiVersion` et le `kind` de l'objet. Un kind inconnu est un fait, pas une erreur. |
-| `schema_validate(obj)` | tableau de `#{path, message}`, vide si l'objet est conforme **ou si aucun schéma n'est connu pour son `apiVersion` et son `kind`**. Équivaut à `strict: true`. |
+| `schema_validate(obj)` | tableau de `#{path, message}`, vide si l'objet est conforme. Équivaut à `strict: true`. |
 | `schema_validate(obj, #{strict: bool})` | idem, avec le mode strict réglé. `strict: false` désactive seulement le mode strict ; la normalisation du schéma reste appliquée. |
 | `schema_native_version()` | version des schémas Kubernetes natifs embarqués dans le binaire, sous forme de chaîne. |
 
 Le `path` retourné par `schema_validate` est un pointeur JSON (par exemple `/spec/template/spec/containers/0`,
-vide à la racine). La conversion en notation pointée est laissée au script.
-
-Un objet de kind inconnu est donc rapporté comme conforme, et une faute de frappe dans une `apiVersion`
-(`apps/v1beta` au lieu de `apps/v1`) passe sans bruit. Un script qui veut la signaler appelle d'abord
-`schema_known(obj)`.
+vide à la racine). La conversion en notation pointée est faite par la bibliothèque `render_lint_schema`.
 
 Les schémas viennent de trois sources, résolues dans cet ordre :
 
@@ -243,49 +240,147 @@ Le répertoire de schémas contient :
 Les autres fichiers sont ignorés. Un répertoire absent ou vide n'ajoute aucune source ; la table native
 reste active. Un fichier JSON non analysable arrête la commande, et l'erreur nomme ce fichier.
 
-## Exemple : `lint.rhai`
+## La bibliothèque `render_lint`
 
-Un script de distribution minimal avec une règle maison. Il construit ses constats lui-même et n'a besoin
-d'aucun import :
+La bibliothèque est dérivée de [kube-linter](https://github.com/stackrox/kube-linter) (licence Apache
+2.0) : les noms, paramètres, valeurs par défaut et comportements mesurés de ses vérifications sont ceux de
+l'outil de référence, portés en Rhai pour s'exécuter sur les objets d'un rendu de test sans cluster. Le
+`NOTICE` du dépôt en porte l'attribution. La bibliothèque est faite pour être lue autant qu'appelée : une
+distribution qui écrit ses propres règles peut s'en inspirer, et chaque module documente le comportement
+qu'il reproduit.
+
+Le script de la distribution compose la bibliothèque par `import`. L'alias est le nom du module
+(`render_lint`), jamais `lint` : c'est le nom du point d'entrée `fn lint(objs, ctx)` du script.
 
 ```rhai
-// Règle maison : tout Deployment du groupe apps porte un label `team`.
-fn lint(objs, ctx) {
+import "render_lint" as render_lint;
+```
+
+### Fonctions exposées
+
+| Fonction | Rôle |
+|---|---|
+| `render_lint::finding(rule, severity, obj, message)` et `render_lint::finding(rule, severity, obj, path, message)` | Construit une carte constat. |
+| `render_lint::object_ref(obj)` | La carte `object` d'un objet. |
+| `render_lint::api_group_of(api_version)` | Groupe d'API d'une `apiVersion` : la partie avant `/` (`apps` pour `apps/v1`), la chaîne vide pour `v1` (groupe du noyau), `()` pour une version sans `/` autre que `v1`. |
+| `render_lint::kind_of_group(obj, kinds, group)` | `true` quand l'objet a l'un des `kinds` dans le groupe d'API `group` (`""` pour le noyau). La seule façon pour une vérification de reconnaître un objet : un kind seul ne suffit jamais, un `Deployment` d'un autre groupe n'est pas une charge de travail `apps`. |
+| `render_lint::pod_templates(obj)` | Tableau de `#{pod, path}` pour les objets qui embarquent un gabarit de pod. `path` vaut `spec.template`, `spec.jobTemplate.spec.template`, ou une chaîne vide pour un `Pod`. Vide pour les autres objets. |
+| `render_lint::containers(entry)` | Tableau de `#{container, path, init}` pour une entrée de `pod_templates` : conteneurs puis conteneurs d'init, avec des chemins complets tels que `spec.template.spec.containers[0]`. |
+| `render_lint::suppression_reason(obj, rule, opts)` | Valeur de l'annotation `{ignore_prefix}{rule}` de l'objet, ou `()` si elle est absente ou si `ignore_prefix` n'est pas donné. |
+| `render_lint::apply_suppressions(findings, objs, opts)` | Marque supprimés les constats dont l'objet porte l'annotation. Renseigne `reason` (si non vide) et `origin`. |
+| `render_lint::all(objs, ctx, opts)` | Exécute les vérifications activées sur tous les objets, et applique les suppressions. Ordre : objets dans l'ordre, puis vérifications par ordre alphabétique de leur nom. Sans option, seules les vérifications que kube-linter active par défaut s'exécutent. |
+| `render_lint::checks()` | Tableau trié des noms des vérifications fournies, au nommage kube-linter (tirets). |
+| `render_lint::default_checks()` | Tableau trié des vérifications que kube-linter active par défaut (31 sur 60). |
+| `render_lint::index(objs)` | L'index d'une liste d'objets (voir ci-dessous). Utile seulement pour appeler une vérification directement. |
+
+Chaque vérification est aussi une fonction `{name}(obj, idx, ctx, params)`, où les tirets du nom
+kube-linter deviennent des soulignés. Elle retourne un tableau de constats, vide s'il n'y a rien à
+signaler, et un tableau vide pour les kinds qu'elle ne concerne pas. Le `rule` d'un constat est le nom
+kube-linter, tirets compris, pour qu'une liste `exclude` ou une annotation de suppression fonctionne d'un
+outil à l'autre.
+
+`idx` est l'index de la liste d'objets, pas la liste elle-même. Rhai passe toute valeur par copie : donner
+la liste entière à chacune des soixante vérifications pour chaque objet la copie soixante fois par objet,
+ce qui est quadratique. `render_lint::all` construit l'index une fois par `render_lint::index(objs)`, une
+carte de poignées partagées que les vérifications qui rapprochent plusieurs objets (un Service de ses pods,
+une liaison de son rôle, une référence d'env d'un Secret) interrogent au lieu de parcourir la liste. Un
+script qui appelle une vérification directement passe `render_lint::index(objs.all)`. L'argument `ctx` est
+réservé : aucune vérification portée ne le lit et `all` passe `()`.
+
+Le coût de `render_lint::all` est donc linéaire en nombre d'objets.
+
+### Options de `render_lint::all`
+
+Toutes les clés sont facultatives.
+
+| Clé | Défaut | Sens |
+|---|---|---|
+| `exclude` | aucun | Noms des vérifications à ne pas exécuter. Toujours appliqué. |
+| `only` | absent | Quand présent, exactement ces vérifications s'exécutent, y compris celles que kube-linter n'active pas par défaut. |
+| `include_optional` | `false` | Exécute aussi les vérifications que kube-linter n'active pas par défaut (`required-label-owner`, `minimum-three-replicas`, `no-node-affinity`, `use-namespace`…). |
+| `severity` | `"error"` pour chaque vérification | Carte nom de vérification vers `"error"` ou `"warn"`. Appliquée après l'exécution de la vérification. |
+| `params` | vide | Carte nom de vérification vers une carte de paramètres, avec les noms de paramètres de kube-linter. |
+| `ignore_prefix` | absent | Préfixe des annotations de suppression. Sans lui, aucune suppression n'a lieu. |
+| `require_reason` | `false` | Quand `true`, une suppression dont la valeur d'annotation est vide n'est pas appliquée. Le constat reste, et un constat `suppression-without-reason` de sévérité `error` est ajouté, une fois par objet et par règle, nommant l'annotation. Quand `false`, une annotation vide supprime avec la raison `(aucune raison donnée)` : le moteur refuse une suppression sans raison. |
+
+Sans option, `render_lint::all` exécute les vérifications que kube-linter active par défaut, ce
+qu'attendra une distribution qui recopie l'exemple. `include_optional: true` exécute les soixante.
+
+**Une option qui ne peut pas s'appliquer est une erreur, pas un non-événement.** Le script échoue avec un
+message qui nomme l'option, et le test rapporte une ligne `lint:execution`, pour : une clé d'option
+inconnue ; un nom de vérification absent de `render_lint::checks()` dans `exclude`, `only`, `severity` ou
+`params` (`exclude: ["latest_tag"]` avec un souligné n'exclurait sinon rien) ; une sévérité autre que
+`"error"` ou `"warn"` ; un paramètre que la vérification n'a pas ; et une valeur de paramètre de mauvais type
+ou hors de son énumération (`requirementsType: "requests"` au lieu de `"request"`, une chaîne là où une liste
+est attendue).
+
+### Validation de schéma
+
+`render_lint_schema` est séparée de `render_lint::all` : la validation de schéma est opt-in.
+
+```rhai
+import "render_lint_schema" as schema;
+```
+
+`schema.check(obj)` et `schema.check(obj, opts)` retournent un tableau de constats pour un objet :
+
+| Clé | Défaut | Sens |
+|---|---|---|
+| `strict` | `true` | Un champ non déclaré est une erreur. `false` désactive seulement le mode strict. |
+| `unknown` | `"warn"` | Sévérité de `schema/unknown-kind` quand aucun schéma n'existe : `"warn"`, `"error"` ou `"ignore"` (aucun constat). |
+| `severity` | `"error"` | Sévérité des constats `schema/invalid`. |
+
+Un objet invalide produit un constat `schema/invalid` par erreur de validation, avec le `path` pointé et le
+message du moteur. Un objet sans `apiVersion` ou `kind` reçoit un constat `schema/invalid` à la racine.
+
+## Exemple : `lint.rhai`
+
+Un script de distribution minimal, avec une règle maison et l'appel à la bibliothèque :
+
+```rhai
+import "render_lint" as render_lint;
+
+// Règle maison : tout Deployment porte un label `team`.
+fn team_label(objs) {
     let findings = [];
-    for obj in objs.all {
-        if obj.apiVersion.starts_with("apps/") && obj.kind == "Deployment" {
+    for obj in objs {
+        if render_lint::kind_of_group(obj, ["Deployment"], "apps") {
             let labels = if "labels" in obj.metadata { obj.metadata.labels } else { #{} };
             if !("team" in labels) {
-                findings.push(#{
-                    rule: "team-label",
-                    severity: "error",
-                    object: #{
-                        apiVersion: obj.apiVersion,
-                        kind: obj.kind,
-                        namespace: obj.metadata.namespace,
-                        name: obj.metadata.name
-                    },
-                    path: "metadata.labels",
-                    message: "le label `team` est obligatoire"
-                });
+                findings.push(render_lint::finding("team-label", "error", obj, "label `team` is required"));
             }
         }
     }
     findings
 }
+
+fn lint(objs, ctx) {
+    let findings = team_label(objs.all);
+    findings += render_lint::all(objs.all, ctx, #{
+        exclude: ["latest-tag"],
+        severity: #{ "no-read-only-root-fs": "warn" },
+        ignore_prefix: "ignore-check.example/",
+        require_reason: true
+    });
+    findings
+}
 ```
 
-Lancement :
+Exécution :
 
 ```bash
 agent package test -p ./my-package --all --lint-dir ./distribution/lint
 ```
 
-Un Deployment sans label `team` produit une ligne en échec `lint:team-label`. Un script qui lit `objs.all`
-identifie un objet par son groupe d'API et son kind ensemble, jamais par son kind seul : un `Deployment`
-d'un autre groupe n'est pas la charge de travail visée par la règle.
+Un Deployment sans label `team` produit une ligne en échec `lint:team-label`. Une annotation
+`ignore-check.example/team-label: "legacy"` posée sur ce Deployment ne la supprime pas, parce que la règle
+maison construit son constat directement et ne passe pas par `render_lint::apply_suppressions`. Pour rendre une
+règle maison supprimable, faire passer ses constats par `render_lint::apply_suppressions(findings, objs.all, opts)`.
 
 ## Limites
 
-- Les valeurs du budget d'opérations et leur configuration ne sont pas encore fixées.
+- Trois vérifications de kube-linter ne sont pas portées (voir la note de statut).
+- Les valeurs du budget d'opérations et sa configuration ne sont pas encore fixées. Le budget est
+  proportionnel au nombre d'objets, et `render_lint::all` coûte environ seize mille opérations par objet avec
+  les soixante vérifications.
 - Un constat `warn` n'a pas de champ de sévérité dans le verdict.

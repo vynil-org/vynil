@@ -3,7 +3,7 @@
 use crate::testing::{
     lint::{
         finding::{parse_findings, to_rows, to_suppressions},
-        patterns,
+        multimap, patterns,
         sections::Sections,
     },
     result::Suppression,
@@ -21,8 +21,9 @@ const SUITE_TEST_NAME: &str = "(suite)";
 const EXECUTION_RULE: &str = "lint:execution";
 /// Budget d'opérations d'un appel : `OPERATIONS_BASE` plus `OPERATIONS_PER_OBJECT` par objet
 /// reçu. Une charge honnête croît avec la taille du rendu ; la borne ne sert qu'à arrêter un
-/// script qui boucle. Valeurs à mesurer sur le script réel de la distribution (décision `[?]`
-/// de runner.sdd).
+/// script qui boucle. Mesuré sur `render_lint::all` avec les soixante vérifications : environ
+/// 16 000 opérations par objet, linéaire de 200 à 800 objets ; la part par objet garde donc une
+/// marge d'un facteur trois.
 const OPERATIONS_BASE: u64 = 10_000_000;
 const OPERATIONS_PER_OBJECT: u64 = 50_000;
 /// Bornes mémoire du moteur : le budget d'opérations ne protège pas d'un `s += s`.
@@ -84,6 +85,7 @@ fn build_engine(lint_dir: &Path, script_dir: &Path, schemas: &SchemaRegistry, ma
 
     schema_rhai_register(&mut engine, schemas.clone());
     patterns::register(&mut engine);
+    multimap::register(&mut engine);
     engine
 }
 

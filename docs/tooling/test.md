@@ -63,7 +63,7 @@ The `tests/` directory must exist, otherwise the agent returns `MissingTestDirec
 When `--lint-dir` is given, the distribution's lint script runs at the end of each test, on the
 objects that the test created. It is the place where a distribution enforces its own rules on a
 package; Vynil itself ships no rule. The full contract of the script (entry points, context, finding
-shape, suppressions, `schema_*` functions) is in
+shape, suppressions, `schema_*` functions, `render_lint` library) is in
 [Render lint](render-lint.md).
 
 ```bash

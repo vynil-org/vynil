@@ -1,3 +1,6 @@
+// Attribution : les vérifications de ce module reprennent la logique de kube-linter
+// (https://github.com/stackrox/kube-linter, licence Apache 2.0) : noms, paramètres, valeurs par
+// défaut et sémantique mesurée sur v0.8.3. Voir /NOTICE et /third_party/kube-linter/LICENSE.
 // Thème « network » des vérifications portées de kube-linter (spec : render_lint_network.sdd).
 // Chaque vérification est pure : elle ne lit que ses arguments et retourne un tableau de
 // constats, vide quand rien n'est à signaler. `render_lint` est importé dans le corps de chaque
@@ -124,7 +127,7 @@ private fn service_well_formed(svc) {
 // Service dangling : aucun gabarit de pod du même namespace n'est sélectionné par son
 // `spec.selector`. Un Service `ExternalName` (casse exacte, mesurée) est exempté, sans sélecteur
 // ou non. Un Service mal formé : pas de constat.
-fn dangling_service(obj, objs, ctx, params) {
+fn dangling_service(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !kind_of_group(obj, ["Service"], "") { return []; }
     if !service_well_formed(obj) { return []; }
@@ -133,8 +136,8 @@ fn dangling_service(obj, objs, ctx, params) {
     let sel = field(spec, "selector");
     let ns = ns_of(obj);
     if type_of(sel) == "map" {
-        for o in objs {
-            if ns_of(o) == ns && selects(sel, selectable_labels(o)) { return []; }
+        for labels in idx.net_targets.values(ns) {
+            if selects(sel, labels) { return []; }
         }
     }
     let name = name_of(obj);
@@ -156,7 +159,7 @@ private fn forbidden_types(params) {
 
 // Service exposé par un type interdit. La comparaison ignore la casse (mesuré : `nodeport` est
 // signalé comme `NodePort`). Type absent ou vide : jamais signalé.
-fn exposed_services(obj, objs, ctx, params) {
+fn exposed_services(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !kind_of_group(obj, ["Service"], "") { return []; }
     if !service_well_formed(obj) { return []; }
@@ -237,7 +240,7 @@ private fn pod_decodable(pod) {
 // Service du noyau, et (b) le nom d'un port de conteneur ou d'init-conteneur d'un gabarit de pod
 // (Pod, apps toutes versions, batch, ReplicationController ; le groupe extensions est ignoré,
 // mesuré). Un nom de port de conteneur vide n'est pas examiné. Un constat par règle violée.
-fn invalid_target_ports(obj, objs, ctx, params) {
+fn invalid_target_ports(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let out = [];
     if kind_of_group(obj, ["Service"], "") {
@@ -357,15 +360,11 @@ private fn ingress_backends(obj) {
 // le backend. Un nom de port non vide se compare au `name` du port ; sinon le numéro (0 si absent)
 // se compare au `port` du Service. Mesuré : un port absent du backend compte comme 0, et
 // un nom présent prime sur le numéro. Un Service mal formé ne compte pas.
-private fn backend_resolves(objs, ns, svc_name, port) {
+private fn backend_resolves(idx, ns, svc_name, port) {
     let pname = text(field(port, "name"));
     let pnum = field(port, "number");
     if pnum == () { pnum = 0; }
-    for o in objs {
-        if !kind_of_group(o, ["Service"], "") || ns_of(o) != ns || name_of(o) != svc_name { continue; }
-        if !service_well_formed(o) { continue; }
-        let ports = field(field(o, "spec"), "ports");
-        if type_of(ports) != "array" { continue; }
+    for ports in idx.net_service_ports.values(`${ns}|${svc_name}`) {
         for p in ports {
             if pname != "" {
                 if text(field(p, "name")) == pname { return true; }
@@ -382,7 +381,7 @@ private fn backend_resolves(objs, ns, svc_name, port) {
 // nom, ou port absent du Service). Seul networking.k8s.io/v1 est examiné (mesuré : les Ingress
 // extensions/v1beta1 et networking.k8s.io/v1beta1, au format legacy ou moderne, sont ignorés).
 // Un constat par backend non résolu : defaultBackend puis chaque chemin de chaque règle.
-fn dangling_ingress(obj, objs, ctx, params) {
+fn dangling_ingress(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if text(field(obj, "apiVersion")) != "networking.k8s.io/v1" { return []; }
     if text(field(obj, "kind")) != "Ingress" { return []; }
@@ -395,7 +394,7 @@ fn dangling_ingress(obj, objs, ctx, params) {
         let svc_name = text(field(b.service, "name"));
         let port = field(b.service, "port");
         if port == () { port = #{}; }
-        if backend_resolves(objs, ns, svc_name, port) { continue; }
+        if backend_resolves(idx, ns, svc_name, port) { continue; }
         out.push(render_lint::finding(
             "dangling-ingress",
             "error",
@@ -489,11 +488,8 @@ private fn label_selector_matches(sel, labels) {
 
 // Vrai quand une cible du namespace `ns` (même genre que pour dangling-service) est atteinte par le
 // sélecteur. Un sélecteur vide n'atteint que les cibles de son propre namespace (mesuré).
-private fn selector_reaches_target(sel, ns, objs) {
-    for o in objs {
-        if ns_of(o) != ns { continue; }
-        let labels = selectable_labels(o);
-        if labels == () { continue; }
+private fn selector_reaches_target(sel, ns, idx) {
+    for labels in idx.net_targets.values(ns) {
         if label_selector_matches(sel, labels) { return true; }
     }
     false
@@ -546,14 +542,14 @@ private fn network_policy_well_formed(np) {
 // NetworkPolicy dangling : son `spec.podSelector` n'atteint aucune cible du même namespace. Un
 // sélecteur vide ou absent atteint toute cible du namespace (labels absents compris). Seuls les
 // genres de selectable_labels sont cibles.
-fn dangling_networkpolicy(obj, objs, ctx, params) {
+fn dangling_networkpolicy(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !is_network_policy(obj) { return []; }
     if !network_policy_well_formed(obj) { return []; }
     let spec = field(obj, "spec");
     let sel = field(spec, "podSelector");
     let ns = ns_of(obj);
-    if selector_reaches_target(sel, ns, objs) { return []; }
+    if selector_reaches_target(sel, ns, idx) { return []; }
     let name = name_of(obj);
     [render_lint::finding(
         "dangling-networkpolicy",
@@ -567,7 +563,7 @@ fn dangling_networkpolicy(obj, objs, ctx, params) {
 // Pair de NetworkPolicy dont le `podSelector` n'atteint aucune cible du même namespace. Un constat
 // par pair fautive (ingress et egress compris). Les pairs avec namespaceSelector ne sont pas
 // examinées.
-fn dangling_networkpolicypeer_podselector(obj, objs, ctx, params) {
+fn dangling_networkpolicypeer_podselector(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !is_network_policy(obj) { return []; }
     if !network_policy_well_formed(obj) { return []; }
@@ -575,7 +571,7 @@ fn dangling_networkpolicypeer_podselector(obj, objs, ctx, params) {
     let name = name_of(obj);
     let out = [];
     for p in np_peers(field(obj, "spec")) {
-        if selector_reaches_target(p.sel, ns, objs) { continue; }
+        if selector_reaches_target(p.sel, ns, idx) { continue; }
         out.push(render_lint::finding(
             "dangling-networkpolicypeer-podselector",
             "error",
@@ -591,7 +587,7 @@ fn dangling_networkpolicypeer_podselector(obj, objs, ctx, params) {
 // qu'aucune NetworkPolicy bien formée du même namespace n'isole. Un constat par objet. Le groupe
 // extensions et les groupes tiers sont ignorés (mesuré : un Deployment extensions/v1beta1 n'est pas
 // examiné par cette vérification, à la différence de dangling-service).
-fn non_isolated_pod(obj, objs, ctx, params) {
+fn non_isolated_pod(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if labels_of(field(obj, "metadata")) == () { return []; }
     let entries = render_lint::pod_templates(obj);
@@ -600,12 +596,8 @@ fn non_isolated_pod(obj, objs, ctx, params) {
     if !pod_decodable(entry.pod) { return []; }
     let labels = labels_of(field(entry.pod, "metadata"));
     let ns = ns_of(obj);
-    for np in objs {
-        if !is_network_policy(np) { continue; }
-        if !network_policy_well_formed(np) { continue; }
-        if ns_of(np) != ns { continue; }
-        let sel = field(field(np, "spec"), "podSelector");
-        if label_selector_matches(sel, labels) { return []; }
+    for entry in idx.net_policy_selectors.values(ns) {
+        if label_selector_matches(entry.sel, labels) { return []; }
     }
     let name = name_of(obj);
     let base = text(entry.path);
@@ -635,7 +627,7 @@ private fn is_service_monitor(obj) {
 // matchLabels est présent, et seul il ne correspond à rien) ; un matchLabels vide ne correspond à
 // rien. Un Service mal formé, d'un autre groupe ou aux labels mal typés n'est pas une cible. Seule
 // la liste d'objets est nécessaire : la vérification n'a pas besoin de la CRD.
-fn dangling_servicemonitor(obj, objs, ctx, params) {
+fn dangling_servicemonitor(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !is_service_monitor(obj) { return []; }
     let spec = field(obj, "spec");
@@ -644,11 +636,8 @@ fn dangling_servicemonitor(obj, objs, ctx, params) {
     if !label_selector_well_formed(sel) { return []; }
     let ml = field(sel, "matchLabels");
     if type_of(ml) == "map" {
-        for o in objs {
-            if !kind_of_group(o, ["Service"], "") { continue; }
-            if !service_well_formed(o) { continue; }
-            let labels = labels_of(field(o, "metadata"));
-            if labels != () && selects(ml, labels) { return []; }
+        for labels in idx.net_service_labels.values("") {
+            if selects(ml, labels) { return []; }
         }
     }
     let name = name_of(obj);
@@ -659,4 +648,38 @@ fn dangling_servicemonitor(obj, objs, ctx, params) {
         "spec.selector",
         `ServiceMonitor "${name}" : spec.selector.matchLabels ne correspond aux labels d'aucun Service de la liste ; corriger les labels du sélecteur ou créer le Service visé`
     )]
+}
+
+// Entrées d'index de ce thème, construites une fois par `render_lint::index` (voir render_lint.sdd).
+//   net_targets          : namespace -> labels du gabarit qu'un Service ou une NetworkPolicy peut
+//                          cibler (`selectable_labels`) ;
+//   net_service_ports    : `namespace|nom` -> tableau `ports` d'un Service bien formé ;
+//   net_service_labels   : "" -> labels de metadata d'un Service bien formé (ServiceMonitor) ;
+//   net_policy_selectors : namespace -> `#{ sel }`, podSelector d'une NetworkPolicy bien formée.
+// Les prédicats sont ceux des vérifications : l'index ne change aucune sémantique, il évite de
+// reparcourir et de recopier la liste d'objets pour chaque objet et chaque vérification.
+fn index(objs) {
+    let targets = multimap();
+    let service_ports = multimap();
+    let service_labels = multimap();
+    let policy_selectors = multimap();
+    for o in objs {
+        let labels = selectable_labels(o);
+        if labels != () { targets.put(ns_of(o), labels); }
+        if kind_of_group(o, ["Service"], "") && service_well_formed(o) {
+            let ports = field(field(o, "spec"), "ports");
+            if type_of(ports) == "array" { service_ports.put(`${ns_of(o)}|${name_of(o)}`, ports); }
+            let svc_labels = labels_of(field(o, "metadata"));
+            if svc_labels != () { service_labels.put("", svc_labels); }
+        }
+        if is_network_policy(o) && network_policy_well_formed(o) {
+            policy_selectors.put(ns_of(o), #{ sel: field(field(o, "spec"), "podSelector") });
+        }
+    }
+    #{
+        net_targets: targets,
+        net_service_ports: service_ports,
+        net_service_labels: service_labels,
+        net_policy_selectors: policy_selectors
+    }
 }

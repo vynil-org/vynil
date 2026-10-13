@@ -36,6 +36,9 @@ Must:
     assumée à « toutes versions d'un groupe ») ; un RoleBinding résout un Role de son namespace,
     jamais un ClusterRole, et un ClusterRoleBinding un ClusterRole, par le nom seul (`roleRef.kind`
     et `roleRef.apiGroup` ignorés) ; une liaison donne un constat au plus.
+  Exposer `index(objs)` : les entrées d'index de ce thème (`rbac_roles`, `rbac_service_accounts`) ;
+    le premier rôle de la liste fait foi pour un nom donné, comme le parcours d'origine. Les
+    vérifications qui croisent plusieurs objets lisent l'index reçu en deuxième argument.
 
 Tasks:
   [x] Porter les vérifications du thème par lots, chacune avec sa fixture

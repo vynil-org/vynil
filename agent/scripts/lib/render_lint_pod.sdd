@@ -32,6 +32,9 @@ Must:
     de kube-linter, et appliquer les mêmes valeurs par défaut.
   Ne signaler que ce que la vérification définit : une vérification n'infère aucune règle
     voisine.
+  Exposer `index(objs)` : l'entrée d'index de ce thème (`pod_names`, les noms de Secret et de
+    ConfigMap du groupe du noyau). Les vérifications qui croisent plusieurs objets lisent
+    l'index reçu en deuxième argument.
 
 Tasks:
   [x] Porter les vérifications du thème par lots, chacune avec sa fixture

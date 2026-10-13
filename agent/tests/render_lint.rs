@@ -5,7 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use client::testing::{
-    lint::patterns,
+    lint::{multimap, patterns},
     schema::{registry::SchemaRegistry, rhai::schema_rhai_register},
 };
 use common::rhaihandler::Script;
@@ -21,6 +21,7 @@ fn lib_script() -> Script {
         Arc::new(Mutex::new(Vec::new())),
     );
     patterns::register(&mut rhai.engine);
+    multimap::register(&mut rhai.engine);
     rhai
 }
 
@@ -1206,7 +1207,10 @@ fn pod_pairs_in_list(
         set_obj(rhai, obj);
         let found = eval_json(
             rhai,
-            &format!(r#"import "render_lint_pod" as pod; pod::{function}(obj, objs, #{{}}, {params})"#),
+            &format!(
+                r#"import "render_lint" as lint; import "render_lint_pod" as pod;
+                   pod::{function}(obj, lint::index(objs), #{{}}, {params})"#
+            ),
         );
         for f in found.as_array().expect("tableau de constats") {
             pairs.push((
@@ -1967,7 +1971,7 @@ fn the_network_batch_does_not_raise_on_unexpected_shapes() {
     let found = eval_json(
         &mut rhai,
         &format!(
-            r#"import "render_lint" as render_lint; render_lint::all(objs, #{{}}, #{{only: [{only}], params: #{{"exposed-services": #{{forbiddenServiceTypes: "NodePort"}}}}}})"#
+            r#"import "render_lint" as render_lint; render_lint::all(objs, #{{}}, #{{only: [{only}]}})"#
         ),
     );
     assert_eq!(found, json!([]), "aucun constat sur des formes inattendues");
@@ -2522,4 +2526,160 @@ fn the_rbac_batch_does_not_raise_on_unexpected_shapes() {
     ] {
         assert!(check_findings(check, &objs, "#{}").is_empty(), "{check}");
     }
+}
+
+// ===== Options, paramètres et jeu par défaut =====
+
+/// Message de l'erreur d'une évaluation qui doit échouer.
+fn eval_error(rhai: &mut Script, script: &str) -> String {
+    rhai.eval(script)
+        .expect_err("le script doit être refusé")
+        .to_string()
+}
+
+fn latest_deployment() -> Value {
+    deployment("app", "web", "registry.example.test/web:latest")
+}
+
+#[test]
+fn the_default_set_is_the_tool_default() {
+    // Un Deployment sans label `owner`, sans sonde et à l'image `latest` : `latest-tag` est actif
+    // par défaut chez kube-linter, `required-label-owner` et `no-readiness-probe` ne le sont pas.
+    let mut rhai = lib_script();
+    set_objs(&mut rhai, &json!([latest_deployment()]));
+    let by_default = eval_json(
+        &mut rhai,
+        r#"import "render_lint" as render_lint; render_lint::all(objs, #{}, #{})"#,
+    );
+    let got = rules(&by_default);
+    assert!(got.contains(&"latest-tag".to_string()), "{got:?}");
+    assert!(!got.contains(&"required-label-owner".to_string()), "{got:?}");
+    assert!(!got.contains(&"no-readiness-probe".to_string()), "{got:?}");
+    let all = eval_json(
+        &mut rhai,
+        r#"import "render_lint" as render_lint; render_lint::all(objs, #{}, #{include_optional: true})"#,
+    );
+    let got = rules(&all);
+    assert!(got.contains(&"required-label-owner".to_string()), "{got:?}");
+    assert!(got.contains(&"no-readiness-probe".to_string()), "{got:?}");
+}
+
+#[test]
+fn only_runs_an_optional_check_it_names() {
+    let mut rhai = lib_script();
+    set_objs(&mut rhai, &json!([latest_deployment()]));
+    let found = eval_json(
+        &mut rhai,
+        r#"import "render_lint" as render_lint;
+           render_lint::all(objs, #{}, #{only: ["required-label-owner"]})"#,
+    );
+    assert_eq!(rules(&found), vec!["required-label-owner"]);
+}
+
+#[test]
+fn default_checks_are_a_subset_of_checks() {
+    let mut rhai = lib_script();
+    let ok = eval_json(
+        &mut rhai,
+        r#"import "render_lint" as render_lint;
+           let known = render_lint::checks();
+           let ok = true;
+           for n in render_lint::default_checks() { if !(n in known) { ok = false; } }
+           ok"#,
+    );
+    assert_eq!(ok, json!(true));
+}
+
+#[test]
+fn a_misspelled_option_is_refused() {
+    let mut rhai = lib_script();
+    set_objs(&mut rhai, &json!([latest_deployment()]));
+    let cases = [
+        (r#"#{ exlude: ["latest-tag"] }"#, "option inconnue"),
+        (r#"#{ exclude: ["latest_tag"] }"#, "vérification inconnue"),
+        (r#"#{ only: ["no-such-check"] }"#, "vérification inconnue"),
+        (r#"#{ exclude: "latest-tag" }"#, "un tableau de noms"),
+        (
+            r#"#{ severity: #{"latest_tag": "warn"} }"#,
+            "vérification inconnue",
+        ),
+        (
+            r#"#{ severity: #{"latest-tag": "warning"} }"#,
+            r#"doit valoir "error" ou "warn""#,
+        ),
+        (r"#{ ignore_prefix: 3 }", "ignore_prefix"),
+        (r#"#{ require_reason: "yes" }"#, "require_reason"),
+        (r#"#{ params: #{"latest_tag": #{}} }"#, "vérification inconnue"),
+    ];
+    for (opts, expected) in cases {
+        let message = eval_error(
+            &mut rhai,
+            &format!(r#"import "render_lint" as render_lint; render_lint::all(objs, #{{}}, {opts})"#),
+        );
+        assert!(message.contains(expected), "{opts} : {message}");
+    }
+}
+
+#[test]
+fn an_invalid_parameter_is_refused_instead_of_disabling_the_check() {
+    let mut rhai = lib_script();
+    set_objs(&mut rhai, &json!([latest_deployment()]));
+    let cases = [
+        (
+            r#"#{"unset-cpu-requirements": #{requirementsType: "requests"}}"#,
+            "requirementsType",
+        ),
+        (
+            r#"#{"latest-tag": #{BlockList: "latest"}}"#,
+            "un tableau de chaînes",
+        ),
+        (r#"#{"latest-tag": #{BlockLits: ["x"]}}"#, "paramètre inconnu"),
+        (r#"#{"minimum-three-replicas": #{minReplicas: "3"}}"#, "un entier"),
+        (r#"#{"ssh-port": #{port: "22"}}"#, "un nombre"),
+        (
+            r#"#{"exposed-services": #{forbiddenServiceTypes: "NodePort"}}"#,
+            "un tableau de chaînes",
+        ),
+        (r#"#{"latest-tag": "x"}"#, "une carte de paramètres"),
+    ];
+    for (params, expected) in cases {
+        let message = eval_error(
+            &mut rhai,
+            &format!(
+                r#"import "render_lint" as render_lint; render_lint::all(objs, #{{}}, #{{params: {params}}})"#
+            ),
+        );
+        assert!(message.contains(expected), "{params} : {message}");
+    }
+}
+
+#[test]
+fn a_valid_parameter_is_still_applied() {
+    let mut rhai = lib_script();
+    set_objs(&mut rhai, &json!([latest_deployment()]));
+    let found = eval_json(
+        &mut rhai,
+        r#"import "render_lint" as render_lint;
+           render_lint::all(objs, #{}, #{only: ["latest-tag"], params: #{"latest-tag": #{BlockList: ["^never-matches$"]}}})"#,
+    );
+    assert_eq!(found, json!([]));
+}
+
+#[test]
+fn an_empty_annotation_suppresses_with_an_explicit_reason() {
+    // Le moteur refuse une suppression sans raison : sans `require_reason`, l'annotation vide
+    // supprime avec une raison par défaut lisible plutôt que de rendre le constat invalide.
+    let mut dep = latest_deployment();
+    dep["metadata"]["annotations"] = json!({ "ignore-check.example/latest-tag": "" });
+    let mut rhai = lib_script();
+    set_objs(&mut rhai, &json!([dep]));
+    let found = eval_json(
+        &mut rhai,
+        r#"import "render_lint" as render_lint;
+           render_lint::all(objs, #{}, #{only: ["latest-tag"], ignore_prefix: "ignore-check.example/"})"#,
+    );
+    let items = found.as_array().expect("constats");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["suppressed"], json!(true));
+    assert_eq!(items[0]["reason"], json!("(aucune raison donnée)"));
 }

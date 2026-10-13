@@ -1,3 +1,6 @@
+// Attribution : les vérifications de ce module reprennent la logique de kube-linter
+// (https://github.com/stackrox/kube-linter, licence Apache 2.0) : noms, paramètres, valeurs par
+// défaut et sémantique mesurée sur v0.8.3. Voir /NOTICE et /third_party/kube-linter/LICENSE.
 // Thème « workload » des vérifications portées de kube-linter (spec : render_lint_workload.sdd).
 // Chaque vérification est pure : elle ne lit que ses arguments et retourne un tableau de
 // constats, vide quand rien n'est à signaler. `render_lint` est importé dans le corps de chaque
@@ -122,7 +125,7 @@ private fn expression_matches(e, labels) {
 
 // Réplicas inférieurs à `minReplicas` (défaut 3) sur un Deployment, StatefulSet, ReplicaSet ou
 // ReplicationController.
-fn minimum_three_replicas(obj, objs, ctx, params) {
+fn minimum_three_replicas(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !replicated(obj) { return []; }
     let min = int_param(params, "minReplicas", 3);
@@ -141,7 +144,7 @@ fn minimum_three_replicas(obj, objs, ctx, params) {
 
 // Réplicas au moins égaux à `minReplicas` (défaut 2) sans anti-affinité entre pods : `podAntiAffinity`
 // absent, ou présent sans aucune règle `preferred` ni `required`.
-fn no_anti_affinity(obj, objs, ctx, params) {
+fn no_anti_affinity(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !replicated(obj) { return []; }
     let min = int_param(params, "minReplicas", 2);
@@ -181,7 +184,7 @@ fn no_anti_affinity(obj, objs, ctx, params) {
 
 // API obsolète : objet dont le groupe vaut `group` (défaut `extensions`) et dont la version
 // correspond à `version` (défaut `v1beta.+`), quel que soit son genre.
-fn no_extensions_v1beta(obj, objs, ctx, params) {
+fn no_extensions_v1beta(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let group = string_param(params, "group", "extensions");
     let pattern = string_param(params, "version", "v1beta.+");
@@ -200,7 +203,7 @@ fn no_extensions_v1beta(obj, objs, ctx, params) {
 
 // Workload sans affinité de nœud : `nodeAffinity` absent du champ `affinity` du pod. Une affinité
 // vide (`nodeAffinity: {}`) compte comme définie.
-fn no_node_affinity(obj, objs, ctx, params) {
+fn no_node_affinity(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !deployment_like(obj) { return []; }
     let templates = render_lint::pod_templates(obj);
@@ -222,7 +225,7 @@ fn no_node_affinity(obj, objs, ctx, params) {
 // Stratégie de mise à jour absente ou dont le type ne correspond pas à `strategyTypeRegex`
 // (défaut `^(RollingUpdate|Rolling)$`). Un Deployment lit `spec.strategy`, un StatefulSet ou un
 // DaemonSet lit `spec.updateStrategy` ; les autres genres ne sont pas concernés.
-fn no_rolling_update_strategy(obj, objs, ctx, params) {
+fn no_rolling_update_strategy(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let field_name = if kind_of_group(obj, ["Deployment"], "apps") {
         "strategy"
@@ -260,7 +263,7 @@ fn no_rolling_update_strategy(obj, objs, ctx, params) {
 
 // Job autonome sans `ttlSecondsAfterFinished`, ou CronJob dont le gabarit de Job en définit un
 // (ils entrent en conflit avec successfulJobsHistoryLimit). Une valeur nulle compte comme absente.
-fn job_ttl_seconds_after_finished(obj, objs, ctx, params) {
+fn job_ttl_seconds_after_finished(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if type_of(field(obj, "spec")) != "map" { return []; }
     let kind = text(field(obj, "kind"));
@@ -293,7 +296,7 @@ fn job_ttl_seconds_after_finished(obj, objs, ctx, params) {
 // ReplicaSet, un sélecteur absent ou vide est signalé ; pour Job, un sélecteur absent est normal
 // (Kubernetes le génère). Un ReplicationController (sélecteur en simple carte), un CronJob et un
 // Pod ne sont pas vérifiés.
-fn mismatching_selector(obj, objs, ctx, params) {
+fn mismatching_selector(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let is_job = kind_of_group(obj, ["Job"], "batch");
     if !(is_job || kind_of_group(obj, ["Deployment", "StatefulSet", "DaemonSet", "ReplicaSet"], "apps")) {
@@ -345,7 +348,7 @@ fn mismatching_selector(obj, objs, ctx, params) {
 
 // Champ déprécié `serviceAccount` du pod : signalé quand il est renseigné sans `serviceAccountName`,
 // ou quand il diffère de `serviceAccountName`. Des valeurs identiques ne sont pas signalées.
-fn deprecated_service_account_field(obj, objs, ctx, params) {
+fn deprecated_service_account_field(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !deployment_like(obj) { return []; }
     let templates = render_lint::pod_templates(obj);
@@ -377,7 +380,7 @@ fn deprecated_service_account_field(obj, objs, ctx, params) {
 }
 
 // Objet dans le namespace par défaut (absent, vide ou `default`) : genres DeploymentLike et Service.
-fn use_namespace(obj, objs, ctx, params) {
+fn use_namespace(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !(deployment_like(obj) || kind_of_group(obj, ["Service"], "")) { return []; }
     let ns = text(field(field(obj, "metadata"), "namespace"));
@@ -410,23 +413,16 @@ private fn scalable_kinds(group) {
 // résolution compare l'apiVersion exacte (groupe ET version, mesuré : une cible apps/v1beta2 ne
 // résout pas une référence apps/v1) et le genre dans le groupe ; le namespace n'entre pas en jeu
 // (mesuré : une cible d'un autre namespace est résolue). Une apiVersion sans groupe ne résout rien.
-private fn target_exists(objs, api, kind, name) {
+private fn target_exists(idx, api, kind, name) {
     import "render_lint" as render_lint;
     let group = render_lint::api_group_of(api);
     if type_of(group) != "string" || !(kind in scalable_kinds(group)) { return false; }
-    for o in objs {
-        if text(field(field(o, "metadata"), "name")) == name
-            && text(field(o, "apiVersion")) == api
-            && render_lint::kind_of_group(o, [kind], group) {
-            return true;
-        }
-    }
-    false
+    idx.workload_identities.has(`${api}|${kind}|${name}`)
 }
 
 // HorizontalPodAutoscaler dont la cible `spec.scaleTargetRef` n'existe pas dans la liste d'objets.
 // Seule vérification de ce module qui lit `objs` : la résolution se fait entre objets.
-fn dangling_horizontalpodautoscaler(obj, objs, ctx, params) {
+fn dangling_horizontalpodautoscaler(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !kind_of_group(obj, ["HorizontalPodAutoscaler"], "autoscaling") { return []; }
     let spec = field(obj, "spec");
@@ -435,7 +431,7 @@ fn dangling_horizontalpodautoscaler(obj, objs, ctx, params) {
     let api = text(field(target, "apiVersion"));
     let kind = text(field(target, "kind"));
     let tname = text(field(target, "name"));
-    if target_exists(objs, api, kind, tname) { return []; }
+    if target_exists(idx, api, kind, tname) { return []; }
     let name = text(field(field(obj, "metadata"), "name"));
     [render_lint::finding(
         "dangling-horizontalpodautoscaler",
@@ -449,7 +445,7 @@ fn dangling_horizontalpodautoscaler(obj, objs, ctx, params) {
 // HorizontalPodAutoscaler dont `spec.minReplicas` est inférieur à `minReplicas` (défaut 3). Absent
 // ou nul : 1, valeur par défaut de Kubernetes. Une valeur qui n'est pas un entier (chaîne, décimal)
 // est une forme inattendue : pas de constat. Tous les groupes autoscaling sont concernés.
-fn hpa_minimum_three_replicas(obj, objs, ctx, params) {
+fn hpa_minimum_three_replicas(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !kind_of_group(obj, ["HorizontalPodAutoscaler"], "autoscaling") { return []; }
     let spec = field(obj, "spec");
@@ -527,7 +523,7 @@ private fn is_percent(v) {
 // maxUnavailable à 0 bloque toute éviction. Entier ou décimal nul, ou pourcentage nul ("0%") ;
 // une chaîne qui n'est pas un pourcentage (y compris un entier écrit entre guillemets) est une
 // valeur invalide. Absent ou nul : pas de constat.
-fn pdb_max_unavailable(obj, objs, ctx, params) {
+fn pdb_max_unavailable(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !is_pdb(obj) { return []; }
     let spec = field(obj, "spec");
@@ -575,7 +571,7 @@ fn pdb_max_unavailable(obj, objs, ctx, params) {
 // chaîne et décimal entier sont comptés comme entiers ; `N%` est arrondi au supérieur sur les
 // réplicas de chaque workload ; `100%` est signalé une fois, sans workload. Chaîne invalide ou
 // selector absent (nul compris) : constat dédié, une fois par PDB.
-fn pdb_min_available(obj, objs, ctx, params) {
+fn pdb_min_available(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !is_pdb(obj) { return []; }
     let spec = field(obj, "spec");
@@ -631,8 +627,7 @@ fn pdb_min_available(obj, objs, ctx, params) {
     if malformed(match_labels) || malformed_list(exprs) { return []; }
     let ns = obj_namespace(obj);
     let out = [];
-    for dep in objs {
-        if !pdb_related(dep) || obj_namespace(dep) != ns { continue; }
+    for dep in idx.workload_pdb_targets.values(ns) {
         let dlabels = field(field(dep, "spec"), "selector");
         let dl = field(dlabels, "matchLabels");
         let labels = if type_of(dl) == "map" { dl } else { #{} };
@@ -656,7 +651,7 @@ fn pdb_min_available(obj, objs, ctx, params) {
 
 // PodDisruptionBudget sans `unhealthyPodEvictionPolicy` explicite (absent ou nul). Toute valeur
 // explicite est acceptée.
-fn pdb_unhealthy_pod_eviction_policy(obj, objs, ctx, params) {
+fn pdb_unhealthy_pod_eviction_policy(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !is_pdb(obj) { return []; }
     let spec = field(obj, "spec");
@@ -676,7 +671,7 @@ fn pdb_unhealthy_pod_eviction_policy(obj, objs, ctx, params) {
 // dont la valeur répond au motif `value` (non ancrée) : le couple doit correspondre (mesuré). Seules
 // les métadonnées de l'objet comptent, pas le gabarit de pod.
 // Défaut : annotation `email` à une adresse, comme la vérification de kube-linter.
-fn required_annotation_email(obj, objs, ctx, params) {
+fn required_annotation_email(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !deployment_like(obj) { return []; }
     let key = string_param(params, "key", "email");
@@ -702,7 +697,7 @@ fn required_annotation_email(obj, objs, ctx, params) {
 // Label de metadata.labels dont la clé répond au motif `key` (recherche, non ancrée, sensible à la
 // casse) ; la valeur est libre. Seules les métadonnées de l'objet comptent, pas le gabarit de pod.
 // Défaut : label `owner`, comme la vérification de kube-linter.
-fn required_label_owner(obj, objs, ctx, params) {
+fn required_label_owner(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !deployment_like(obj) { return []; }
     let key = string_param(params, "key", "owner");
@@ -722,4 +717,18 @@ fn required_label_owner(obj, objs, ctx, params) {
         "metadata.labels",
         `${kind} "${name}" : aucun label "${key}" ; ajouter metadata.labels.${key} avec le nom du propriétaire`
     )]
+}
+
+// Entrées d'index de ce thème, construites une fois par `render_lint::index` :
+//   workload_identities  : `apiVersion|kind|nom` -> vrai, pour chaque objet (résolution de la cible
+//                          d'un HorizontalPodAutoscaler) ;
+//   workload_pdb_targets : namespace -> workload qu'une PodDisruptionBudget peut protéger.
+fn index(objs) {
+    let identities = multimap();
+    let pdb_targets = multimap();
+    for o in objs {
+        identities.put(`${text(field(o, "apiVersion"))}|${text(field(o, "kind"))}|${obj_name(o)}`, true);
+        if pdb_related(o) { pdb_targets.put(obj_namespace(o), o); }
+    }
+    #{ workload_identities: identities, workload_pdb_targets: pdb_targets }
 }

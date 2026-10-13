@@ -6,7 +6,7 @@ Platform: Rust
 
 Purpose:
   Rendre la validation de schéma appelable depuis le script de lint de la distribution et
-    depuis les modules Rhai qu'il importe, par trois fonctions natives. Pur câblage : la
+    depuis la bibliothèque `render_lint`, par trois fonctions natives. Pur câblage : la
     conversion de valeurs et l'enregistrement ; aucune logique de validation ni de sévérité.
 
 Owns:
@@ -27,7 +27,7 @@ Returns:
   `schema_validate` : un tableau de cartes `#{ path: string, message: string }`, vide pour un
     objet conforme. `path` est le pointeur JSON de @SchemaError, transmis tel quel (vide à la
     racine) : le moteur Rust ne fait aucune conversion de notation ; la conversion en notation
-    pointée est laissée au script.
+    pointée est faite par la bibliothèque Rhai (/agent/scripts/lib/render_lint_schema.sdd).
 
 Raises:
   Erreur d'exécution Rhai : objet non convertible en JSON, ou erreur @common::Error du

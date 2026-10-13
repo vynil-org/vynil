@@ -17,12 +17,15 @@ Purpose:
 Owns:
   ./lint_oracle.rs
   ./render_lint.rs
+  ./render_lint_load.rs
   ./fixtures/render_lint/**
 
 Structure:
   ./fixtures/render_lint/catalogue.yaml: l'inventaire des vérifications de l'oracle — par entrée
     `name` (nom kube-linter), `theme` (`pod`, `workload`, `network` ou `rbac`), `status`
-    (`ported`, `deferred` ou `excluded`) et `reason` (obligatoire hors `ported`)
+    (`ported`, `deferred` ou `excluded`), `default` (la vérification est active par défaut chez
+    kube-linter, champ « Enabled by default » de `kube-linter checks list`) et `reason`
+    (obligatoire hors `ported`)
   ./fixtures/render_lint/{nom}/manifests.yaml: manifestes multi-documents écrits pour ce dépôt,
     couvrant le cas conforme et chaque cas non conforme de la vérification
   ./fixtures/render_lint/{nom}/expected.json: le verdict de l'oracle sur ces manifestes, tableau de
@@ -30,6 +33,8 @@ Structure:
   ./render_lint.rs: tests d'intégration du noyau et du schéma (scénarios de
     /agent/scripts/lib/render_lint.sdd et render_lint_schema.sdd)
   ./lint_oracle.rs: tests de verdicts et de catalogue
+  ./render_lint_load.rs: tenue en charge de @all sur le vrai moteur du lint (budget d'opérations,
+    moteur restreint) ; les autres tests tournent sur le moteur complet, sans borne
 
 References:
   /agent/scripts/lib/render_lint.sdd — le noyau et @all.
@@ -56,6 +61,8 @@ Must:
     vérification en cause et comparer sa sortie JSON à `expected.json` ; comparer aussi
     l'inventaire de l'outil (`checks list`) au catalogue : une vérification de l'outil absente
     du catalogue est une divergence.
+  Vérifier que `render_lint::default_checks()` liste exactement les entrées `ported` dont
+    `default` est vrai, sans binaire externe.
   Ne jamais exiger le binaire de référence dans l'exécution ordinaire de `cargo test`.
 
 Must not:
@@ -83,6 +90,12 @@ Scenario: a ported check matches its recorded verdict
   When le test de verdict s'exécute
   Then l'ensemble des constats de la bibliothèque égale celui de `expected.json`
   Test @a-ported-check-matches-its-recorded-verdict
+
+Scenario: the default set matches the catalogue
+  Given le catalogue réel et `render_lint::default_checks()`
+  When on les compare
+  Then les deux listes contiennent exactement les entrées `ported` à `default: true`, triées
+  Test @the-default-set-matches-the-catalogue
 
 Scenario: a check without a function is a catalogue error
   Given une entrée `ported` dont le module thématique ne définit pas la fonction

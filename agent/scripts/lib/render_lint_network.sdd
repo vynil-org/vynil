@@ -39,6 +39,11 @@ Must:
     groupe `extensions` (Deployment, ReplicaSet, DaemonSet) est compté par `dangling-service` et
     les deux vérifications de NetworkPolicy, et exclu par `invalid-target-ports` et
     `non-isolated-pod`.
+  Exposer `index(objs)` : les entrées d'index de ce thème (`net_targets`, `net_service_ports`,
+    `net_service_labels`, `net_policy_selectors`), construites avec les prédicats mêmes des
+    vérifications (`selectable_labels`, `service_well_formed`, `network_policy_well_formed`),
+    de sorte que lire l'index ne change aucun verdict. Les vérifications qui croisent plusieurs
+    objets lisent l'index reçu en deuxième argument et ne parcourent jamais la liste d'objets.
 
 Tasks:
   [x] Porter les vérifications du thème par lots, chacune avec sa fixture

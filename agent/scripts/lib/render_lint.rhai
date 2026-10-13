@@ -1,3 +1,6 @@
+// Attribution : les vérifications de ce module reprennent la logique de kube-linter
+// (https://github.com/stackrox/kube-linter, licence Apache 2.0) : noms, paramètres, valeurs par
+// défaut et sémantique mesurée sur v0.8.3. Voir /NOTICE et /third_party/kube-linter/LICENSE.
 // Noyau de la bibliothèque render_lint (spec : render_lint.sdd).
 // Constats, gabarits de pod, conteneurs, suppressions, et assemblage du catalogue de vérifications
 // portées. `all` et `checks` s'assemblent par une liste explicite : Rhai ne ré-exporte pas les
@@ -59,6 +62,12 @@ fn kind_of_group(obj, kinds, group) {
 // Gabarits de pod d'un objet : `#{ pod, path }`. `path` est `spec.template`, `spec.jobTemplate.spec.template`
 // ou "" pour un Pod. Tableau vide pour un objet sans pod.
 fn pod_templates(obj) {
+    // Sortie rapide : la plupart des objets d'un rendu n'embarquent pas de pod, et chaque
+    // vérification de pod appelle cette fonction pour chaque objet.
+    let kind = text(field(obj, "kind"));
+    if !(kind in ["Pod", "Deployment", "StatefulSet", "DaemonSet", "ReplicaSet", "Job", "CronJob", "ReplicationController"]) {
+        return [];
+    }
     let spec = field(obj, "spec");
     let path = "";
     let template = ();
@@ -115,27 +124,23 @@ fn suppression_reason(obj, rule, opts) {
     field(annotations, prefix + rule)
 }
 
-// Objet de la liste correspondant à la référence d'un constat, ou `()`.
-private fn find_object(objs, oref) {
-    let wanted = identity(oref);
-    for o in objs {
-        if identity(object_ref(o)) == wanted { return o; }
-    }
-    ()
-}
-
 // Marque les constats dont l'objet porte l'annotation de suppression. Sans `ignore_prefix`,
 // rien n'est supprimé. Avec `require_reason`, une annotation vide ne supprime rien et ajoute un
-// constat `suppression-without-reason` (une fois par objet et règle).
+// constat `suppression-without-reason` (une fois par objet et règle). Sans `require_reason`, une
+// annotation vide supprime avec la raison explicite `(aucune raison donnée)` : le moteur refuse
+// une suppression sans raison, et une exception muette doit rester lisible dans le rapport.
 fn apply_suppressions(findings, objs, opts) {
     let prefix = field(opts, "ignore_prefix");
     if type_of(prefix) != "string" { return findings; }
     let require = field(opts, "require_reason") == true;
+    // Index des objets par identité, construit une fois : un parcours par constat serait O(F x N).
+    let by_identity = multimap();
+    for o in objs { by_identity.put(identity(object_ref(o)), o); }
     let out = [];
     let extra = [];
     let seen = #{};
     for f in findings {
-        let obj = find_object(objs, f.object);
+        let obj = by_identity.first(identity(f.object));
         let value = suppression_reason(obj, f.rule, opts);
         if value == () {
             out.push(f);
@@ -158,58 +163,223 @@ fn apply_suppressions(findings, objs, opts) {
         }
         let g = f;
         g.suppressed = true;
-        if reason != "" { g.reason = reason; }
+        g.reason = if reason != "" { reason } else { "(aucune raison donnée)" };
         g.origin = "annotation:" + prefix + f.rule;
         out.push(g);
     }
-    for x in extra { out.push(x); }
+    out += extra;
     out
 }
 
-// Options normalisées : chaque clé présente, valeurs par défaut appliquées.
+// Types attendus des paramètres de chaque vérification (noms de paramètres de kube-linter) :
+// `list` tableau de chaînes, `string`, `int`, `number` (entier ou flottant), ou une énumération
+// `a|b|c`. Une vérification absente de la table n'a aucun paramètre.
+private fn param_schema() {
+    #{
+        "access-to-create-pods": #{ "resources": "list", "verbs": "list" },
+        "access-to-secrets": #{ "resources": "list", "verbs": "list" },
+        "default-service-account": #{ "serviceAccount": "string" },
+        "dnsconfig-options": #{ "Key": "string", "Value": "string" },
+        "docker-sock": #{ "dirs": "list" },
+        "drop-net-raw-capability": #{ "forbiddenCapabilities": "list" },
+        "env-value-from": #{ "IgnoredConfigMaps": "list", "IgnoredSecrets": "list" },
+        "env-var-secret": #{ "name": "string", "value": "string" },
+        "exposed-services": #{ "forbiddenServiceTypes": "list" },
+        "hpa-minimum-three-replicas": #{ "minReplicas": "int" },
+        "latest-tag": #{ "BlockList": "list" },
+        "minimum-three-replicas": #{ "minReplicas": "int" },
+        "no-anti-affinity": #{ "minReplicas": "int" },
+        "no-extensions-v1beta": #{ "group": "string", "version": "string" },
+        "no-rolling-update-strategy": #{ "strategyTypeRegex": "string" },
+        "priority-class-name": #{ "acceptedPriorityClassNames": "list" },
+        "required-annotation-email": #{ "key": "string", "value": "string" },
+        "required-label-owner": #{ "key": "string" },
+        "sensitive-host-mounts": #{ "dirs": "list" },
+        "ssh-port": #{ "port": "number", "protocol": "string" },
+        "unsafe-sysctls": #{ "unsafeSysCtls": "list" },
+        "unset-cpu-requirements": #{ "requirementsType": "request|limit|any", "lowerBoundMillis": "number", "upperBoundMillis": "number" },
+        "unset-memory-requirements": #{ "requirementsType": "request|limit|any", "lowerBoundMB": "number", "upperBoundMB": "number" }
+    }
+}
+
+// Vérifie le type de la valeur d'un paramètre ; lève une erreur qui nomme la vérification et le
+// paramètre. Une valeur de paramètre invalide ne doit jamais désactiver la vérification sans bruit.
+private fn check_param(check, key, expected, value) {
+    let ok = if expected == "list" {
+        let all_strings = type_of(value) == "array";
+        if all_strings { for v in value { if type_of(v) != "string" { all_strings = false; } } }
+        all_strings
+    } else if expected == "string" {
+        type_of(value) == "string"
+    } else if expected == "int" {
+        type_of(value) == "i64"
+    } else if expected == "number" {
+        type_of(value) == "i64" || type_of(value) == "f64"
+    } else {
+        type_of(value) == "string" && value in expected.split("|")
+    };
+    if !ok {
+        let wanted = if expected == "list" { "un tableau de chaînes" }
+            else if expected == "string" { "une chaîne" }
+            else if expected == "int" { "un entier" }
+            else if expected == "number" { "un nombre" }
+            else { `l'une de ${expected.split("|")}` };
+        throw `render_lint: params["${check}"].${key} : ${wanted} attendu, reçu ${type_of(value)} (${value})`;
+    }
+}
+
+// Liste de noms de vérifications d'une option : tableau de noms connus, sinon erreur.
+private fn names_option(opts, key, known) {
+    let v = field(opts, key);
+    if v == () { return (); }
+    if type_of(v) != "array" {
+        throw `render_lint: option "${key}" : un tableau de noms de vérifications est attendu, reçu ${type_of(v)}`;
+    }
+    for n in v {
+        if type_of(n) != "string" || !(n in known) {
+            throw `render_lint: option "${key}" : vérification inconnue ${n} (voir render_lint::checks())`;
+        }
+    }
+    v
+}
+
+// Options normalisées et validées : chaque clé présente, valeurs par défaut appliquées. Toute
+// clé ou valeur qui n'a pas de sens est une erreur du script (donc une ligne `lint:execution`) :
+// une option qui ne s'applique pas parce qu'elle est mal écrite ne doit jamais passer en silence.
 private fn settings(opts) {
-    let exclude = field(opts, "exclude");
-    if type_of(exclude) != "array" { exclude = []; }
+    if opts == () { opts = #{}; }
+    if type_of(opts) != "map" {
+        throw `render_lint: opts doit être une carte, reçu ${type_of(opts)}`;
+    }
+    let known_options = ["exclude", "only", "severity", "params", "ignore_prefix", "require_reason", "include_optional"];
+    for k in opts.keys() {
+        if !(k in known_options) {
+            throw `render_lint: option inconnue "${k}" (options : ${known_options})`;
+        }
+    }
+    let known = checks();
+    let exclude = names_option(opts, "exclude", known);
+    if exclude == () { exclude = []; }
+    let only = names_option(opts, "only", known);
     let severity = field(opts, "severity");
-    if type_of(severity) != "map" { severity = #{}; }
+    if severity == () { severity = #{}; }
+    if type_of(severity) != "map" {
+        throw `render_lint: option "severity" : une carte nom -> "error" ou "warn" est attendue, reçu ${type_of(severity)}`;
+    }
+    for name in severity.keys() {
+        if !(name in known) {
+            throw `render_lint: option "severity" : vérification inconnue "${name}" (voir render_lint::checks())`;
+        }
+        if severity[name] != "error" && severity[name] != "warn" {
+            throw `render_lint: option "severity" : "${name}" doit valoir "error" ou "warn", reçu ${severity[name]}`;
+        }
+    }
     let params = field(opts, "params");
-    if type_of(params) != "map" { params = #{}; }
+    if params == () { params = #{}; }
+    if type_of(params) != "map" {
+        throw `render_lint: option "params" : une carte nom -> paramètres est attendue, reçu ${type_of(params)}`;
+    }
+    let schema = param_schema();
+    for name in params.keys() {
+        if !(name in known) {
+            throw `render_lint: option "params" : vérification inconnue "${name}" (voir render_lint::checks())`;
+        }
+        let given = params[name];
+        if type_of(given) != "map" {
+            throw `render_lint: params["${name}"] : une carte de paramètres est attendue, reçu ${type_of(given)}`;
+        }
+        let accepted = if name in schema { schema[name] } else { #{} };
+        for key in given.keys() {
+            if !(key in accepted) {
+                throw `render_lint: params["${name}"] : paramètre inconnu "${key}" (paramètres : ${accepted.keys()})`;
+            }
+            check_param(name, key, accepted[key], given[key]);
+        }
+    }
+    let prefix = field(opts, "ignore_prefix");
+    if prefix != () && type_of(prefix) != "string" {
+        throw `render_lint: option "ignore_prefix" : une chaîne est attendue, reçu ${type_of(prefix)}`;
+    }
+    for flag in ["require_reason", "include_optional"] {
+        let v = field(opts, flag);
+        if v != () && type_of(v) != "bool" {
+            throw `render_lint: option "${flag}" : un booléen est attendu, reçu ${type_of(v)}`;
+        }
+    }
     #{
         exclude: exclude,
-        only: field(opts, "only"),
+        only: only,
         severity: severity,
         params: params,
-        ignore_prefix: field(opts, "ignore_prefix"),
-        require_reason: field(opts, "require_reason") == true
+        ignore_prefix: prefix,
+        require_reason: field(opts, "require_reason") == true,
+        include_optional: field(opts, "include_optional") == true
     }
 }
 
-private fn enabled(cfg, name) {
-    if name in cfg.exclude { return false; }
-    if type_of(cfg.only) == "array" { return name in cfg.only; }
-    true
+// Carte nom -> booléen des vérifications exécutées. Avec `only`, exactement ces vérifications
+// (une vérification facultative nommée est donc exécutée) ; sinon le jeu actif par défaut de
+// kube-linter, ou toutes avec `include_optional`. `exclude` retire dans tous les cas.
+private fn active_set(cfg) {
+    let defaults = default_checks();
+    let on = #{};
+    for name in checks() {
+        let selected = if type_of(cfg.only) == "array" { name in cfg.only }
+            else if cfg.include_optional { true }
+            else { name in defaults };
+        on[name] = selected && !(name in cfg.exclude);
+    }
+    on
 }
 
-// Paramètres d'une vérification : la carte donnée, ou une carte vide.
-private fn param(cfg, name) {
-    let p = field(cfg.params, name);
-    if type_of(p) == "map" { p } else { #{} }
+// Carte nom -> paramètres de chaque vérification (la carte donnée, ou une carte vide), construite
+// une fois : `all` la lit par indexation à chaque objet et chaque vérification.
+private fn params_by_check(cfg) {
+    let out = #{};
+    for name in checks() {
+        let p = field(cfg.params, name);
+        out[name] = if type_of(p) == "map" { p } else { #{} };
+    }
+    out
 }
 
-// Ajoute les constats d'une vérification à `out`, en appliquant la sévérité configurée.
-private fn run_check(out, cfg, name, found) {
+// Constats d'une vérification, avec la sévérité configurée appliquée.
+private fn run_check(cfg, name, found) {
     let sev = field(cfg.severity, name);
-    let result = out;
+    if type_of(sev) != "string" { return found; }
+    let out = [];
     for f in found {
         let g = f;
-        if type_of(sev) == "string" { g.severity = sev; }
-        result.push(g);
+        g.severity = sev;
+        out.push(g);
     }
-    result
+    out
+}
+
+// Index de la liste d'objets, construit une fois : poignées partagées (type `Multimap`) que les
+// vérifications qui croisent plusieurs objets interrogent au lieu de reparcourir la liste. Rhai
+// passe tout par valeur : donner la liste à chacune des soixante vérifications pour chaque objet
+// la copiait 60 x N fois. Une distribution qui appelle une vérification directement construit
+// l'index avec cette fonction et le passe en deuxième argument.
+fn index(objs) {
+    import "render_lint_pod" as pod;
+    import "render_lint_network" as network;
+    import "render_lint_rbac" as rbac;
+    import "render_lint_workload" as workload;
+    let idx = #{};
+    idx += pod::index(objs);
+    idx += network::index(objs);
+    idx += rbac::index(objs);
+    idx += workload::index(objs);
+    idx
 }
 
 // Toutes les vérifications activées sur tous les objets, suppressions appliquées. Ordre : objets
-// dans l'ordre, puis vérifications dans l'ordre alphabétique de leur nom.
+// dans l'ordre, puis vérifications dans l'ordre alphabétique de leur nom. Sans option, le jeu actif
+// par défaut de kube-linter (`default_checks()`), pas le catalogue entier.
+//
+// `ctx` est réservé : aucune vérification portée ne le lit, et le transmettre aux soixante
+// vérifications le copierait 60 x N fois ; elles reçoivent `()`.
 fn all(objs, ctx) { all(objs, ctx, #{}) }
 
 fn all(objs, ctx, opts) {
@@ -218,187 +388,250 @@ fn all(objs, ctx, opts) {
     import "render_lint_rbac" as rbac;
     import "render_lint_workload" as workload;
     let cfg = settings(opts);
+    let on = active_set(cfg);
+    let pm = params_by_check(cfg);
+    let idx = index(objs);
     let raw = [];
     for obj in objs {
-        if enabled(cfg, "access-to-create-pods") {
-            raw = run_check(raw, cfg, "access-to-create-pods", rbac::access_to_create_pods(obj, objs, ctx, param(cfg, "access-to-create-pods")));
+        if on["access-to-create-pods"] {
+            let found = rbac::access_to_create_pods(obj, idx, (), pm["access-to-create-pods"]);
+            if found.len() > 0 { raw += run_check(cfg, "access-to-create-pods", found); }
         }
-        if enabled(cfg, "access-to-secrets") {
-            raw = run_check(raw, cfg, "access-to-secrets", rbac::access_to_secrets(obj, objs, ctx, param(cfg, "access-to-secrets")));
+        if on["access-to-secrets"] {
+            let found = rbac::access_to_secrets(obj, idx, (), pm["access-to-secrets"]);
+            if found.len() > 0 { raw += run_check(cfg, "access-to-secrets", found); }
         }
-        if enabled(cfg, "cluster-admin-role-binding") {
-            raw = run_check(raw, cfg, "cluster-admin-role-binding", rbac::cluster_admin_role_binding(obj, objs, ctx, param(cfg, "cluster-admin-role-binding")));
+        if on["cluster-admin-role-binding"] {
+            let found = rbac::cluster_admin_role_binding(obj, idx, (), pm["cluster-admin-role-binding"]);
+            if found.len() > 0 { raw += run_check(cfg, "cluster-admin-role-binding", found); }
         }
-        if enabled(cfg, "dangling-horizontalpodautoscaler") {
-            raw = run_check(raw, cfg, "dangling-horizontalpodautoscaler", workload::dangling_horizontalpodautoscaler(obj, objs, ctx, param(cfg, "dangling-horizontalpodautoscaler")));
+        if on["dangling-horizontalpodautoscaler"] {
+            let found = workload::dangling_horizontalpodautoscaler(obj, idx, (), pm["dangling-horizontalpodautoscaler"]);
+            if found.len() > 0 { raw += run_check(cfg, "dangling-horizontalpodautoscaler", found); }
         }
-        if enabled(cfg, "dangling-ingress") {
-            raw = run_check(raw, cfg, "dangling-ingress", network::dangling_ingress(obj, objs, ctx, param(cfg, "dangling-ingress")));
+        if on["dangling-ingress"] {
+            let found = network::dangling_ingress(obj, idx, (), pm["dangling-ingress"]);
+            if found.len() > 0 { raw += run_check(cfg, "dangling-ingress", found); }
         }
-        if enabled(cfg, "dangling-networkpolicy") {
-            raw = run_check(raw, cfg, "dangling-networkpolicy", network::dangling_networkpolicy(obj, objs, ctx, param(cfg, "dangling-networkpolicy")));
+        if on["dangling-networkpolicy"] {
+            let found = network::dangling_networkpolicy(obj, idx, (), pm["dangling-networkpolicy"]);
+            if found.len() > 0 { raw += run_check(cfg, "dangling-networkpolicy", found); }
         }
-        if enabled(cfg, "dangling-networkpolicypeer-podselector") {
-            raw = run_check(raw, cfg, "dangling-networkpolicypeer-podselector", network::dangling_networkpolicypeer_podselector(obj, objs, ctx, param(cfg, "dangling-networkpolicypeer-podselector")));
+        if on["dangling-networkpolicypeer-podselector"] {
+            let found = network::dangling_networkpolicypeer_podselector(obj, idx, (), pm["dangling-networkpolicypeer-podselector"]);
+            if found.len() > 0 { raw += run_check(cfg, "dangling-networkpolicypeer-podselector", found); }
         }
-        if enabled(cfg, "dangling-service") {
-            raw = run_check(raw, cfg, "dangling-service", network::dangling_service(obj, objs, ctx, param(cfg, "dangling-service")));
+        if on["dangling-service"] {
+            let found = network::dangling_service(obj, idx, (), pm["dangling-service"]);
+            if found.len() > 0 { raw += run_check(cfg, "dangling-service", found); }
         }
-        if enabled(cfg, "dangling-servicemonitor") {
-            raw = run_check(raw, cfg, "dangling-servicemonitor", network::dangling_servicemonitor(obj, objs, ctx, param(cfg, "dangling-servicemonitor")));
+        if on["dangling-servicemonitor"] {
+            let found = network::dangling_servicemonitor(obj, idx, (), pm["dangling-servicemonitor"]);
+            if found.len() > 0 { raw += run_check(cfg, "dangling-servicemonitor", found); }
         }
-        if enabled(cfg, "default-service-account") {
-            raw = run_check(raw, cfg, "default-service-account", pod::default_service_account(obj, objs, ctx, param(cfg, "default-service-account")));
+        if on["default-service-account"] {
+            let found = pod::default_service_account(obj, idx, (), pm["default-service-account"]);
+            if found.len() > 0 { raw += run_check(cfg, "default-service-account", found); }
         }
-        if enabled(cfg, "deprecated-service-account-field") {
-            raw = run_check(raw, cfg, "deprecated-service-account-field", workload::deprecated_service_account_field(obj, objs, ctx, param(cfg, "deprecated-service-account-field")));
+        if on["deprecated-service-account-field"] {
+            let found = workload::deprecated_service_account_field(obj, idx, (), pm["deprecated-service-account-field"]);
+            if found.len() > 0 { raw += run_check(cfg, "deprecated-service-account-field", found); }
         }
-        if enabled(cfg, "dnsconfig-options") {
-            raw = run_check(raw, cfg, "dnsconfig-options", pod::dnsconfig_options(obj, objs, ctx, param(cfg, "dnsconfig-options")));
+        if on["dnsconfig-options"] {
+            let found = pod::dnsconfig_options(obj, idx, (), pm["dnsconfig-options"]);
+            if found.len() > 0 { raw += run_check(cfg, "dnsconfig-options", found); }
         }
-        if enabled(cfg, "docker-sock") {
-            raw = run_check(raw, cfg, "docker-sock", pod::docker_sock(obj, objs, ctx, param(cfg, "docker-sock")));
+        if on["docker-sock"] {
+            let found = pod::docker_sock(obj, idx, (), pm["docker-sock"]);
+            if found.len() > 0 { raw += run_check(cfg, "docker-sock", found); }
         }
-        if enabled(cfg, "drop-net-raw-capability") {
-            raw = run_check(raw, cfg, "drop-net-raw-capability", pod::drop_net_raw_capability(obj, objs, ctx, param(cfg, "drop-net-raw-capability")));
+        if on["drop-net-raw-capability"] {
+            let found = pod::drop_net_raw_capability(obj, idx, (), pm["drop-net-raw-capability"]);
+            if found.len() > 0 { raw += run_check(cfg, "drop-net-raw-capability", found); }
         }
-        if enabled(cfg, "duplicate-env-var") {
-            raw = run_check(raw, cfg, "duplicate-env-var", pod::duplicate_env_var(obj, objs, ctx, param(cfg, "duplicate-env-var")));
+        if on["duplicate-env-var"] {
+            let found = pod::duplicate_env_var(obj, idx, (), pm["duplicate-env-var"]);
+            if found.len() > 0 { raw += run_check(cfg, "duplicate-env-var", found); }
         }
-        if enabled(cfg, "env-value-from") {
-            raw = run_check(raw, cfg, "env-value-from", pod::env_value_from(obj, objs, ctx, param(cfg, "env-value-from")));
+        if on["env-value-from"] {
+            let found = pod::env_value_from(obj, idx, (), pm["env-value-from"]);
+            if found.len() > 0 { raw += run_check(cfg, "env-value-from", found); }
         }
-        if enabled(cfg, "env-var-secret") {
-            raw = run_check(raw, cfg, "env-var-secret", pod::env_var_secret(obj, objs, ctx, param(cfg, "env-var-secret")));
+        if on["env-var-secret"] {
+            let found = pod::env_var_secret(obj, idx, (), pm["env-var-secret"]);
+            if found.len() > 0 { raw += run_check(cfg, "env-var-secret", found); }
         }
-        if enabled(cfg, "exposed-services") {
-            raw = run_check(raw, cfg, "exposed-services", network::exposed_services(obj, objs, ctx, param(cfg, "exposed-services")));
+        if on["exposed-services"] {
+            let found = network::exposed_services(obj, idx, (), pm["exposed-services"]);
+            if found.len() > 0 { raw += run_check(cfg, "exposed-services", found); }
         }
-        if enabled(cfg, "host-ipc") {
-            raw = run_check(raw, cfg, "host-ipc", pod::host_ipc(obj, objs, ctx, param(cfg, "host-ipc")));
+        if on["host-ipc"] {
+            let found = pod::host_ipc(obj, idx, (), pm["host-ipc"]);
+            if found.len() > 0 { raw += run_check(cfg, "host-ipc", found); }
         }
-        if enabled(cfg, "host-network") {
-            raw = run_check(raw, cfg, "host-network", pod::host_network(obj, objs, ctx, param(cfg, "host-network")));
+        if on["host-network"] {
+            let found = pod::host_network(obj, idx, (), pm["host-network"]);
+            if found.len() > 0 { raw += run_check(cfg, "host-network", found); }
         }
-        if enabled(cfg, "host-pid") {
-            raw = run_check(raw, cfg, "host-pid", pod::host_pid(obj, objs, ctx, param(cfg, "host-pid")));
+        if on["host-pid"] {
+            let found = pod::host_pid(obj, idx, (), pm["host-pid"]);
+            if found.len() > 0 { raw += run_check(cfg, "host-pid", found); }
         }
-        if enabled(cfg, "hpa-minimum-three-replicas") {
-            raw = run_check(raw, cfg, "hpa-minimum-three-replicas", workload::hpa_minimum_three_replicas(obj, objs, ctx, param(cfg, "hpa-minimum-three-replicas")));
+        if on["hpa-minimum-three-replicas"] {
+            let found = workload::hpa_minimum_three_replicas(obj, idx, (), pm["hpa-minimum-three-replicas"]);
+            if found.len() > 0 { raw += run_check(cfg, "hpa-minimum-three-replicas", found); }
         }
-        if enabled(cfg, "invalid-target-ports") {
-            raw = run_check(raw, cfg, "invalid-target-ports", network::invalid_target_ports(obj, objs, ctx, param(cfg, "invalid-target-ports")));
+        if on["invalid-target-ports"] {
+            let found = network::invalid_target_ports(obj, idx, (), pm["invalid-target-ports"]);
+            if found.len() > 0 { raw += run_check(cfg, "invalid-target-ports", found); }
         }
-        if enabled(cfg, "job-ttl-seconds-after-finished") {
-            raw = run_check(raw, cfg, "job-ttl-seconds-after-finished", workload::job_ttl_seconds_after_finished(obj, objs, ctx, param(cfg, "job-ttl-seconds-after-finished")));
+        if on["job-ttl-seconds-after-finished"] {
+            let found = workload::job_ttl_seconds_after_finished(obj, idx, (), pm["job-ttl-seconds-after-finished"]);
+            if found.len() > 0 { raw += run_check(cfg, "job-ttl-seconds-after-finished", found); }
         }
-        if enabled(cfg, "latest-tag") {
-            raw = run_check(raw, cfg, "latest-tag", pod::latest_tag(obj, objs, ctx, param(cfg, "latest-tag")));
+        if on["latest-tag"] {
+            let found = pod::latest_tag(obj, idx, (), pm["latest-tag"]);
+            if found.len() > 0 { raw += run_check(cfg, "latest-tag", found); }
         }
-        if enabled(cfg, "liveness-port") {
-            raw = run_check(raw, cfg, "liveness-port", pod::liveness_port(obj, objs, ctx, param(cfg, "liveness-port")));
+        if on["liveness-port"] {
+            let found = pod::liveness_port(obj, idx, (), pm["liveness-port"]);
+            if found.len() > 0 { raw += run_check(cfg, "liveness-port", found); }
         }
-        if enabled(cfg, "minimum-three-replicas") {
-            raw = run_check(raw, cfg, "minimum-three-replicas", workload::minimum_three_replicas(obj, objs, ctx, param(cfg, "minimum-three-replicas")));
+        if on["minimum-three-replicas"] {
+            let found = workload::minimum_three_replicas(obj, idx, (), pm["minimum-three-replicas"]);
+            if found.len() > 0 { raw += run_check(cfg, "minimum-three-replicas", found); }
         }
-        if enabled(cfg, "mismatching-selector") {
-            raw = run_check(raw, cfg, "mismatching-selector", workload::mismatching_selector(obj, objs, ctx, param(cfg, "mismatching-selector")));
+        if on["mismatching-selector"] {
+            let found = workload::mismatching_selector(obj, idx, (), pm["mismatching-selector"]);
+            if found.len() > 0 { raw += run_check(cfg, "mismatching-selector", found); }
         }
-        if enabled(cfg, "no-anti-affinity") {
-            raw = run_check(raw, cfg, "no-anti-affinity", workload::no_anti_affinity(obj, objs, ctx, param(cfg, "no-anti-affinity")));
+        if on["no-anti-affinity"] {
+            let found = workload::no_anti_affinity(obj, idx, (), pm["no-anti-affinity"]);
+            if found.len() > 0 { raw += run_check(cfg, "no-anti-affinity", found); }
         }
-        if enabled(cfg, "no-extensions-v1beta") {
-            raw = run_check(raw, cfg, "no-extensions-v1beta", workload::no_extensions_v1beta(obj, objs, ctx, param(cfg, "no-extensions-v1beta")));
+        if on["no-extensions-v1beta"] {
+            let found = workload::no_extensions_v1beta(obj, idx, (), pm["no-extensions-v1beta"]);
+            if found.len() > 0 { raw += run_check(cfg, "no-extensions-v1beta", found); }
         }
-        if enabled(cfg, "no-liveness-probe") {
-            raw = run_check(raw, cfg, "no-liveness-probe", pod::no_liveness_probe(obj, objs, ctx, param(cfg, "no-liveness-probe")));
+        if on["no-liveness-probe"] {
+            let found = pod::no_liveness_probe(obj, idx, (), pm["no-liveness-probe"]);
+            if found.len() > 0 { raw += run_check(cfg, "no-liveness-probe", found); }
         }
-        if enabled(cfg, "no-node-affinity") {
-            raw = run_check(raw, cfg, "no-node-affinity", workload::no_node_affinity(obj, objs, ctx, param(cfg, "no-node-affinity")));
+        if on["no-node-affinity"] {
+            let found = workload::no_node_affinity(obj, idx, (), pm["no-node-affinity"]);
+            if found.len() > 0 { raw += run_check(cfg, "no-node-affinity", found); }
         }
-        if enabled(cfg, "no-read-only-root-fs") {
-            raw = run_check(raw, cfg, "no-read-only-root-fs", pod::no_read_only_root_fs(obj, objs, ctx, param(cfg, "no-read-only-root-fs")));
+        if on["no-read-only-root-fs"] {
+            let found = pod::no_read_only_root_fs(obj, idx, (), pm["no-read-only-root-fs"]);
+            if found.len() > 0 { raw += run_check(cfg, "no-read-only-root-fs", found); }
         }
-        if enabled(cfg, "no-readiness-probe") {
-            raw = run_check(raw, cfg, "no-readiness-probe", pod::no_readiness_probe(obj, objs, ctx, param(cfg, "no-readiness-probe")));
+        if on["no-readiness-probe"] {
+            let found = pod::no_readiness_probe(obj, idx, (), pm["no-readiness-probe"]);
+            if found.len() > 0 { raw += run_check(cfg, "no-readiness-probe", found); }
         }
-        if enabled(cfg, "no-rolling-update-strategy") {
-            raw = run_check(raw, cfg, "no-rolling-update-strategy", workload::no_rolling_update_strategy(obj, objs, ctx, param(cfg, "no-rolling-update-strategy")));
+        if on["no-rolling-update-strategy"] {
+            let found = workload::no_rolling_update_strategy(obj, idx, (), pm["no-rolling-update-strategy"]);
+            if found.len() > 0 { raw += run_check(cfg, "no-rolling-update-strategy", found); }
         }
-        if enabled(cfg, "non-existent-service-account") {
-            raw = run_check(raw, cfg, "non-existent-service-account", rbac::non_existent_service_account(obj, objs, ctx, param(cfg, "non-existent-service-account")));
+        if on["non-existent-service-account"] {
+            let found = rbac::non_existent_service_account(obj, idx, (), pm["non-existent-service-account"]);
+            if found.len() > 0 { raw += run_check(cfg, "non-existent-service-account", found); }
         }
-        if enabled(cfg, "non-isolated-pod") {
-            raw = run_check(raw, cfg, "non-isolated-pod", network::non_isolated_pod(obj, objs, ctx, param(cfg, "non-isolated-pod")));
+        if on["non-isolated-pod"] {
+            let found = network::non_isolated_pod(obj, idx, (), pm["non-isolated-pod"]);
+            if found.len() > 0 { raw += run_check(cfg, "non-isolated-pod", found); }
         }
-        if enabled(cfg, "pdb-max-unavailable") {
-            raw = run_check(raw, cfg, "pdb-max-unavailable", workload::pdb_max_unavailable(obj, objs, ctx, param(cfg, "pdb-max-unavailable")));
+        if on["pdb-max-unavailable"] {
+            let found = workload::pdb_max_unavailable(obj, idx, (), pm["pdb-max-unavailable"]);
+            if found.len() > 0 { raw += run_check(cfg, "pdb-max-unavailable", found); }
         }
-        if enabled(cfg, "pdb-min-available") {
-            raw = run_check(raw, cfg, "pdb-min-available", workload::pdb_min_available(obj, objs, ctx, param(cfg, "pdb-min-available")));
+        if on["pdb-min-available"] {
+            let found = workload::pdb_min_available(obj, idx, (), pm["pdb-min-available"]);
+            if found.len() > 0 { raw += run_check(cfg, "pdb-min-available", found); }
         }
-        if enabled(cfg, "pdb-unhealthy-pod-eviction-policy") {
-            raw = run_check(raw, cfg, "pdb-unhealthy-pod-eviction-policy", workload::pdb_unhealthy_pod_eviction_policy(obj, objs, ctx, param(cfg, "pdb-unhealthy-pod-eviction-policy")));
+        if on["pdb-unhealthy-pod-eviction-policy"] {
+            let found = workload::pdb_unhealthy_pod_eviction_policy(obj, idx, (), pm["pdb-unhealthy-pod-eviction-policy"]);
+            if found.len() > 0 { raw += run_check(cfg, "pdb-unhealthy-pod-eviction-policy", found); }
         }
-        if enabled(cfg, "priority-class-name") {
-            raw = run_check(raw, cfg, "priority-class-name", pod::priority_class_name(obj, objs, ctx, param(cfg, "priority-class-name")));
+        if on["priority-class-name"] {
+            let found = pod::priority_class_name(obj, idx, (), pm["priority-class-name"]);
+            if found.len() > 0 { raw += run_check(cfg, "priority-class-name", found); }
         }
-        if enabled(cfg, "privilege-escalation-container") {
-            raw = run_check(raw, cfg, "privilege-escalation-container", pod::privilege_escalation_container(obj, objs, ctx, param(cfg, "privilege-escalation-container")));
+        if on["privilege-escalation-container"] {
+            let found = pod::privilege_escalation_container(obj, idx, (), pm["privilege-escalation-container"]);
+            if found.len() > 0 { raw += run_check(cfg, "privilege-escalation-container", found); }
         }
-        if enabled(cfg, "privileged-container") {
-            raw = run_check(raw, cfg, "privileged-container", pod::privileged_container(obj, objs, ctx, param(cfg, "privileged-container")));
+        if on["privileged-container"] {
+            let found = pod::privileged_container(obj, idx, (), pm["privileged-container"]);
+            if found.len() > 0 { raw += run_check(cfg, "privileged-container", found); }
         }
-        if enabled(cfg, "privileged-ports") {
-            raw = run_check(raw, cfg, "privileged-ports", pod::privileged_ports(obj, objs, ctx, param(cfg, "privileged-ports")));
+        if on["privileged-ports"] {
+            let found = pod::privileged_ports(obj, idx, (), pm["privileged-ports"]);
+            if found.len() > 0 { raw += run_check(cfg, "privileged-ports", found); }
         }
-        if enabled(cfg, "read-secret-from-env-var") {
-            raw = run_check(raw, cfg, "read-secret-from-env-var", pod::read_secret_from_env_var(obj, objs, ctx, param(cfg, "read-secret-from-env-var")));
+        if on["read-secret-from-env-var"] {
+            let found = pod::read_secret_from_env_var(obj, idx, (), pm["read-secret-from-env-var"]);
+            if found.len() > 0 { raw += run_check(cfg, "read-secret-from-env-var", found); }
         }
-        if enabled(cfg, "readiness-port") {
-            raw = run_check(raw, cfg, "readiness-port", pod::readiness_port(obj, objs, ctx, param(cfg, "readiness-port")));
+        if on["readiness-port"] {
+            let found = pod::readiness_port(obj, idx, (), pm["readiness-port"]);
+            if found.len() > 0 { raw += run_check(cfg, "readiness-port", found); }
         }
-        if enabled(cfg, "required-annotation-email") {
-            raw = run_check(raw, cfg, "required-annotation-email", workload::required_annotation_email(obj, objs, ctx, param(cfg, "required-annotation-email")));
+        if on["required-annotation-email"] {
+            let found = workload::required_annotation_email(obj, idx, (), pm["required-annotation-email"]);
+            if found.len() > 0 { raw += run_check(cfg, "required-annotation-email", found); }
         }
-        if enabled(cfg, "required-label-owner") {
-            raw = run_check(raw, cfg, "required-label-owner", workload::required_label_owner(obj, objs, ctx, param(cfg, "required-label-owner")));
+        if on["required-label-owner"] {
+            let found = workload::required_label_owner(obj, idx, (), pm["required-label-owner"]);
+            if found.len() > 0 { raw += run_check(cfg, "required-label-owner", found); }
         }
-        if enabled(cfg, "restart-policy") {
-            raw = run_check(raw, cfg, "restart-policy", pod::restart_policy(obj, objs, ctx, param(cfg, "restart-policy")));
+        if on["restart-policy"] {
+            let found = pod::restart_policy(obj, idx, (), pm["restart-policy"]);
+            if found.len() > 0 { raw += run_check(cfg, "restart-policy", found); }
         }
-        if enabled(cfg, "run-as-non-root") {
-            raw = run_check(raw, cfg, "run-as-non-root", pod::run_as_non_root(obj, objs, ctx, param(cfg, "run-as-non-root")));
+        if on["run-as-non-root"] {
+            let found = pod::run_as_non_root(obj, idx, (), pm["run-as-non-root"]);
+            if found.len() > 0 { raw += run_check(cfg, "run-as-non-root", found); }
         }
-        if enabled(cfg, "sensitive-host-mounts") {
-            raw = run_check(raw, cfg, "sensitive-host-mounts", pod::sensitive_host_mounts(obj, objs, ctx, param(cfg, "sensitive-host-mounts")));
+        if on["sensitive-host-mounts"] {
+            let found = pod::sensitive_host_mounts(obj, idx, (), pm["sensitive-host-mounts"]);
+            if found.len() > 0 { raw += run_check(cfg, "sensitive-host-mounts", found); }
         }
-        if enabled(cfg, "ssh-port") {
-            raw = run_check(raw, cfg, "ssh-port", pod::ssh_port(obj, objs, ctx, param(cfg, "ssh-port")));
+        if on["ssh-port"] {
+            let found = pod::ssh_port(obj, idx, (), pm["ssh-port"]);
+            if found.len() > 0 { raw += run_check(cfg, "ssh-port", found); }
         }
-        if enabled(cfg, "startup-port") {
-            raw = run_check(raw, cfg, "startup-port", pod::startup_port(obj, objs, ctx, param(cfg, "startup-port")));
+        if on["startup-port"] {
+            let found = pod::startup_port(obj, idx, (), pm["startup-port"]);
+            if found.len() > 0 { raw += run_check(cfg, "startup-port", found); }
         }
-        if enabled(cfg, "unsafe-proc-mount") {
-            raw = run_check(raw, cfg, "unsafe-proc-mount", pod::unsafe_proc_mount(obj, objs, ctx, param(cfg, "unsafe-proc-mount")));
+        if on["unsafe-proc-mount"] {
+            let found = pod::unsafe_proc_mount(obj, idx, (), pm["unsafe-proc-mount"]);
+            if found.len() > 0 { raw += run_check(cfg, "unsafe-proc-mount", found); }
         }
-        if enabled(cfg, "unsafe-sysctls") {
-            raw = run_check(raw, cfg, "unsafe-sysctls", pod::unsafe_sysctls(obj, objs, ctx, param(cfg, "unsafe-sysctls")));
+        if on["unsafe-sysctls"] {
+            let found = pod::unsafe_sysctls(obj, idx, (), pm["unsafe-sysctls"]);
+            if found.len() > 0 { raw += run_check(cfg, "unsafe-sysctls", found); }
         }
-        if enabled(cfg, "unset-cpu-requirements") {
-            raw = run_check(raw, cfg, "unset-cpu-requirements", pod::unset_cpu_requirements(obj, objs, ctx, param(cfg, "unset-cpu-requirements")));
+        if on["unset-cpu-requirements"] {
+            let found = pod::unset_cpu_requirements(obj, idx, (), pm["unset-cpu-requirements"]);
+            if found.len() > 0 { raw += run_check(cfg, "unset-cpu-requirements", found); }
         }
-        if enabled(cfg, "unset-memory-requirements") {
-            raw = run_check(raw, cfg, "unset-memory-requirements", pod::unset_memory_requirements(obj, objs, ctx, param(cfg, "unset-memory-requirements")));
+        if on["unset-memory-requirements"] {
+            let found = pod::unset_memory_requirements(obj, idx, (), pm["unset-memory-requirements"]);
+            if found.len() > 0 { raw += run_check(cfg, "unset-memory-requirements", found); }
         }
-        if enabled(cfg, "use-namespace") {
-            raw = run_check(raw, cfg, "use-namespace", workload::use_namespace(obj, objs, ctx, param(cfg, "use-namespace")));
+        if on["use-namespace"] {
+            let found = workload::use_namespace(obj, idx, (), pm["use-namespace"]);
+            if found.len() > 0 { raw += run_check(cfg, "use-namespace", found); }
         }
-        if enabled(cfg, "wildcard-in-rules") {
-            raw = run_check(raw, cfg, "wildcard-in-rules", rbac::wildcard_in_rules(obj, objs, ctx, param(cfg, "wildcard-in-rules")));
+        if on["wildcard-in-rules"] {
+            let found = rbac::wildcard_in_rules(obj, idx, (), pm["wildcard-in-rules"]);
+            if found.len() > 0 { raw += run_check(cfg, "wildcard-in-rules", found); }
         }
-        if enabled(cfg, "writable-host-mount") {
-            raw = run_check(raw, cfg, "writable-host-mount", pod::writable_host_mount(obj, objs, ctx, param(cfg, "writable-host-mount")));
+        if on["writable-host-mount"] {
+            let found = pod::writable_host_mount(obj, idx, (), pm["writable-host-mount"]);
+            if found.len() > 0 { raw += run_check(cfg, "writable-host-mount", found); }
         }
     }
     apply_suppressions(raw, objs, #{ ignore_prefix: cfg.ignore_prefix, require_reason: cfg.require_reason })
@@ -408,4 +641,10 @@ fn all(objs, ctx, opts) {
 // (fixtures/render_lint/catalogue.yaml) ; le test de cohérence le vérifie.
 fn checks() {
     ["access-to-create-pods", "access-to-secrets", "cluster-admin-role-binding", "dangling-horizontalpodautoscaler", "dangling-ingress", "dangling-networkpolicy", "dangling-networkpolicypeer-podselector", "dangling-service", "dangling-servicemonitor", "default-service-account", "deprecated-service-account-field", "dnsconfig-options", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-value-from", "env-var-secret", "exposed-services", "host-ipc", "host-network", "host-pid", "hpa-minimum-three-replicas", "invalid-target-ports", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "minimum-three-replicas", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-liveness-probe", "no-node-affinity", "no-read-only-root-fs", "no-readiness-probe", "no-rolling-update-strategy", "non-existent-service-account", "non-isolated-pod", "pdb-max-unavailable", "pdb-min-available", "pdb-unhealthy-pod-eviction-policy", "priority-class-name", "privilege-escalation-container", "privileged-container", "privileged-ports", "read-secret-from-env-var", "readiness-port", "required-annotation-email", "required-label-owner", "restart-policy", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-proc-mount", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements", "use-namespace", "wildcard-in-rules", "writable-host-mount"]
+}
+
+// Noms des vérifications actives par défaut chez kube-linter (« Enabled by default: Yes »),
+// triés. Doit correspondre aux entrées `ported` à `default: true` du catalogue.
+fn default_checks() {
+    ["dangling-service", "deprecated-service-account-field", "docker-sock", "drop-net-raw-capability", "duplicate-env-var", "env-var-secret", "host-ipc", "host-network", "host-pid", "invalid-target-ports", "job-ttl-seconds-after-finished", "latest-tag", "liveness-port", "mismatching-selector", "no-anti-affinity", "no-extensions-v1beta", "no-read-only-root-fs", "non-existent-service-account", "pdb-max-unavailable", "pdb-min-available", "pdb-unhealthy-pod-eviction-policy", "privilege-escalation-container", "privileged-container", "readiness-port", "run-as-non-root", "sensitive-host-mounts", "ssh-port", "startup-port", "unsafe-sysctls", "unset-cpu-requirements", "unset-memory-requirements"]
 }

@@ -1,3 +1,6 @@
+// Attribution : les vérifications de ce module reprennent la logique de kube-linter
+// (https://github.com/stackrox/kube-linter, licence Apache 2.0) : noms, paramètres, valeurs par
+// défaut et sémantique mesurée sur v0.8.3. Voir /NOTICE et /third_party/kube-linter/LICENSE.
 // Thème « rbac » des vérifications portées de kube-linter (spec : render_lint_rbac.sdd).
 // Chaque vérification est pure : elle ne lit que ses arguments et retourne un tableau de
 // constats, vide quand rien n'est à signaler. `render_lint` est importé dans le corps de chaque
@@ -90,7 +93,7 @@ private fn wildcard_in(obj, i, rule, key, what) {
 
 // Vérification wildcard-in-rules : un constat par élément `*` de `resources` ou de `verbs`, dans
 // les règles d'un Role ou d'un ClusterRole (v1). `apiGroups` et `nonResourceURLs` ne comptent pas.
-fn wildcard_in_rules(obj, objs, ctx, params) {
+fn wildcard_in_rules(obj, idx, ctx, params) {
     if !rbac_v1(obj, ["Role", "ClusterRole"]) { return []; }
     let rules = field(obj, "rules");
     if type_of(rules) != "array" { return []; }
@@ -109,7 +112,7 @@ fn wildcard_in_rules(obj, objs, ctx, params) {
 // Vérification cluster-admin-role-binding : un ClusterRoleBinding dont le roleRef est le
 // ClusterRole `cluster-admin` (le genre doit être ClusterRole : mesuré). Ni les sujets (absents
 // compris), ni le groupe du roleRef, ni le namespace ne comptent.
-fn cluster_admin_role_binding(obj, objs, ctx, params) {
+fn cluster_admin_role_binding(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     if !rbac_v1(obj, ["ClusterRoleBinding"]) { return []; }
     let rref = field(obj, "roleRef");
@@ -128,29 +131,24 @@ fn cluster_admin_role_binding(obj, objs, ctx, params) {
 
 // Rôle désigné par une liaison, ou `()`. RoleBinding : le Role de même namespace et de même nom.
 // ClusterRoleBinding : le ClusterRole de même nom, quel que soit son namespace. Premier trouvé.
-private fn bound_role(obj, objs) {
+private fn bound_role(obj, idx) {
     let rref = field(obj, "roleRef");
     let wanted = text(field(rref, "name"));
     if wanted == "" { return (); }
-    let namespaced = rbac_v1(obj, ["RoleBinding"]);
-    let ns = ns_of(obj);
-    for o in objs {
-        if namespaced {
-            if rbac_v1(o, ["Role"]) && ns_of(o) == ns && name_of(o) == wanted { return o; }
-        } else if rbac_v1(o, ["ClusterRole"]) && name_of(o) == wanted {
-            return o;
-        }
+    if rbac_v1(obj, ["RoleBinding"]) {
+        idx.rbac_roles.first(`Role|${ns_of(obj)}|${wanted}`)
+    } else {
+        idx.rbac_roles.first(`ClusterRole||${wanted}`)
     }
-    ()
 }
 
 // Constat unique d'une liaison dont le rôle désigné a une règle où un verbe ET une ressource
 // concordent (dans la même règle). Une paire est `[verbe] access to [ressource]`, comme l'outil.
 // `*` concorde avec tout ; sinon la liste de motifs (regex) du paramètre, ou la liste par défaut.
-private fn access_findings(check, obj, objs, params, resources, verbs) {
+private fn access_findings(check, obj, idx, params, resources, verbs) {
     import "render_lint" as render_lint;
     if !rbac_v1(obj, ["RoleBinding", "ClusterRoleBinding"]) { return []; }
-    let role = bound_role(obj, objs);
+    let role = bound_role(obj, idx);
     if role == () { return []; }
     let verb_patterns = list_param(params, "verbs", verbs);
     let resource_patterns = list_param(params, "resources", resources);
@@ -186,11 +184,11 @@ private fn access_findings(check, obj, objs, params, resources, verbs) {
 // Vérification access-to-create-pods : une liaison dont le rôle permet de créer des pods ou des
 // charges de travail (ressources et verbes par défaut de kube-linter). `cronjob` est au singulier
 // tel quel : mesuré, `cronjobs` (pluriel) n'est pas concerné.
-fn access_to_create_pods(obj, objs, ctx, params) {
+fn access_to_create_pods(obj, idx, ctx, params) {
     access_findings(
         "access-to-create-pods",
         obj,
-        objs,
+        idx,
         params,
         ["^pods$", "^deployments$", "^statefulsets$", "^replicasets$", "^cronjob$", "^jobs$", "^daemonsets$"],
         ["^create$"]
@@ -199,11 +197,11 @@ fn access_to_create_pods(obj, objs, ctx, params) {
 
 // Vérification access-to-secrets : une liaison dont le rôle donne accès aux secrets. Le motif
 // `^*$` de la liste par défaut concorde avec tout verbe (mesuré : `update`, `foo` et `""` aussi).
-fn access_to_secrets(obj, objs, ctx, params) {
+fn access_to_secrets(obj, idx, ctx, params) {
     access_findings(
         "access-to-secrets",
         obj,
-        objs,
+        idx,
         params,
         ["^secrets$"],
         ["^get$", "^list$", "^delete$", "^create$", "^watch$", "^*$"]
@@ -211,21 +209,15 @@ fn access_to_secrets(obj, objs, ctx, params) {
 }
 
 // Vrai quand un ServiceAccount v1 nommé `name` existe dans le namespace `ns` de la liste.
-private fn has_service_account(objs, ns, name) {
-    import "render_lint" as render_lint;
-    for o in objs {
-        if render_lint::kind_of_group(o, ["ServiceAccount"], "") && ns_of(o) == ns && name_of(o) == name {
-            return true;
-        }
-    }
-    false
+private fn has_service_account(idx, ns, name) {
+    idx.rbac_service_accounts.has(`${ns}|${name}`)
 }
 
 // Vérification non-existent-service-account : un gabarit de pod (Pod compris) dont le compte de
 // service n'existe pas dans la liste, dans le namespace de la charge de travail. Le champ
 // `serviceAccountName`, s'il est non vide, l'emporte sur le champ déprécié `serviceAccount`. Un
 // compte vide ou `default` n'est jamais signalé (mesuré).
-fn non_existent_service_account(obj, objs, ctx, params) {
+fn non_existent_service_account(obj, idx, ctx, params) {
     import "render_lint" as render_lint;
     let findings = [];
     for entry in render_lint::pod_templates(obj) {
@@ -238,7 +230,7 @@ fn non_existent_service_account(obj, objs, ctx, params) {
         }
         if account == "" || account == "default" { continue; }
         let ns = ns_of(obj);
-        if has_service_account(objs, ns, account) { continue; }
+        if has_service_account(idx, ns, account) { continue; }
         let base = text(field(entry, "path"));
         let prefix = if base == "" { "spec" } else { base + ".spec" };
         findings.push(render_lint::finding(
@@ -250,4 +242,24 @@ fn non_existent_service_account(obj, objs, ctx, params) {
         ));
     }
     findings
+}
+
+// Entrées d'index de ce thème, construites une fois par `render_lint::index` :
+//   rbac_roles            : `Role|namespace|nom` et `ClusterRole||nom` -> le rôle (le premier de
+//                           la liste fait foi, comme le parcours d'origine) ;
+//   rbac_service_accounts : `namespace|nom` -> vrai pour un ServiceAccount du noyau.
+fn index(objs) {
+    import "render_lint" as render_lint;
+    let roles = multimap();
+    let accounts = multimap();
+    for o in objs {
+        if rbac_v1(o, ["Role"]) {
+            roles.put(`Role|${ns_of(o)}|${name_of(o)}`, o);
+        } else if rbac_v1(o, ["ClusterRole"]) {
+            roles.put(`ClusterRole||${name_of(o)}`, o);
+        } else if render_lint::kind_of_group(o, ["ServiceAccount"], "") {
+            accounts.put(`${ns_of(o)}|${name_of(o)}`, true);
+        }
+    }
+    #{ rbac_roles: roles, rbac_service_accounts: accounts }
 }

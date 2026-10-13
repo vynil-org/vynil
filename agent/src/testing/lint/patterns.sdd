@@ -42,6 +42,10 @@ Must:
   Rester en temps linéaire : la crate `regex` sans retour arrière, donc aucun motif ne peut faire
     exploser l'évaluation. Borner la taille du programme compilé par la limite de la crate.
   Rester pure et déterministe : mêmes arguments, même résultat, aucun état partagé observable.
+    Un cache borné des motifs compilés est permis : la bibliothèque appelle la fonction par
+    conteneur et par motif, et recompiler à chaque appel coûterait des milliers de compilations
+    sur un gros rendu. Le cache ne change jamais un résultat, seulement son coût ; il est vidé
+    quand il atteint sa taille maximale, et un motif invalide n'y entre pas.
   Ne jamais paniquer : un motif invalide est une erreur Rhai, jamais un `unwrap`.
 
 Must not:
@@ -77,6 +81,14 @@ Scenario: an invalid pattern is a script error
   When `regex_is_match` s'exécute
   Then le script reçoit une erreur dont le message commence par `regex_is_match: invalid pattern`
   Test @an-invalid-pattern-is-a-script-error
+
+Scenario: the cache never changes a result and stays bounded
+  Given plus de motifs distincts que la taille maximale du cache, chacun testé sur un texte qui
+    correspond puis sur un texte qui ne correspond pas
+  When `regex_is_match` s'exécute sur chacun
+  Then chaque résultat est celui d'une compilation neuve, et le cache ne dépasse pas sa taille
+    maximale
+  Test @the-cache-never-changes-a-result-and-stays-bounded
 
 Scenario: a pathological pattern stays linear
   Given le motif `(a+)+$` et un texte de cinquante `a` suivi d'un `b`

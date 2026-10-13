@@ -17,6 +17,7 @@ References:
   ./finding.sdd — l'analyse et la conversion des constats.
   ./context.sdd — les contextes passés au script.
   ./../schema/rhai.sdd — les fonctions `schema_*` enregistrées dans le moteur du script.
+  ./patterns.sdd, ./multimap.sdd — les fonctions et le type natifs offerts à la bibliothèque.
   /common/src/rhaihandler.sdd — @Script, @Dynamic, le moteur.
 
 Exposes:
@@ -30,7 +31,7 @@ Exposes:
 Accepts:
   @lint_dir : un répertoire contenant `lint.rhai`, point d'entrée fixe, plus les modules que
     celui-ci importe. @script_dir : la racine des scripts de l'agent, dont `lib/` porte
-    les modules standard que le script peut importer.
+    `render_lint` et ses modules.
 
 Raises:
   @common::Error::Other — à la construction seulement : `lint.rhai` absent ou n'étant pas un
@@ -41,8 +42,8 @@ Must:
     posé dans @lint_dir masque donc le module standard du même nom : la distribution peut
     surcharger un fichier fourni, comme un paquet le fait.
   Évaluer chaque appel dans un moteur neuf, sans état partagé entre tests, avec les seules
-    fonctions de manipulation de données du moteur de base, les fonctions `schema_*` et
-    `regex_is_match` de ./patterns.sdd :
+    fonctions de manipulation de données du moteur de base, les fonctions `schema_*`,
+    `regex_is_match` de ./patterns.sdd et le type `Multimap` de ./multimap.sdd :
     aucune fonction k8s, http, s3, shell ni fichier n'y est enregistrée, si bien qu'un script
     qui les appelle échoue sur fonction inconnue.
   Appeler `lint(objs, ctx)` avec `objs` la carte de @Sections::to_dynamic — `all` (copie, en
@@ -73,8 +74,12 @@ Handles:
 Tasks:
   [x] Couvrir chaque scénario par un test de même nom, avec des scripts `lint.rhai` de test
       sous `/agent/tests/fixtures/`.
-  [?] Valeurs de la base et de la part par objet du budget d'opérations, et leur éventuelle
-      configuration. Décider après mesure sur le script de lint réel de la distribution.
+  [x] Valeurs du budget d'opérations : base de dix millions plus cinquante mille par objet reçu,
+      mesuré à environ seize mille opérations par objet pour `render_lint::all` avec ses soixante
+      vérifications (linéaire de deux cents à huit cents objets), soit une marge d'un facteur
+      trois.
+  [?] Rendre le budget configurable (option de ligne de commande ou valeur du contexte) :
+      décider quand une distribution en exprime le besoin.
   [?] Une absence de `lint.rhai` est une @common::Error::Other : décider d'un variant dédié
       avec identifiant stable dans /common/src/lib.sdd.
 
