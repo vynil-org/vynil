@@ -201,15 +201,32 @@ fn instance_already_mocked(
 }
 
 /// Lit le `status` de l'instance mockée du test, tel que l'installation l'a persisté dans la
-/// base de mocks (`fun_name` : `get_<usage>_instance`). `()` si la lecture échoue : le lint
-/// tourne alors avec toutes les sections vides.
-fn instance_status(rhai: &mut Script, fun_name: &str) -> Dynamic {
-    match rhai.eval(&format!("{fun_name}(args.namespace, args.instance).status")) {
-        Ok(status) => status,
-        Err(e) => {
-            tracing::warn!("lint sections unavailable, every object is left unsectioned: {e}");
-            Dynamic::UNIT
-        }
+/// base de mocks (`fun_name` : `get_<usage>_instance`). L'échec de lecture est rendu à
+/// l'appelant : `lint_sections` en fait une ligne `lint:sections`.
+fn instance_status(rhai: &mut Script, fun_name: &str) -> Result<Dynamic, String> {
+    rhai.eval(&format!("{fun_name}(args.namespace, args.instance).status"))
+        .map_err(|e| e.to_string())
+}
+
+/// Sections des objets créés d'après le `status` lu. Un statut illisible laisse toutes les
+/// sections vides et rend en plus une ligne `lint:sections` en échec : une règle « pour chaque
+/// objet de `objs.scalables` » ne passerait sinon vert sans rien avoir vérifié. Un statut lu
+/// sans aucune section déclarée reste un cas légitime et ne produit aucune ligne.
+fn lint_sections(
+    created: &[Dynamic],
+    status: Result<Dynamic, String>,
+) -> (Sections, Option<VynilAssertResult>) {
+    match status {
+        Ok(status) => (Sections::from_status(created, &status), None),
+        Err(error) => (
+            Sections::from_status(created, &Dynamic::UNIT),
+            Some(VynilAssertResult {
+                name: "lint:sections".to_string(),
+                description: Some("Lint sections".to_string()),
+                passed: false,
+                message: format!("status of the instance not readable, every object is unsectioned: {error}"),
+            }),
+        ),
     }
 }
 
@@ -674,8 +691,8 @@ impl TestHandler {
                 .and_then(|loaded| loaded.testSets.clone())
                 .unwrap_or_default();
             let ctx = build_test_context(&self.package, &test, &refs);
-            let status = instance_status(&mut rhai, fun_name);
-            let sections = Sections::from_status(&created, &status);
+            let (sections, unreadable) = lint_sections(&created, instance_status(&mut rhai, fun_name));
+            asserts.extend(unreadable);
             let outcome = lint.run_test(&ctx, &sections);
             asserts.extend(outcome.rows);
             suppressions.extend(outcome.suppressions);
@@ -1057,5 +1074,23 @@ mod tests {
         assert_eq!(assert_names(test), ["lint:scalable", "lint:unsectioned"]);
         assert_eq!(test["asserts"][0]["description"], "Deployment app/web");
         assert_eq!(test["asserts"][1]["description"], "Secret app/loose");
+    }
+
+    #[test]
+    fn an_unreadable_status_fails_a_lint_sections_row() {
+        let created =
+            vec![rhai::serde::to_dynamic(serde_json::json!({
+            "apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"name": "web", "namespace": "app"}
+        }))
+        .expect("objet convertible")];
+        let (sections, row) = lint_sections(&created, Err("unknown function".to_string()));
+        let row = row.expect("une ligne lint:sections");
+        assert_eq!(row.name, "lint:sections");
+        assert!(!row.passed);
+        assert!(row.message.contains("unknown function"));
+        assert!(sections.scalables.is_empty());
+        assert_eq!(sections.unsectioned.len(), 1);
+        let (_, none) = lint_sections(&created, Ok(Dynamic::from(rhai::Map::new())));
+        assert!(none.is_none(), "un statut lu sans section n'est pas une erreur");
     }
 }

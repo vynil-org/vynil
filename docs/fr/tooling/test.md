@@ -65,7 +65,7 @@ Le répertoire `tests/` doit exister, sinon l'agent renvoie `MissingTestDirector
 Quand `--lint-dir` est donné, le script de lint de la distribution s'exécute à la fin de chaque test,
 sur les objets créés par ce test. C'est là qu'une distribution fait appliquer ses propres règles à un
 paquet ; Vynil n'en embarque aucune. Le contrat complet du script (points d'entrée, contexte, forme
-d'un constat, suppressions, fonctions `schema_*`, bibliothèque `render_lint`) est décrit dans
+d'un constat, suppressions, fonctions `schema_*`) est décrit dans
 [Lint du rendu](render-lint.md).
 
 ```bash
@@ -88,7 +88,7 @@ Un constat marqué comme supprimé ne fait jamais échouer un test. Il est port�
 seulement quand il n'est pas vide :
 
 - **text** : une ligne `Suppressed: {n}` après la ligne `Results:`, puis une ligne `[SKIP]` par
-  suppression, avec son test, sa règle, son objet et sa raison (`(no reason)` si absente) ;
+  suppression, avec son test, sa règle, son objet et sa raison ;
 - **json** : un tableau `suppressions` après `summary`, un objet par suppression avec `test`, `rule`,
   `kind`, `namespace`, `name`, `path`, `reason` et `origin` (les champs absents valent `null`) ;
 - **JUnit** : un élément `<system-out>` sur le `<testsuite>` du test concerné, une suppression par ligne.

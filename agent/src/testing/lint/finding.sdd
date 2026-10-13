@@ -33,8 +33,8 @@ Accepts:
     `rule` (chaîne non vide), `severity` (`error` ou `warn`), `object` (carte avec
     `apiVersion`, `kind`, `name` chaînes non vides et `namespace` chaîne optionnelle),
     `message` (chaîne non vide) ; optionnels : `path` (chaîne), `source` (chaîne),
-    `suppressed` (booléen, défaut `false`), `reason` (chaîne), `origin` (chaîne). Les clés
-    inconnues sont ignorées.
+    `suppressed` (booléen, défaut `false`), `reason` (chaîne, non vide dès que `suppressed`
+    est vrai), `origin` (chaîne). Les clés inconnues sont ignorées.
   Une valeur qui n'est pas un tableau est invalide en bloc.
 
 Returns:
@@ -65,8 +65,9 @@ Must:
 
 Handles:
   Constat `warn` supprimé — inventorié, aucune ligne.
-  `suppressed` vrai sans `reason` — inventorié avec `reason` absent ; l'exigence d'une raison
-    est une politique de la bibliothèque (/agent/scripts/lib/render_lint.sdd), pas d'ici.
+  `suppressed` vrai sans `reason`, ou avec une `reason` vide — élément invalide
+    (`lint:invalid-finding`) : une exception se justifie, sinon une erreur deviendrait muette
+    sans trace de sa raison. Une `reason` est tolérée sur un constat non supprimé.
   Tableau vide — aucune ligne, aucune suppression.
 
 Tasks:
@@ -97,6 +98,14 @@ Scenario: a suppressed finding is inventoried and silent
   When @to_rows puis @to_suppressions s'exécutent
   Then aucune ligne n'est produite et une @Suppression porte règle, objet et raison
   Test @a-suppressed-finding-is-inventoried-and-silent
+
+Scenario: a suppression without a reason is invalid
+  Given un constat `error` avec `suppressed: true` et sans `reason`, puis le même avec
+    `reason: ""`
+  When @parse_findings puis @to_rows s'exécutent
+  Then les deux éléments sont invalides : deux lignes `lint:invalid-finding` en échec dont le
+    message nomme `reason`, et aucune @Suppression
+  Test @a-suppression-without-a-reason-is-invalid
 
 Scenario: a malformed finding is never dropped
   Given un tableau `[#{rule: "x"}, 42]`

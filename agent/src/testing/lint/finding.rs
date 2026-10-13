@@ -93,6 +93,10 @@ fn parse_finding(item: &Dynamic) -> Result<Finding, String> {
             .as_bool()
             .map_err(|_| "`suppressed` must be a boolean".to_string())?,
     };
+    let reason = opt_str(&map, "reason")?;
+    if suppressed && reason.as_deref().is_none_or(str::is_empty) {
+        return Err("`reason` is required when `suppressed` is true".to_string());
+    }
     Ok(Finding {
         rule: req_str(&map, "rule")?,
         severity,
@@ -101,7 +105,7 @@ fn parse_finding(item: &Dynamic) -> Result<Finding, String> {
         message: req_str(&map, "message")?,
         source: opt_str(&map, "source")?,
         suppressed,
-        reason: opt_str(&map, "reason")?,
+        reason,
         origin: opt_str(&map, "origin")?,
     })
 }
@@ -250,6 +254,32 @@ mod tests {
         assert_eq!(suppressions[0].kind, "Deployment");
         assert_eq!(suppressions[0].name, "web");
         assert_eq!(suppressions[0].reason.as_deref(), Some("legacy image"));
+    }
+
+    #[test]
+    fn a_suppression_without_a_reason_is_invalid() {
+        let parsed = parse_findings(&eval(
+            r#"[
+                #{
+                    rule: "latest-tag", severity: "error",
+                    object: #{ apiVersion: "apps/v1", kind: "Deployment", name: "web" },
+                    message: "image uses the latest tag", suppressed: true
+                },
+                #{
+                    rule: "latest-tag", severity: "error",
+                    object: #{ apiVersion: "apps/v1", kind: "Deployment", name: "web" },
+                    message: "image uses the latest tag", suppressed: true, reason: ""
+                }
+            ]"#,
+        ));
+        assert_eq!(parsed.findings.len(), 0);
+        let rows = to_rows(&parsed.findings, &parsed.invalid);
+        assert_eq!(rows.len(), 2);
+        assert!(
+            rows.iter()
+                .all(|r| r.name == "lint:invalid-finding" && !r.passed && r.message.contains("`reason`"))
+        );
+        assert_eq!(to_suppressions("t1", &parsed.findings).len(), 0);
     }
 
     #[test]

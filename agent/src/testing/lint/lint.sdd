@@ -41,8 +41,6 @@ References:
   ./../handler.sdd — l'appelant : il possède le moment d'exécution (après l'installation,
     avant le décompte du verdict) et le recueil des objets.
   ./../result.sdd — l'accumulateur qui reçoit les lignes et l'inventaire de suppressions.
-  /agent/scripts/lib/render_lint.sdd — la bibliothèque Rhai que le script de la distribution
-    compose ; ce répertoire ne la connaît pas.
 
 Must:
   Rester sans politique : aucune règle, aucune liste d'exclusions, aucune sévérité par défaut

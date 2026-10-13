@@ -30,14 +30,16 @@ Exposes:
 Accepts:
   @lint_dir : un répertoire contenant `lint.rhai`, point d'entrée fixe, plus les modules que
     celui-ci importe. @script_dir : la racine des scripts de l'agent, dont `lib/` porte
-    `render_lint` et ses modules.
+    les modules standard que le script peut importer.
 
 Raises:
   @common::Error::Other — à la construction seulement : `lint.rhai` absent ou n'étant pas un
     fichier, script qui ne compile pas, ou script qui ne définit ni `lint` ni `lint_suite`.
 
 Must:
-  Résoudre les imports du script dans l'ordre : @lint_dir, puis `{script_dir}/lib`.
+  Résoudre les imports du script dans l'ordre : @lint_dir, puis `{script_dir}/lib`. Un module
+    posé dans @lint_dir masque donc le module standard du même nom : la distribution peut
+    surcharger un fichier fourni, comme un paquet le fait.
   Évaluer chaque appel dans un moteur neuf, sans état partagé entre tests, avec les seules
     fonctions de manipulation de données du moteur de base, les fonctions `schema_*` et
     `regex_is_match` de ./patterns.sdd :
@@ -53,7 +55,11 @@ Must:
     retour qui n'est pas un tableau en une ligne `lint:execution` en échec dont le message est
     l'erreur, et rendre aucune suppression pour cet appel.
   Borner l'exécution par une limite d'opérations du moteur pour qu'un script qui boucle ne
-    bloque pas la suite.
+    bloque pas la suite. La limite est un budget proportionnel : une base plus une part par
+    objet reçu (@run_test ; la base seule pour @run_suite), de sorte qu'une charge honnête qui
+    grandit avec le rendu ne soit pas arrêtée par une limite fixe.
+  Borner aussi la mémoire du moteur (taille des chaînes, des tableaux et des cartes) : le
+    budget d'opérations ne protège pas d'une boucle `s += s` qui double à chaque tour.
   Rester déterministe : mêmes objets et mêmes contextes donnent les mêmes lignes.
 
 Must not:
@@ -67,8 +73,8 @@ Handles:
 Tasks:
   [x] Couvrir chaque scénario par un test de même nom, avec des scripts `lint.rhai` de test
       sous `/agent/tests/fixtures/`.
-  [?] Valeur de la limite d'opérations du moteur et son éventuelle configuration. Décider
-      après mesure sur le script de lint réel de la distribution.
+  [?] Valeurs de la base et de la part par objet du budget d'opérations, et leur éventuelle
+      configuration. Décider après mesure sur le script de lint réel de la distribution.
   [?] Une absence de `lint.rhai` est une @common::Error::Other : décider d'un variant dédié
       avec identifiant stable dans /common/src/lib.sdd.
 
@@ -98,6 +104,18 @@ Scenario: a script that touches the cluster fails
   When @run_test s'exécute
   Then la ligne `lint:execution` signale une fonction inconnue
   Test @a-script-that-touches-the-cluster-fails
+
+Scenario: a runaway string is bounded
+  Given un `lint.rhai` dont `lint` double une chaîne dans une boucle sans fin
+  When @run_test s'exécute
+  Then une unique ligne `lint:execution` en échec est rendue, sans épuiser la mémoire
+  Test @a-runaway-string-is-bounded
+
+Scenario: the operation budget grows with the object count
+  Given le budget d'un appel sans objet et celui d'un appel à mille objets
+  When on les compare
+  Then le second est strictement supérieur au premier, et le budget sans objet est la base
+  Test @the-operation-budget-grows-with-the-object-count
 
 Scenario: a non-array return is a failed row
   Given un `lint.rhai` dont `lint` retourne une carte
