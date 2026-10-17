@@ -371,8 +371,7 @@ fn lint(objs, ctx) {
         ignore_prefix: "ignore-check.example/",
         require_reason: true
     });
-    // Les vérifications ci-dessus restent muettes sur un objet mal formé (elles ne retournent rien,
-    // comme kube-linter) : c'est la validation de schéma qui le signale.
+    // Les vérifications ci-dessus restent muettes sur un objet mal formé (elles ne retournent rien) : c'est la validation de schéma qui le signale.
     for obj in objs.all {
         findings += schema::check(obj);
     }
@@ -382,7 +381,7 @@ fn lint(objs, ctx) {
 
 Les vérifications de `render_lint::all` ne retournent aucun constat pour un objet dont elles ne savent pas
 lire la forme (une `spec` qui n'est pas une carte, un `env` du mauvais type). C'est le comportement de
-l'outil de référence, et il n'est sûr qu'à côté de la validation de schéma, qui signale justement ces
+la bibliothèque, et il n'est sûr qu'à côté de la validation de schéma, qui signale justement ces
 formes : `render_lint::all` ne l'appelle pas, l'exemple appelle donc les deux.
 
 Exécution :
