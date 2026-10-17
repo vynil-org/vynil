@@ -53,7 +53,7 @@ Le répertoire `<package-dir>/tests` doit exister (sinon erreur `MissingTestDire
 | Flag | Variable d'environnement | Rôle |
 |---|---|---|
 | `--lint-dir <dir>` | `LINT_DIRECTORY` | Répertoire du script de lint du rendu de la distribution (`lint.rhai`). Quand il est donné, le script s'exécute à la fin de chaque test et ses constats s'ajoutent au verdict. Sans lui, aucun lint du rendu ne tourne. |
-| `--schemas-dir <dir>` | `SCHEMAS_DIRECTORY` | Répertoire de JSON Schemas et de CRD utilisé par les fonctions `schema_*` du script de lint. Exige `--lint-dir` (erreur d'usage sinon). |
+| `--schemas-dir <dir>` | `SCHEMAS_DIRECTORY` | Répertoire de JSON Schemas et de CRD utilisé par les fonctions `schema_*` du script de lint. Exige `--lint-dir` (erreur d'usage sinon) : `SCHEMAS_DIRECTORY` seule dans l'environnement est cette même erreur d'usage. |
 
 Voir [Tests de paquet](tooling/test.md#lint-du-rendu) et [Lint du rendu](tooling/render-lint.md).
 

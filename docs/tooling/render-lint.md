@@ -31,6 +31,10 @@ agent package test -p ./my-package --all \
 | `--lint-dir <dir>` | `LINT_DIRECTORY` | Directory containing `lint.rhai`, the entry point of the distribution script. |
 | `--schemas-dir <dir>` | `SCHEMAS_DIRECTORY` | Directory of JSON Schemas and CRDs used by the `schema_*` functions. Requires `--lint-dir`. |
 
+Both variables follow the other directory variables of the agent (`PACKAGE_DIRECTORY`). `SCHEMAS_DIRECTORY`
+alone, for instance exported by a CI job that sets no `--lint-dir`, is a clap usage error because of the
+`requires`: set `LINT_DIRECTORY` with it.
+
 ## The lint directory
 
 `lint.rhai` is the fixed entry point. The modules it imports are resolved in this order:
@@ -140,15 +144,18 @@ ctx
     └── executed        names of the tests run by this invocation, ascending
 ```
 
+`lint_suite` also runs with `--test-name`: `executed` then holds that single test. A rule that requires
+something of *every* test must compare `executed` with `tests`, not assume that the whole suite ran.
+
 ## Shape of a finding
 
 A finding is a map returned in the array. Fields:
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
-| `rule` | non-empty string | yes | Rule name. Kept verbatim in the verdict, `/` included (`schema/invalid`). |
+| `rule` | non-empty string | yes | Rule name. Kept verbatim in the verdict, `/` included (`schema/invalid`). The names `execution`, `invalid-finding` and `sections` are reserved: the engine produces the rows `lint:execution`, `lint:invalid-finding` and `lint:sections` itself, and a finding that uses one of them is invalid. |
 | `severity` | `"error"` or `"warn"` | yes | Effect on the verdict (see below). |
-| `object` | map `{apiVersion, kind, namespace?, name}` | yes | Object the finding is about. `apiVersion`, `kind` and `name` are non-empty strings; `namespace` is optional. |
+| `object` | map `{apiVersion, kind, namespace?, name}` | yes | Object the finding is about. `apiVersion`, `kind` and `name` are non-empty strings; `namespace` is optional, and an empty one counts as absent. |
 | `message` | non-empty string | yes | Message shown in the verdict. |
 | `path` | string | no | Dotted path inside the object, for example `spec.template.spec.containers[0].image`. |
 | `source` | string | no | Free-form origin information. |
