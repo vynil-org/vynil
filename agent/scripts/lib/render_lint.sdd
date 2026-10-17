@@ -96,7 +96,7 @@ Must:
     `values`, qui recopie tout le seau à chaque appel. Le comportement observable ne change pas :
     l'oracle reste le juge.
   Ne signaler aucune anomalie de FORME : une entrée mal formée (une spec qui n'est pas un objet,
-    un `env` de mauvais type) donne un tableau vide, comme dans l'outil de référence. C'est la
+    un `env` de mauvais type) donne un tableau vide. C'est la
     validation de schéma (`render_lint_schema`) qui les signale ; @all ne l'appelle pas, et
     l'exemple de script de distribution de la documentation appelle les deux.
   Importer la bibliothèque dans le corps des fonctions des modules thématiques et non en tête :

@@ -367,7 +367,7 @@ fn lint(objs, ctx) {
         ignore_prefix: "ignore-check.example/",
         require_reason: true
     });
-    // The checks above stay silent on a malformed object (they return nothing, like kube-linter):
+    // The checks above stay silent on a malformed object (they return nothing):
     // the schema validation is what reports it.
     for obj in objs.all {
         findings += schema::check(obj);
@@ -377,7 +377,7 @@ fn lint(objs, ctx) {
 ```
 
 The checks of `render_lint::all` return no finding for an object whose shape they cannot read (a `spec` that
-is not a map, an `env` of the wrong type). That is the behaviour of the reference tool, and it is only safe
+is not a map, an `env` of the wrong type). This is how the library behaves, and it is only safe
 next to the schema validation, which reports exactly those shapes: `render_lint::all` does not call it, so
 the example calls both.
 
