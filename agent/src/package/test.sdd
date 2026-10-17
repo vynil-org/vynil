@@ -84,8 +84,8 @@ Must:
     verdict agrégé, le résumé et le JUnit les comptent sans nouveau chemin, et l'inventaire
     des suppressions figure dans le résumé selon ./../testing/result.sdd.
   Porte deux arguments dédiés à la correction : `--fix` (pas de court, pas d'env), booléen, champ
-    Rust @fix, déclaré `requires` `lint-dir` ; `--dry-run` (pas de court, pas d'env), booléen,
-    champ Rust @dry_run, déclaré `requires` `fix`. Les poser sans leur prérequis est une erreur
+    Rust @fix de @FixArgs, déclaré `requires` `lint-dir` ; `--dry-run` (pas de court, pas d'env), booléen,
+    champ Rust @dry_run de @FixArgs, déclaré `requires` `fix`. Les poser sans leur prérequis est une erreur
     d'usage clap. Sans `--fix`, aucun fix ne tourne et `package.yaml` n'est jamais écrit.
   Quand `--fix` est posé, une fois la suite et le hook de suite exécutés (couloirs all et
     mono-test) et le résumé affiché : lire `<package_dir>/package.yaml` comme @YamlDoc, appeler
@@ -103,7 +103,7 @@ Must:
     @Error::YamlError dont le message nomme le fichier. Ces erreurs interrompent l'invocation
     avant le calcul du verdict.
   Porte `--fix-rounds` (pas de court, pas d'env), entier @u32 de valeur au moins 1, défaut 1,
-    champ Rust @fix_rounds, déclaré `requires` `fix` : le nombre maximal d'exécutions de la suite.
+    champ Rust @fix_rounds de @FixArgs, déclaré `requires` `fix` : le nombre maximal d'exécutions de la suite.
     Avec `--fix`, la boucle est : exécuter la suite avec un handler neuf (donc relire
     `package.yaml`) ; si ce n'est pas la première exécution et que @TestHandler::finding_count
     n'a pas baissé strictement depuis l'exécution précédente, s'arrêter sans appliquer de fix ;
@@ -198,12 +198,16 @@ Must not:
     soit ce que dit `--format`.
 
 Exposes:
-  @Parameters — `#[derive(@clap::Args, @Debug, @Serialize, @Deserialize)]` avec seize
+  @Parameters — `#[derive(@clap::Args, @Debug, @Serialize, @Deserialize)]` avec quatorze
     champs privés (@package_dir, @script_dir, @template_dir, @config_dir,
     @testset_dir, @test_name, @start_all derrière `--all`, @format,
-    @junit_output_filename, @template_output_filename, @lint_dir, @schemas_dir, @fix,
-    @dry_run, @fix_rounds, @verbose) ; hors de ce module on n'y
-    accède que via @Commands::Test dans ./mod.rs.
+    @junit_output_filename, @template_output_filename, @lint_dir, @schemas_dir, @fixing,
+    @verbose) ; hors de ce module on n'y accède que via @Commands::Test dans ./mod.rs.
+  @FixArgs — struct privée `#[derive(@clap::Args, @Debug, @Serialize, @Deserialize)]` qui porte
+    @fix, @dry_run et @fix_rounds ; @Parameters l'embarque aplatie dans @fixing
+    (`#[command(flatten)]` et `#[serde(flatten)]`). Le regroupement existe parce que le harnais
+    de clippy refuse plus de trois booléens par struct (`struct_excessive_bools`, voir
+    /linting.sdd) ; il ne change rien à la ligne de commande, qui garde ses seize arguments.
   @run — `pub fn @run(args: &@Parameters) -> @common::Result<@()>` ; synchrone,
     appelé en sync par la branche exit-3 de ./mod.sdd, attendu par personne.
   @OutputFormat — `pub enum` @Text/`@Json` avec `#[value(name = "text")]`/

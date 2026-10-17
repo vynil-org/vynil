@@ -57,7 +57,8 @@ The script may define one or both of these functions. A function that is not def
 reported on the test, and a partial render would produce misleading findings.
 
 A third, optional function, `fix`, turns findings into a corrected `package.yaml` (see
-[Fixing findings](#fixing-findings-fix)). It is only called with `agent package test --fix`.
+[Fixing findings](#fixing-findings-fix)). It is only called with `agent package test --fix`. A fourth one, `hint`, says how to correct what `fix`
+could not (see [Hints](#hints-hint)); it is only called with `--verbose`.
 
 ### The `objs` map
 
@@ -469,8 +470,53 @@ agent package test -p ./my-package --all --lint-dir ./distribution/lint --fix
 # stderr: fix no-cpu-limits: applied
 ```
 
-The run above still exits with code 3, since the finding existed when the suite ran. Run it again:
-with the fix applied, the finding is gone.
+The run above still exits with code 3, since the finding existed when the suite ran. Run it again, or
+let the command do it with `--fix-rounds`:
+
+```bash
+agent package test -p ./my-package --all --lint-dir ./distribution/lint --fix --fix-rounds 3
+# stderr: round 1: 2 finding(s)
+#         fix no-cpu-limits: applied
+#         round 2: 0 finding(s)
+```
+
+The suite runs again on the rewritten `package.yaml`, and the exit code is the one of the last run.
+`--fix-rounds` is a ceiling: the loop also stops when nothing changed, or when a run does not have
+strictly fewer findings than the previous one, in which case it applies no further fix.
+
+## Hints: `hint`
+
+A fix cannot always correct a finding: the value may be hard-coded in a template, or the right value
+may need a decision. `hint` is the text that tells the reader, a person or an LLM, how to correct it.
+
+```rhai
+fn hint(rule, findings, pkg) { ... }
+```
+
+It receives what `fix` receives and returns a string. A non-empty string is the hint; an empty string,
+or no `hint` function, means no hint; an error, or a return that is not a string, is shown as a failed
+hint. It is only called with `--verbose`, once per rule that still has at least one finding which is not
+suppressed, and not for a rule that a fix has just corrected.
+
+```rhai
+fn hint(rule, findings, pkg) {
+    if rule != "no-cpu-limits" { return ""; }
+    let names = [];
+    for f in findings { if !f.suppressed { names.push(f.object.name); } }
+    `Remove the CPU limit of the containers of ${names}. The limits are not in package.yaml: look for
+    "cpu" under "limits" in the templates of this package. Keep the memory limit. Run the tests again
+    to check.`
+}
+```
+
+```text
+hint no-cpu-limits:
+  Remove the CPU limit of the containers of ["web"]. ...
+```
+
+The template literal is the template: the hint is built from the same data as the fix, so it can quote
+the findings and any part of `pkg`. The output is plain text on stderr, meant to be handed as is to
+whoever corrects the package.
 
 ## Limits
 

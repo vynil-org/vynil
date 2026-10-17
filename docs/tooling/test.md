@@ -35,6 +35,8 @@ agent package test -p ./my-package --all --format json \
 | `--schemas-dir <dir>` | Distribution schema directory. Requires `--lint-dir`. |
 | `--fix` | Applies the distribution's fixes to `package.yaml` (see [Render lint](render-lint.md#fixing-findings-fix)). Requires `--lint-dir`. |
 | `--dry-run` | With `--fix`, shows what would be written without writing it. Requires `--fix`. |
+| `--fix-rounds <n>` | With `--fix`, maximum number of runs of the suite (default `1`). Requires `--fix`. |
+| `--verbose` | Prints the hints of the rules that still have findings, on stderr. Requires `--lint-dir`. |
 
 The `tests/` directory must exist, otherwise the agent returns `MissingTestDirectory`.
 
@@ -84,8 +86,16 @@ agent package test -p ./my-package --all \
 - **Without `--lint-dir`**: nothing changes. No lint row and no suppression is produced.
 - **With `--fix`**: after the summary, each rule that produced findings is given to the `fix` function of the
   script, and `package.yaml` is rewritten if a fix applied. The report goes to stderr, so a `--format json`
-  on stdout stays parsable. The exit code is still the one of the run *before* the fix: run the command
-  again to check that the findings are gone.
+  on stdout stays parsable. With the default of one run, the exit code is the one of the run *before* the
+  fix: run the command again to check that the findings are gone.
+- **With `--fix-rounds N`**: after a fix applied, the suite runs again on the rewritten `package.yaml`, up to
+  `N` runs. The loop stops when no fix changed anything, or when a run does not have strictly fewer findings
+  than the previous one (it then applies no fix: the fixes are not converging). Each run prints
+  `round {k}: {n} finding(s)` on stderr. The summary, the JUnit file and the template dump are produced
+  once, from the last run, and so is the exit code: a fix that cleared everything exits `0` with `N >= 2`.
+- **With `--verbose`**: for each rule that still has findings, `hint {rule}:` followed by the text of the
+  script's `hint` function, indented by two spaces, on stderr. A rule that a fix has just corrected has no
+  hint. See [Hints](render-lint.md#hints-hint).
 
 ### Suppressions
 

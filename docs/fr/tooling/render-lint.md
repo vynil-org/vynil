@@ -57,7 +57,8 @@ Le script peut définir une de ces fonctions ou les deux. Une fonction non défi
 déjà signalé sur le test, et un rendu partiel produirait des constats trompeurs.
 
 Une troisième fonction, facultative, `fix`, transforme des constats en un `package.yaml` corrigé (voir
-[Corriger les constats](#corriger-les-constats-fix)). Elle n'est appelée qu'avec `agent package test --fix`.
+[Corriger les constats](#corriger-les-constats-fix)). Elle n'est appelée qu'avec `agent package test --fix`. Une quatrième, `hint`, dit comment corriger ce que
+`fix` n'a pas su corriger (voir [Hints](#hints-hint)) ; elle n'est appelée qu'avec `--verbose`.
 
 ### La carte `objs`
 
@@ -481,7 +482,53 @@ agent package test -p ./my-package --all --lint-dir ./distribution/lint --fix
 ```
 
 L'exécution ci-dessus sort encore avec le code 3, puisque le constat existait quand la suite a tourné.
-Relancez-la : le fix appliqué, le constat a disparu.
+Relancez-la, ou laissez la commande le faire avec `--fix-rounds` :
+
+```bash
+agent package test -p ./my-package --all --lint-dir ./distribution/lint --fix --fix-rounds 3
+# stderr : round 1: 2 finding(s)
+#          fix no-cpu-limits: applied
+#          round 2: 0 finding(s)
+```
+
+La suite s'exécute à nouveau sur le `package.yaml` réécrit, et le code de sortie est celui de la dernière
+exécution. `--fix-rounds` est un plafond : la boucle s'arrête aussi quand rien n'a changé, ou quand une
+exécution n'a pas strictement moins de constats que la précédente, auquel cas elle n'applique plus de fix.
+
+## Hints : `hint`
+
+Un fix ne sait pas toujours corriger un constat : la valeur peut être écrite en dur dans un template, ou la
+bonne valeur peut demander une décision. `hint` est le texte qui dit au lecteur, une personne ou un LLM,
+comment le corriger.
+
+```rhai
+fn hint(rule, findings, pkg) { ... }
+```
+
+Elle reçoit ce que reçoit `fix` et retourne une chaîne. Une chaîne non vide est le hint ; une chaîne vide,
+ou l'absence de la fonction `hint`, signifie pas de hint ; une erreur, ou un retour qui n'est pas une
+chaîne, s'affiche comme un hint en échec. Elle n'est appelée qu'avec `--verbose`, une fois par règle qui a
+encore au moins un constat non supprimé, et pas pour une règle qu'un fix vient de corriger.
+
+```rhai
+fn hint(rule, findings, pkg) {
+    if rule != "no-cpu-limits" { return ""; }
+    let names = [];
+    for f in findings { if !f.suppressed { names.push(f.object.name); } }
+    `Retirer la limite CPU des conteneurs de ${names}. Les limites ne sont pas dans package.yaml : chercher
+    "cpu" sous "limits" dans les templates de ce paquet. Garder la limite mémoire. Relancer les tests
+    pour vérifier.`
+}
+```
+
+```text
+hint no-cpu-limits:
+  Retirer la limite CPU des conteneurs de ["web"]. ...
+```
+
+Le littéral à backticks est le template : le hint se construit avec les mêmes données que le fix, il peut
+donc citer les constats et n'importe quelle partie de `pkg`. La sortie est du texte brut sur stderr, à
+remettre tel quel à qui corrige le paquet.
 
 ## Limites
 

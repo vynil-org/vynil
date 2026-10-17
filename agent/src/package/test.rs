@@ -1,5 +1,5 @@
 use clap::{Args, ValueEnum};
-use client::testing::{FixStatus, FixStep, TestHandler};
+use client::testing::{FixStatus, FixStep, HintOutcome, HintStep, TestHandler};
 use common::{
     Error, Result,
     rhaihandler::Dynamic,
@@ -31,6 +31,26 @@ pub enum PackageType {
     #[default]
     /// System package type
     System,
+}
+
+/// Options de correction, aplaties dans [`Parameters`] : la ligne de commande garde ses noms et
+/// ses prérequis. Le regroupement tient `Parameters` sous le seuil de `struct_excessive_bools`.
+#[derive(Args, Debug, Serialize, Deserialize)]
+struct FixArgs {
+    /// Apply the distribution's fixes to package.yaml (requires --lint-dir)
+    #[arg(long = "fix", requires = "lint_dir")]
+    fix: bool,
+    /// Show the package.yaml that --fix would write, without writing it (requires --fix)
+    #[arg(long = "dry-run", requires = "fix")]
+    dry_run: bool,
+    /// Maximum number of runs of the suite, each one followed by its fixes (requires --fix)
+    #[arg(
+        long = "fix-rounds",
+        default_value_t = 1,
+        value_parser = clap::value_parser!(u32).range(1..),
+        requires = "fix"
+    )]
+    fix_rounds: u32,
 }
 
 #[derive(Args, Debug, Serialize, Deserialize)]
@@ -112,12 +132,13 @@ pub struct Parameters {
         requires = "lint_dir"
     )]
     schemas_dir: Option<PathBuf>,
-    /// Apply the distribution's fixes to package.yaml (requires --lint-dir)
-    #[arg(long = "fix", requires = "lint_dir")]
-    fix: bool,
-    /// Show the package.yaml that --fix would write, without writing it (requires --fix)
-    #[arg(long = "dry-run", requires = "fix")]
-    dry_run: bool,
+    /// Fix options (--fix, --dry-run, --fix-rounds)
+    #[command(flatten)]
+    #[serde(flatten)]
+    fixing: FixArgs,
+    /// Write a hint for each rule that still has findings (requires --lint-dir)
+    #[arg(long = "verbose", requires = "lint_dir")]
+    verbose: bool,
 }
 
 fn format_results(results: &client::testing::TestResultCollector, format: &OutputFormat) -> String {
@@ -155,31 +176,54 @@ fn fix_output(steps: &[FixStep], document: Option<&str>) -> String {
     out
 }
 
-/// Lit `<package_dir>/package.yaml`, applique les fix du lint et rend le texte de stderr. Le
-/// fichier n'est réécrit que si un fix s'est appliqué, et jamais en `dry_run`.
-fn apply_fixes(handler: &TestHandler, package_dir: &Path, dry_run: bool) -> Result<String> {
-    let path = package_dir.join("package.yaml");
-    let text = fs::read_to_string(&path).map_err(Error::Stdio)?;
-    let doc: YamlDoc = text
-        .parse()
-        .map_err(|e| Error::YamlError(format!("{}: {e}", path.display())))?;
-    let report = handler.run_fixes(&doc);
-    if !report.changed {
-        return Ok(fix_output(&report.steps, None));
+/// Une ligne par règle ayant un hint : `hint {règle}:` puis le texte, chaque ligne indentée de
+/// deux espaces ; `hint {règle}: failed — {message}` pour un échec ; rien pour une règle sans hint.
+fn hint_output(steps: &[HintStep]) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for step in steps {
+        match &step.outcome {
+            HintOutcome::Text(text) => {
+                lines.push(format!("hint {}:", step.rule));
+                lines.extend(text.trim_end().lines().map(|line| format!("  {line}")));
+            }
+            HintOutcome::Failed(message) => {
+                lines.push(format!("hint {}: failed — {message}", step.rule));
+            }
+            HintOutcome::None => {}
+        }
     }
-    let yaml = report.package.to_yaml_string().map_err(Error::YamlError)?;
-    if dry_run {
-        return Ok(fix_output(&report.steps, Some(&yaml)));
+    if lines.is_empty() {
+        return String::new();
     }
-    fs::write(&path, &yaml).map_err(Error::Stdio)?;
-    Ok(fix_output(&report.steps, None))
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
 }
 
-pub fn run(args: &Parameters) -> Result<()> {
-    if !args.package_dir.join("tests").is_dir() {
-        return Err(Error::MissingTestDirectory(args.package_dir.clone()));
-    }
-    let mut handler = TestHandler::new(
+/// Un tour de correction : les étapes de `run_fixes`, le document qu'elles laissent, et le YAML
+/// à écrire, présent seulement si un fix a changé le document.
+struct FixRound {
+    steps: Vec<FixStep>,
+    document: YamlDoc,
+    yaml: Option<String>,
+}
+
+/// Une exécution de la suite : son moteur neuf et le collecteur des objets créés du test unique.
+struct Round {
+    handler: TestHandler,
+    created_objects: Arc<Mutex<Vec<Dynamic>>>,
+}
+
+fn read_package(package_dir: &Path) -> Result<YamlDoc> {
+    let path = package_dir.join("package.yaml");
+    let text = fs::read_to_string(&path).map_err(Error::Stdio)?;
+    text.parse::<YamlDoc>()
+        .map_err(|e| Error::YamlError(format!("{}: {e}", path.display())))
+}
+
+/// Moteur neuf : relit `package.yaml` et réinstalle le lint quand il est demandé.
+fn build_handler(args: &Parameters) -> Result<TestHandler> {
+    let handler = TestHandler::new(
         args.package_dir.clone(),
         args.script_dir.clone(),
         args.config_dir.clone(),
@@ -188,60 +232,150 @@ pub fn run(args: &Parameters) -> Result<()> {
             .clone()
             .map(|testset_dir| Vec::from(&[testset_dir])),
     )?;
-    if let Some(lint_dir) = &args.lint_dir {
-        handler = handler.with_lint(lint_dir, args.schemas_dir.as_deref())?;
+    match &args.lint_dir {
+        Some(lint_dir) => handler.with_lint(lint_dir, args.schemas_dir.as_deref()),
+        None => Ok(handler),
     }
+}
 
+/// Exécute la suite (couloir all ou mono-test) avec un moteur neuf, puis le hook de suite.
+fn run_round(args: &Parameters) -> Result<Round> {
+    let mut handler = build_handler(args)?;
+    let created_objects: Arc<Mutex<Vec<Dynamic>>> = Arc::default();
     if args.start_all {
         handler.run_all_tests();
-        handler.run_suite_lint();
-        println!("{}", format_results(&handler.results, &args.format));
-        if let Some(output) = args.junit_output_filename.clone() {
-            fs::write(output, handler.results.to_junit()).map_err(Error::Stdio)?;
-        }
-    } else if let Some(test_name) = args.test_name.clone() {
-        let created_objects: Arc<Mutex<Vec<Dynamic>>> = Arc::default();
-        handler.run_test(&test_name, &created_objects);
-        handler.run_suite_lint();
-        println!("{}", format_results(&handler.results, &args.format));
-        if let Some(output) = args.junit_output_filename.clone() {
-            fs::write(output, handler.results.to_junit()).map_err(Error::Stdio)?;
-        }
-        if let Some(output) = args.template_output_filename.clone() {
-            let objets = created_objects
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone();
-            let content = yaml_all_serialize_to_string(&objets)?;
-            fs::write(output, content).map_err(Error::Stdio)?;
-        }
+    } else if let Some(test_name) = &args.test_name {
+        handler.run_test(test_name, &created_objects);
+    }
+    handler.run_suite_lint();
+    Ok(Round {
+        handler,
+        created_objects,
+    })
+}
+
+/// Lit `package.yaml`, applique les fix du lint et prépare le YAML à écrire si un fix a changé
+/// le document. N'écrit rien.
+fn fix_round(handler: &TestHandler, package_dir: &Path) -> Result<FixRound> {
+    let doc = read_package(package_dir)?;
+    let report = handler.run_fixes(&doc);
+    let yaml = if report.changed {
+        Some(report.package.to_yaml_string().map_err(Error::YamlError)?)
     } else {
-        for t in handler.list_tests() {
+        None
+    };
+    Ok(FixRound {
+        steps: report.steps,
+        document: report.package,
+        yaml,
+    })
+}
+
+/// Écrit `package.yaml` si un fix a changé le document, sauf en `dry_run`.
+fn write_fixes(args: &Parameters, fixes: &FixRound) -> Result<()> {
+    if let (Some(yaml), false) = (&fixes.yaml, args.fixing.dry_run) {
+        fs::write(args.package_dir.join("package.yaml"), yaml).map_err(Error::Stdio)?;
+    }
+    Ok(())
+}
+
+/// Texte de stderr des étapes ; le document n'y figure qu'en `dry_run`, quand il serait écrit.
+fn fix_stderr(fixes: &FixRound, dry_run: bool) -> String {
+    let shown = if dry_run { fixes.yaml.as_deref() } else { None };
+    fix_output(&fixes.steps, shown)
+}
+
+/// Règles dont l'étape de fix est appliquée : elles ne reçoivent pas de hint.
+fn applied_rules(fixes: &FixRound) -> Vec<String> {
+    fixes
+        .steps
+        .iter()
+        .filter(|step| matches!(step.status, FixStatus::Applied))
+        .map(|step| step.rule.clone())
+        .collect()
+}
+
+/// Dernière exécution : résumé, `JUnit` et dump de template (une seule fois), fix, hints, puis le
+/// verdict de cette exécution. `fixes` vaut `None` sans `--fix` ou après un arrêt sans progrès.
+fn report_last_round(args: &Parameters, last: &Round, fixes: Option<&FixRound>) -> Result<()> {
+    let results = &last.handler.results;
+    println!("{}", format_results(results, &args.format));
+    if let Some(output) = args.junit_output_filename.clone() {
+        fs::write(output, results.to_junit()).map_err(Error::Stdio)?;
+    }
+    if let Some(output) = args.template_output_filename.clone().filter(|_| !args.start_all) {
+        let objets = last
+            .created_objects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let content = yaml_all_serialize_to_string(&objets)?;
+        fs::write(output, content).map_err(Error::Stdio)?;
+    }
+    if let Some(fixes) = fixes {
+        write_fixes(args, fixes)?;
+        eprint!("{}", fix_stderr(fixes, args.fixing.dry_run));
+    }
+    if args.verbose {
+        let document = match fixes {
+            Some(fixes) => fixes.document.clone(),
+            None => read_package(&args.package_dir)?,
+        };
+        let skip = fixes.map(applied_rules).unwrap_or_default();
+        eprint!("{}", hint_output(&last.handler.run_hints(&document, &skip)));
+    }
+    if !results.all_passed() {
+        return Err(Error::TestFailure(
+            results.total_failed(),
+            results.total_asserts(),
+        ));
+    }
+    Ok(())
+}
+
+pub fn run(args: &Parameters) -> Result<()> {
+    if !args.package_dir.join("tests").is_dir() {
+        return Err(Error::MissingTestDirectory(args.package_dir.clone()));
+    }
+    if !args.start_all && args.test_name.is_none() {
+        for t in build_handler(args)?.list_tests() {
             println!("{t}");
         }
         return Ok(());
     }
 
-    if args.fix {
-        eprint!("{}", apply_fixes(&handler, &args.package_dir, args.dry_run)?);
+    let mut round: u32 = 1;
+    let mut previous: Option<usize> = None;
+    loop {
+        let current = run_round(args)?;
+        let findings = current.handler.finding_count();
+        if args.fixing.fix {
+            eprintln!("round {round}: {findings} finding(s)");
+        }
+        if previous.is_some_and(|before| findings >= before) {
+            eprintln!("stop: no progress");
+            return report_last_round(args, &current, None);
+        }
+        previous = Some(findings);
+        if !args.fixing.fix {
+            return report_last_round(args, &current, None);
+        }
+        let fixes = fix_round(&current.handler, &args.package_dir)?;
+        if fixes.yaml.is_none() || args.fixing.dry_run || round >= args.fixing.fix_rounds {
+            return report_last_round(args, &current, Some(&fixes));
+        }
+        write_fixes(args, &fixes)?;
+        eprint!("{}", fix_stderr(&fixes, false));
+        round = round.saturating_add(1);
     }
-
-    if !handler.results.all_passed() {
-        return Err(common::Error::TestFailure(
-            handler.results.total_failed(),
-            handler.results.total_asserts(),
-        ));
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Parameters, fix_output, run};
+    use super::{Parameters, fix_output, hint_output, run};
     use clap::Parser;
-    use client::testing::{FixStatus, FixStep};
-    use common::Error;
+    use client::testing::{FixStatus, FixStep, HintOutcome, HintStep, TestHandler};
+    use common::{Error, yamlhandler::YamlDoc};
     use std::{fs, path::PathBuf};
 
     #[derive(Parser)]
@@ -424,6 +558,82 @@ fn fix(rule, findings, pkg) {
 }
 "#;
 
+    /// Distribution dont le constat vit dans `package.yaml` : `lint` signale `no-cpu-limits` tant
+    /// que `resources` garde une limite CPU (`ctx.package`) ; `fix` la retire comme
+    /// `NO_CPU_LIMITS_DISTRO`.
+    const CPU_FROM_PACKAGE_DISTRO: &str = r#"fn lint(objs, ctx) {
+    let out = [];
+    let resources = ctx["package"]["resources"];
+    for name in resources.keys() {
+        let limits = resources[name]["limits"];
+        if type_of(limits) == "map" && type_of(limits["cpu"]) == "string" {
+            out.push(#{
+                rule: "no-cpu-limits", severity: "error",
+                object: #{ apiVersion: "v1", kind: "ConfigMap", namespace: "app", name: "web" },
+                message: "cpu limit in " + name
+            });
+        }
+    }
+    out
+}
+
+fn fix(rule, findings, pkg) {
+    let resources = pkg["resources"];
+    if type_of(resources) != "map" { return #{ status: "not_applicable" }; }
+    let changed = false;
+    for name in resources.keys() {
+        let component = resources[name];
+        let limits = component["limits"];
+        if type_of(limits) == "map" && limits.keys().contains("cpu") {
+            limits.remove("cpu");
+            if limits.keys().len() == 0 {
+                component.remove("limits");
+            } else {
+                component["limits"] = limits;
+            }
+            resources[name] = component;
+            changed = true;
+        }
+    }
+    if !changed { return #{ status: "not_applicable" }; }
+    pkg["resources"] = resources;
+    #{ status: "applied", pkg: pkg }
+}
+"#;
+
+    /// Distribution dont le constat ne disparaît jamais : `fix` ajoute une marque à `marks` à
+    /// chaque appel, et `lint` signale toujours la même règle.
+    const ALWAYS_FINDING_DISTRO: &str = r#"fn lint(objs, ctx) {
+    [#{
+        rule: "always", severity: "error",
+        object: #{ apiVersion: "v1", kind: "ConfigMap", namespace: "app", name: "web" },
+        message: "toujours là"
+    }]
+}
+
+fn fix(rule, findings, pkg) {
+    let marks = pkg["marks"];
+    if type_of(marks) != "array" { marks = []; }
+    marks.push("marque-tour");
+    pkg["marks"] = marks;
+    #{ status: "applied", pkg: pkg }
+}
+"#;
+
+    /// Distribution dont `hint` répond pour la seule règle `no-web`.
+    const HINT_DISTRO: &str = r#"fn lint(objs, ctx) {
+    [#{
+        rule: "no-web", severity: "error",
+        object: #{ apiVersion: "v1", kind: "ConfigMap", namespace: "app", name: "web" },
+        message: "web is forbidden"
+    }]
+}
+
+fn hint(rule, findings, pkg) {
+    "retirer la ConfigMap web\nou la renommer"
+}
+"#;
+
     fn read(path: &std::path::Path) -> String {
         fs::read_to_string(path).expect("lecture de package.yaml")
     }
@@ -541,5 +751,155 @@ fn fix(rule, findings, pkg) {
         );
         let with_doc = fix_output(&steps[..1], Some("a: 1\n"));
         assert_eq!(with_doc, "fix no-cpu-limits: applied\na: 1\n");
+    }
+
+    #[test]
+    fn fix_rounds_rerun_until_the_findings_are_gone() {
+        let t = tree_with(
+            Some(CPU_FROM_PACKAGE_DISTRO),
+            INSTALL_ONE_CONFIGMAP,
+            PACKAGE_WITH_CPU_LIMITS,
+        );
+        let args = params(&t, &[
+            "--all",
+            "--lint-dir",
+            &t.lint.display().to_string(),
+            "--fix",
+            "--fix-rounds",
+            "3",
+        ]);
+        run(&args).expect("la dernière exécution n'a aucun constat");
+        let text = read(&t.package.join("package.yaml"));
+        assert!(!text.contains("cpu"), "{text}");
+        assert!(text.contains("memory: 256Mi"), "{text}");
+    }
+
+    #[test]
+    fn fix_rounds_stop_when_there_is_no_progress() {
+        let t = tree_with(Some(ALWAYS_FINDING_DISTRO), INSTALL_ONE_CONFIGMAP, PACKAGE_YAML);
+        let args = params(&t, &[
+            "--all",
+            "--lint-dir",
+            &t.lint.display().to_string(),
+            "--fix",
+            "--fix-rounds",
+            "5",
+        ]);
+        let err = run(&args).expect_err("le constat ne disparaît jamais");
+        assert!(matches!(err, Error::TestFailure(1, 1)), "{err}");
+        let text = read(&t.package.join("package.yaml"));
+        assert_eq!(text.matches("marque-tour").count(), 1, "{text}");
+    }
+
+    #[test]
+    fn the_default_is_a_single_pass() {
+        let t = tree_with(
+            Some(CPU_FROM_PACKAGE_DISTRO),
+            INSTALL_ONE_CONFIGMAP,
+            PACKAGE_WITH_CPU_LIMITS,
+        );
+        let args = params(&t, &[
+            "--all",
+            "--lint-dir",
+            &t.lint.display().to_string(),
+            "--fix",
+        ]);
+        let err = run(&args).expect_err("une seule exécution : le verdict reste celui d'avant le fix");
+        assert!(matches!(err, Error::TestFailure(2, 2)), "{err}");
+        let text = read(&t.package.join("package.yaml"));
+        assert!(!text.contains("cpu"), "{text}");
+    }
+
+    #[test]
+    fn hint_output_has_one_block_per_rule() {
+        let steps = [
+            HintStep {
+                rule: "no-cpu-limits".to_string(),
+                outcome: HintOutcome::Text("retirer la limite\nou la rendre plus haute\n".to_string()),
+            },
+            HintStep {
+                rule: "quiet".to_string(),
+                outcome: HintOutcome::None,
+            },
+            HintStep {
+                rule: "broken".to_string(),
+                outcome: HintOutcome::Failed("boom".to_string()),
+            },
+        ];
+        assert_eq!(
+            hint_output(&steps),
+            "hint no-cpu-limits:\n  retirer la limite\n  ou la rendre plus haute\nhint broken: failed — boom\n"
+        );
+        assert_eq!(hint_output(&[]), "");
+    }
+
+    #[test]
+    fn hints_are_written_for_what_is_left() {
+        let t = tree(Some(HINT_DISTRO));
+        let args = params(&t, &["--all", "--lint-dir", &t.lint.display().to_string()]);
+        let mut handler = TestHandler::new(
+            args.package_dir.clone(),
+            args.script_dir.clone(),
+            args.config_dir.clone(),
+            args.template_dir,
+            None,
+        )
+        .expect("moteur")
+        .with_lint(&t.lint, None)
+        .expect("lint");
+        handler.run_all_tests();
+        handler.run_suite_lint();
+        let doc: YamlDoc = PACKAGE_YAML.parse().expect("package.yaml");
+        assert_eq!(
+            hint_output(&handler.run_hints(&doc, &[])),
+            "hint no-web:\n  retirer la ConfigMap web\n  ou la renommer\n"
+        );
+        assert_eq!(hint_output(&handler.run_hints(&doc, &["no-web".to_string()])), "");
+    }
+
+    #[test]
+    fn verbose_does_not_change_the_verdict() {
+        let t = tree(Some(HINT_DISTRO));
+        let args = params(&t, &[
+            "--all",
+            "--lint-dir",
+            &t.lint.display().to_string(),
+            "--verbose",
+        ]);
+        let err = run(&args).expect_err("le constat échoue ; le hint ne change pas le verdict");
+        assert!(matches!(err, Error::TestFailure(1, 1)), "{err}");
+    }
+
+    #[test]
+    fn fix_rounds_and_verbose_need_their_prerequisites() {
+        assert!(Cli::try_parse_from(["test", "-p", "/pkg", "--fix-rounds", "2"]).is_err());
+        assert!(Cli::try_parse_from(["test", "-p", "/pkg", "--verbose"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "test",
+                "-p",
+                "/pkg",
+                "--fix",
+                "--lint-dir",
+                "/d",
+                "--fix-rounds",
+                "0"
+            ])
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "test",
+                "-p",
+                "/pkg",
+                "--fix",
+                "--lint-dir",
+                "/d",
+                "--fix-rounds",
+                "2"
+            ])
+            .is_ok()
+        );
+        assert!(Cli::try_parse_from(["test", "-p", "/pkg", "--lint-dir", "/d", "--verbose"]).is_ok());
     }
 }
