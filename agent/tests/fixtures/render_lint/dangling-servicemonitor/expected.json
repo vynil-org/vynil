@@ -1,0 +1,62 @@
+[
+  {
+    "rule": "dangling-servicemonitor",
+    "kind": "ServiceMonitor",
+    "namespace": "app",
+    "name": "sm-empty-match-labels"
+  },
+  {
+    "rule": "dangling-servicemonitor",
+    "kind": "ServiceMonitor",
+    "namespace": "app",
+    "name": "sm-empty-selector"
+  },
+  {
+    "rule": "dangling-servicemonitor",
+    "kind": "ServiceMonitor",
+    "namespace": "app",
+    "name": "sm-expression-only"
+  },
+  {
+    "rule": "dangling-servicemonitor",
+    "kind": "ServiceMonitor",
+    "namespace": "app",
+    "name": "sm-malformed-target"
+  },
+  {
+    "rule": "dangling-servicemonitor",
+    "kind": "ServiceMonitor",
+    "namespace": "app",
+    "name": "sm-no-labels-target"
+  },
+  {
+    "rule": "dangling-servicemonitor",
+    "kind": "ServiceMonitor",
+    "namespace": "app",
+    "name": "sm-no-match"
+  },
+  {
+    "rule": "dangling-servicemonitor",
+    "kind": "ServiceMonitor",
+    "namespace": "app",
+    "name": "sm-no-selector"
+  },
+  {
+    "rule": "dangling-servicemonitor",
+    "kind": "ServiceMonitor",
+    "namespace": "app",
+    "name": "sm-spec-selector-label"
+  },
+  {
+    "rule": "dangling-servicemonitor",
+    "kind": "ServiceMonitor",
+    "namespace": "app",
+    "name": "sm-superset"
+  },
+  {
+    "rule": "dangling-servicemonitor",
+    "kind": "ServiceMonitor",
+    "namespace": "app",
+    "name": "sm-tiers-group"
+  }
+]

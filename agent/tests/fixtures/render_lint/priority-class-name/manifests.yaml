@@ -1,0 +1,127 @@
+# Conformes : classe de priorité acceptée, ou absente (une valeur vide n'est pas signalée).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prio-cluster-critical
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: prio-cluster}
+  template:
+    metadata:
+      labels: {app: prio-cluster}
+    spec:
+      priorityClassName: system-cluster-critical
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: prio-node-critical
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: prio-node}
+  template:
+    metadata:
+      labels: {app: prio-node}
+    spec:
+      priorityClassName: system-node-critical
+      containers:
+        - name: agent
+          image: registry.example.test/agent:2.0.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prio-absente
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: prio-absente}
+  template:
+    metadata:
+      labels: {app: prio-absente}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+# Non conformes : classe de priorité non acceptée.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prio-high
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: prio-high}
+  template:
+    metadata:
+      labels: {app: prio-high}
+    spec:
+      priorityClassName: high
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prio-app-critical
+  namespace: app
+spec:
+  serviceName: prio-app-critical
+  replicas: 1
+  selector:
+    matchLabels: {app: prio-app}
+  template:
+    metadata:
+      labels: {app: prio-app}
+    spec:
+      priorityClassName: app-critical
+      containers:
+        - name: db
+          image: registry.example.test/db:16.2
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-prio-high
+  namespace: app
+spec:
+  priorityClassName: high
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-prio-high
+  namespace: app
+spec:
+  schedule: "0 8 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          priorityClassName: high
+          containers:
+            - name: task
+              image: registry.example.test/task:1.0.0
+---
+# Non-workload : silencieux.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: priorites
+  namespace: app
+data:
+  high: "1"

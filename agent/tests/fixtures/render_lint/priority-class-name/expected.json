@@ -1,0 +1,26 @@
+[
+  {
+    "rule": "priority-class-name",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-prio-high"
+  },
+  {
+    "rule": "priority-class-name",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "prio-high"
+  },
+  {
+    "rule": "priority-class-name",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-prio-high"
+  },
+  {
+    "rule": "priority-class-name",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "prio-app-critical"
+  }
+]

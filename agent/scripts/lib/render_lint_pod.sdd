@@ -1,0 +1,96 @@
+# Spec fichier de ./render_lint_pod.rhai — le thème « pod » du catalogue de vérifications
+# portées de kube-linter. Le contrat commun d'une vérification (signature, nom, sévérité,
+# kinds non concernés) est possédé par ./render_lint.sdd et n'est pas redit ici.
+
+Spec: LibRenderLintPod
+
+Platform: librairie de scripts Rhai (moteur vynil-core)
+
+Purpose:
+  Les vérifications dont le sujet est un conteneur ou la spec d'un pod : contexte de
+    sécurité et capacités, sondes, ressources demandées et limites, image et politique de
+    pull, namespaces et ports de l'hôte, montages de volumes sensibles, variables
+    d'environnement, sysctls, nom de compte de service utilisé par le pod.
+
+Owns:
+  ./render_lint_pod.rhai
+
+References:
+  ./render_lint.sdd — le contrat d'une vérification, les constats et les itérateurs que ce
+    module utilise.
+  /agent/tests/fixtures/render_lint/catalogue.yaml — l'inventaire qui attribue chaque vérification de
+    l'oracle à un thème et à un statut ; la liste des vérifications de ce module est celle des
+    entrées `theme: pod` et `status: ported`.
+  /agent/tests/lint_oracle.sdd — le harnais qui compare chaque vérification à l'oracle.
+
+Must:
+  Satisfaire, pour chaque vérification portée du thème, le verdict de l'oracle kube-linter sur
+    les fixtures du catalogue : mêmes objets signalés, même règle, aucun objet signalé en plus
+    ni en moins. Le texte du message est libre mais doit nommer l'objet, la valeur fautive et
+    la correction attendue.
+  Lire une quantité de ressource (`cpu`, `memory`) selon la grammaire des `Quantity` de
+    Kubernetes : un nombre décimal non signé (`5`, `0.5`, `.5`, `5.`) suivi soit d'un suffixe
+    binaire (`Ki`, `Mi`, `Gi`, `Ti`, `Pi`, `Ei`), soit d'un suffixe décimal (`n`, `u`, `m`, `k`,
+    `M`, `G`, `T`, `P`, `E`, ou aucun), soit d'un exposant décimal (`e` ou `E` suivi d'un entier
+    signé : `129e6`, `1E3`, `2e-3`). Le CPU se lit en millicores arrondies vers le haut, la
+    mémoire en MB de 2^20 octets. Une quantité hors de cette grammaire — signe, unité inconnue,
+    texte quelconque — reste non reconnue : la vérification la saute, comme aujourd'hui. Les
+    formes étendues ne sont pas mesurées contre l'oracle (le binaire n'est pas toujours
+    disponible) : leurs tests tirent leurs valeurs de la définition des `Quantity` de Kubernetes.
+  Honorer les paramètres de la vérification portant le nom, la casse et la sémantique de ceux
+    de kube-linter, et appliquer les mêmes valeurs par défaut.
+  Ne signaler que ce que la vérification définit : une vérification n'infère aucune règle
+    voisine.
+  Exposer `index(objs)` : l'entrée d'index de ce thème (`pod_names`, les noms de Secret et de
+    ConfigMap du groupe du noyau). Les vérifications qui croisent plusieurs objets lisent
+    l'index reçu en deuxième argument.
+
+Tasks:
+  [x] Porter les vérifications du thème par lots, chacune avec sa fixture
+      `/agent/tests/fixtures/render_lint/{nom}/` et son statut mis à jour dans le catalogue ; un lot
+      est livrable seul tant que le harnais d'oracle reste vert.
+      `scc-deny-privileged-container` reste `deferred` (CRD tierce SecurityContextConstraints, absente de la liste d'objets).
+  [?] Une vérification de l'oracle qui dépend de ressources externes à la liste d'objets
+      (un `ServiceMonitor` pour des CRD tierces par exemple) : décider si elle est portée sur
+      la seule liste d'objets du test ou marquée `deferred` avec sa raison.
+
+Done when:
+  Chaque entrée `theme: pod` du catalogue est `ported`, `deferred` avec raison, ou
+    `excluded` avec raison, et le harnais d'oracle ne rapporte aucune divergence pour les
+    entrées portées.
+
+Scenario: container without resource limits is reported
+  Given un Deployment dont un conteneur n'a pas de `resources.limits.memory`
+  When la vérification `unset_memory_requirements` s'exécute
+  Then un constat de règle `unset-memory-requirements` nomme le Deployment et le conteneur
+  Test @container-without-resource-limits-is-reported
+
+Scenario: init containers are checked like containers
+  Given un conteneur d'init sans `securityContext.runAsNonRoot`
+  When la vérification `run_as_non_root` s'exécute
+  Then le chemin du constat finit par `initContainers[0]`
+  Test @init-containers-are-checked-like-containers
+
+Scenario: latest tag honours the block list
+  Given un conteneur d'image `registry/app:latest` et le paramètre `BlockList` valant
+    `["^forbidden/.*"]`, qui ne couvre pas cette image
+  When la vérification `latest_tag` s'exécute
+  Then aucun constat n'est rendu : seule une image correspondant à un motif du `BlockList` est
+    signalée, et le motif est évalué par `regex_is_match`
+  Test @latest-tag-honours-the-block-list
+
+Scenario: non-workload object is silent
+  Given un ConfigMap
+  When une vérification du thème s'exécute
+  Then le tableau est vide
+  Test @non-workload-object-is-silent
+
+Scenario: extended quantity forms are read
+  Given des conteneurs dont la mémoire vaut `129e6`, `1P`, `1Ei`, `1E3` et `2e-3`, et dont le CPU
+    vaut `1e3`, `100000n`, `250u` et `1k`, avec `lowerBoundMB`, `upperBoundMB` et
+    `lowerBoundMillis`, `upperBoundMillis` réglés autour de chaque valeur attendue
+  When `unset-memory-requirements` et `unset-cpu-requirements` s'exécutent
+  Then chaque quantité est comparée aux bornes selon sa valeur exacte (par exemple `129e6` octets
+    valent environ 123 MB et `1e3` CPU valent 1 000 000 millicores), et aucune n'est sautée
+  And une quantité hors grammaire (`-1`, `12x`, `abc`) est sautée sans constat ni erreur
+  Test @extended-quantity-forms-are-read

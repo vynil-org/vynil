@@ -1,0 +1,68 @@
+[
+  {
+    "rule": "required-label-owner",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "bad-cron"
+  },
+  {
+    "rule": "required-label-owner",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "bad-ds"
+  },
+  {
+    "rule": "required-label-owner",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bad-absent"
+  },
+  {
+    "rule": "required-label-owner",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bad-beta"
+  },
+  {
+    "rule": "required-label-owner",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bad-case"
+  },
+  {
+    "rule": "required-label-owner",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bad-template-only"
+  },
+  {
+    "rule": "required-label-owner",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "bad-job"
+  },
+  {
+    "rule": "required-label-owner",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "bad-pod"
+  },
+  {
+    "rule": "required-label-owner",
+    "kind": "ReplicaSet",
+    "namespace": "app",
+    "name": "bad-rs"
+  },
+  {
+    "rule": "required-label-owner",
+    "kind": "ReplicationController",
+    "namespace": "app",
+    "name": "bad-rc"
+  },
+  {
+    "rule": "required-label-owner",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "bad-sts"
+  }
+]

@@ -1,0 +1,68 @@
+[
+  {
+    "rule": "use-namespace",
+    "kind": "CronJob",
+    "namespace": null,
+    "name": "nightly-cron"
+  },
+  {
+    "rule": "use-namespace",
+    "kind": "Deployment",
+    "namespace": null,
+    "name": "emptyns-dep"
+  },
+  {
+    "rule": "use-namespace",
+    "kind": "Deployment",
+    "namespace": null,
+    "name": "nons-dep"
+  },
+  {
+    "rule": "use-namespace",
+    "kind": "Deployment",
+    "namespace": "default",
+    "name": "default-dep"
+  },
+  {
+    "rule": "use-namespace",
+    "kind": "Job",
+    "namespace": null,
+    "name": "migrate-job"
+  },
+  {
+    "rule": "use-namespace",
+    "kind": "Pod",
+    "namespace": "default",
+    "name": "pod-default"
+  },
+  {
+    "rule": "use-namespace",
+    "kind": "ReplicaSet",
+    "namespace": "default",
+    "name": "rs-default"
+  },
+  {
+    "rule": "use-namespace",
+    "kind": "ReplicationController",
+    "namespace": null,
+    "name": "rc-nons"
+  },
+  {
+    "rule": "use-namespace",
+    "kind": "Service",
+    "namespace": null,
+    "name": "svc-nons"
+  },
+  {
+    "rule": "use-namespace",
+    "kind": "Service",
+    "namespace": "default",
+    "name": "svc-default"
+  },
+  {
+    "rule": "use-namespace",
+    "kind": "StatefulSet",
+    "namespace": null,
+    "name": "db-sts"
+  }
+]

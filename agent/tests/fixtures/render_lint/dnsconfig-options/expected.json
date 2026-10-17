@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "dnsconfig-options",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "dns-sans-ndots"
+  },
+  {
+    "rule": "dnsconfig-options",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "dns-absent"
+  },
+  {
+    "rule": "dnsconfig-options",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "dns-ndots-cinq"
+  },
+  {
+    "rule": "dnsconfig-options",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-ndots-trois"
+  },
+  {
+    "rule": "dnsconfig-options",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-dns-absent"
+  }
+]

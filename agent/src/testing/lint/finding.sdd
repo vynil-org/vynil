@@ -68,7 +68,8 @@ Handles:
   Constat `warn` supprimé — inventorié, aucune ligne.
   `suppressed` vrai sans `reason`, ou avec une `reason` vide — élément invalide
     (`lint:invalid-finding`) : une exception se justifie, sinon une erreur deviendrait muette
-    sans trace de sa raison. Une `reason` est tolérée sur un constat non supprimé.
+    sans trace de sa raison. Une `reason` est tolérée sur un constat non supprimé. La politique « une annotation vide
+    supprime-t-elle ? » est celle de la bibliothèque (/agent/scripts/lib/render_lint.sdd).
   `rule` égale à `execution`, `invalid-finding` ou `sections` — élément invalide
     (`lint:invalid-finding`) : ces trois noms sont ceux des lignes que le moteur produit lui-même
     (`lint:execution`, `lint:invalid-finding`, `lint:sections`), et une règle de distribution

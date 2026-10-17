@@ -1,0 +1,24 @@
+Vynil
+Copyright (c) 2023-2026, Sébastien Huss
+Distribué sous licence BSD 3-Clause (voir LICENSE).
+
+Ce dépôt contient des éléments dérivés de logiciels tiers, dont les mentions suivent.
+
+--------------------------------------------------------------------------------
+kube-linter — https://github.com/stackrox/kube-linter
+Copyright les auteurs de kube-linter
+Licence Apache, version 2.0 (texte complet : third_party/kube-linter/LICENSE)
+
+Les modules agent/scripts/lib/render_lint_pod.rhai, render_lint_workload.rhai,
+render_lint_network.rhai, render_lint_rbac.rhai et render_lint.rhai portent en Rhai la logique des
+vérifications de kube-linter v0.8.3 : leurs noms, leurs paramètres et leurs valeurs par défaut
+(par exemple les expressions régulières du BlockList de `latest-tag`), le jeu de vérifications
+actif par défaut, et la sémantique que l'outil de référence a effectivement (mesurée sur
+l'outil, voir agent/tests/fixtures/render_lint/). Les messages et les manifestes de test sont
+écrits pour ce dépôt.
+
+Modifications : réécriture en Rhai pour s'exécuter sur la liste d'objets d'un rendu de test sans
+cluster ; jeu de vérifications restreint (60 sur 63, voir agent/tests/fixtures/render_lint/catalogue.yaml)
+; options de composition (`exclude`, `only`, `severity`, `params`, suppressions par annotation)
+propres à Vynil.
+--------------------------------------------------------------------------------

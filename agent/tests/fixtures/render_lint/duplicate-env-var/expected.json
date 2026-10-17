@@ -1,0 +1,50 @@
+[
+  {
+    "rule": "duplicate-env-var",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-doublon"
+  },
+  {
+    "rule": "duplicate-env-var",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "env-init-doublon"
+  },
+  {
+    "rule": "duplicate-env-var",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "env-deux-conteneurs"
+  },
+  {
+    "rule": "duplicate-env-var",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "env-deux-conteneurs"
+  },
+  {
+    "rule": "duplicate-env-var",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "env-doublon"
+  },
+  {
+    "rule": "duplicate-env-var",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-doublon"
+  },
+  {
+    "rule": "duplicate-env-var",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "env-triple"
+  },
+  {
+    "rule": "duplicate-env-var",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "env-triple"
+  }
+]

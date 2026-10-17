@@ -1,0 +1,144 @@
+# Conforme : Deployment dans un namespace dédié.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-dep, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-dep}}
+  template:
+    metadata: {labels: {app: ok-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : Deployment dans le namespace default.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: default-dep, namespace: default}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: default-dep}}
+  template:
+    metadata: {labels: {app: default-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : Deployment sans namespace.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: nons-dep}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: nons-dep}}
+  template:
+    metadata: {labels: {app: nons-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : namespace vide, équivalent à l'absence de namespace.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: emptyns-dep, namespace: ""}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: emptyns-dep}}
+  template:
+    metadata: {labels: {app: emptyns-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : StatefulSet sans namespace.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: db-sts}
+spec:
+  replicas: 3
+  serviceName: db
+  selector: {matchLabels: {app: db-sts}}
+  template:
+    metadata: {labels: {app: db-sts}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+# Non conforme : Pod nu dans le namespace default.
+apiVersion: v1
+kind: Pod
+metadata: {name: pod-default, namespace: default}
+spec:
+  containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Non conforme : Job et CronJob sans namespace.
+apiVersion: batch/v1
+kind: Job
+metadata: {name: migrate-job}
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata: {labels: {app: migrate-job}}
+    spec: {restartPolicy: Never, containers: [{name: migrate, image: "registry.example.test/migrate:3.1.0"}]}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: nightly-cron}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 300
+      template:
+        metadata: {labels: {app: nightly-cron}}
+        spec: {restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+# Non conforme : ReplicaSet dans le namespace default, ReplicationController sans namespace.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata: {name: rs-default, namespace: default}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: rs-default}}
+  template:
+    metadata: {labels: {app: rs-default}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: rc-nons}
+spec:
+  replicas: 3
+  selector: {app: rc-nons}
+  template:
+    metadata: {labels: {app: rc-nons}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : Service dans le namespace default et Service sans namespace.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-default, namespace: default}
+spec:
+  selector: {app: ok-dep}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-nons}
+spec:
+  selector: {app: ok-dep}
+  ports: [{port: 80}]
+---
+# Silencieux : Service dans un namespace dédié, et objets hors scope.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-app, namespace: app}
+spec:
+  selector: {app: ok-dep}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: config-nons}
+data: {mode: "fast"}
+---
+# Hors scope : groupe extensions/v1beta1, même sans namespace.
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: legacy-ext}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: legacy-ext}}
+  template:
+    metadata: {labels: {app: legacy-ext}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}

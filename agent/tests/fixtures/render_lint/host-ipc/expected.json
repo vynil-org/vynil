@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "host-ipc",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "ipc-partage-cron"
+  },
+  {
+    "rule": "host-ipc",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "ipc-partage"
+  },
+  {
+    "rule": "host-ipc",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "ipc-partage-job"
+  },
+  {
+    "rule": "host-ipc",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "ipc-partage-pod"
+  },
+  {
+    "rule": "host-ipc",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "ipc-partage-sts"
+  }
+]

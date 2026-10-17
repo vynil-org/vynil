@@ -1,0 +1,80 @@
+[
+  {
+    "rule": "non-isolated-pod",
+    "kind": "CronJob",
+    "namespace": "iso",
+    "name": "iso-cron"
+  },
+  {
+    "rule": "non-isolated-pod",
+    "kind": "CronJob",
+    "namespace": "open",
+    "name": "open-cron"
+  },
+  {
+    "rule": "non-isolated-pod",
+    "kind": "CronJob",
+    "namespace": "open",
+    "name": "open-cron-beta"
+  },
+  {
+    "rule": "non-isolated-pod",
+    "kind": "DaemonSet",
+    "namespace": "open",
+    "name": "open-ds"
+  },
+  {
+    "rule": "non-isolated-pod",
+    "kind": "Deployment",
+    "namespace": "iso",
+    "name": "iso-meta"
+  },
+  {
+    "rule": "non-isolated-pod",
+    "kind": "Deployment",
+    "namespace": "open",
+    "name": "open-beta"
+  },
+  {
+    "rule": "non-isolated-pod",
+    "kind": "Deployment",
+    "namespace": "open",
+    "name": "open-dep"
+  },
+  {
+    "rule": "non-isolated-pod",
+    "kind": "Job",
+    "namespace": "open",
+    "name": "open-job"
+  },
+  {
+    "rule": "non-isolated-pod",
+    "kind": "Pod",
+    "namespace": "open",
+    "name": "open-bare"
+  },
+  {
+    "rule": "non-isolated-pod",
+    "kind": "Pod",
+    "namespace": "open",
+    "name": "open-pod"
+  },
+  {
+    "rule": "non-isolated-pod",
+    "kind": "ReplicaSet",
+    "namespace": "open",
+    "name": "open-rs"
+  },
+  {
+    "rule": "non-isolated-pod",
+    "kind": "ReplicationController",
+    "namespace": "open",
+    "name": "open-rc"
+  },
+  {
+    "rule": "non-isolated-pod",
+    "kind": "StatefulSet",
+    "namespace": "open",
+    "name": "open-sts"
+  }
+]

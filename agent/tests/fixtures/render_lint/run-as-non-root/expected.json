@@ -1,0 +1,38 @@
+[
+  {
+    "rule": "run-as-non-root",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "non-root-desactive"
+  },
+  {
+    "rule": "run-as-non-root",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "racine-explicite"
+  },
+  {
+    "rule": "run-as-non-root",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sans-securite"
+  },
+  {
+    "rule": "run-as-non-root",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "uid-zero-herite"
+  },
+  {
+    "rule": "run-as-non-root",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-nu-sans-securite"
+  },
+  {
+    "rule": "run-as-non-root",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "init-sans-securite"
+  }
+]

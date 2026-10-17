@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "unset-memory-requirements",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-sans-limite"
+  },
+  {
+    "rule": "unset-memory-requirements",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "init-sans-limite"
+  },
+  {
+    "rule": "unset-memory-requirements",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "requete-seule"
+  },
+  {
+    "rule": "unset-memory-requirements",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sans-ressources"
+  },
+  {
+    "rule": "unset-memory-requirements",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "limite-zero"
+  }
+]

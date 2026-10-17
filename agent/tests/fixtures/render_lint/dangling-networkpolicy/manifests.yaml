@@ -1,0 +1,388 @@
+# Cibles du namespace app : gabarits de pod des genres résolubles (labels du gabarit, pas metadata).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web, tier: front}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata: {name: legacy, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: legacy}}
+  template:
+    metadata: {labels: {app: legacy}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: ext, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: ext}}
+  template:
+    metadata: {labels: {app: ext}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: db, namespace: app}
+spec:
+  serviceName: db
+  replicas: 1
+  selector: {matchLabels: {app: db}}
+  template:
+    metadata: {labels: {app: db}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: agent, namespace: app}
+spec:
+  selector: {matchLabels: {app: agent}}
+  template:
+    metadata: {labels: {app: agent}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+apiVersion: extensions/v1beta1
+kind: ReplicaSet
+metadata: {name: rs-ext, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: rs-ext}}
+  template:
+    metadata: {labels: {app: rs-ext}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: migrate, namespace: app}
+spec:
+  template:
+    metadata: {labels: {app: migrate}}
+    spec: {restartPolicy: Never, containers: [{name: migrate, image: "registry.example.test/migrate:3.1.0"}]}
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata: {name: nightly, namespace: app}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: nightly}}
+        spec: {restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: rc, namespace: app}
+spec:
+  replicas: 1
+  selector: {app: rc}
+  template:
+    metadata: {labels: {app: rc}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: pod-x, namespace: app, labels: {app: podx}}
+spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Pod sans labels : seul un sélecteur vide peut le viser.
+apiVersion: v1
+kind: Pod
+metadata: {name: pod-bare, namespace: app}
+spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Deployment dont les labels sont sur metadata seulement : non visé par un sélecteur.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: meta-only, namespace: app, labels: {app: meta-only}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: meta-only}}
+  template:
+    metadata: {labels: {app: tpl-x}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: apps/v1
+kind: Job
+metadata: {name: apps-job, namespace: app}
+spec:
+  template:
+    metadata: {labels: {app: apps-job}}
+    spec: {restartPolicy: Never, containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: extensions/v1beta1
+kind: StatefulSet
+metadata: {name: ext-sts, namespace: app}
+spec:
+  serviceName: ext-sts
+  selector: {matchLabels: {app: ext-sts}}
+  template:
+    metadata: {labels: {app: ext-sts}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: example.io/v1
+kind: Deployment
+metadata: {name: tiers, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: tiers}}
+  template:
+    metadata: {labels: {app: tiers}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: example.io/v1
+kind: Pod
+metadata: {name: tiers-pod, namespace: app, labels: {app: tiers-pod}}
+spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: v1
+kind: Deployment
+metadata: {name: core-dep, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: core-dep}}
+  template:
+    metadata: {labels: {app: core-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Cible d'un autre namespace.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: oth, namespace: other}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: oth}}
+  template:
+    metadata: {labels: {app: oth}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conformes (namespace app) : sélecteur qui vise une cible par ses labels, sous-ensemble,
+# expression, ou sélecteur vide porté par au moins une cible du namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-web, namespace: app}
+spec: {podSelector: {matchLabels: {app: web}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-web-subset, namespace: app}
+spec: {podSelector: {matchLabels: {app: web, tier: front}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-expr-in, namespace: app}
+spec: {podSelector: {matchExpressions: [{key: app, operator: In, values: [web, x]}]}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-exists-tier, namespace: app}
+spec: {podSelector: {matchExpressions: [{key: tier, operator: Exists}]}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-legacy, namespace: app}
+spec: {podSelector: {matchLabels: {app: legacy}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-ext, namespace: app}
+spec: {podSelector: {matchLabels: {app: ext}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-db, namespace: app}
+spec: {podSelector: {matchLabels: {app: db}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-agent, namespace: app}
+spec: {podSelector: {matchLabels: {app: agent}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-rs-ext, namespace: app}
+spec: {podSelector: {matchLabels: {app: rs-ext}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-migrate, namespace: app}
+spec: {podSelector: {matchLabels: {app: migrate}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-nightly, namespace: app}
+spec: {podSelector: {matchLabels: {app: nightly}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-rc, namespace: app}
+spec: {podSelector: {matchLabels: {app: rc}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-pod, namespace: app}
+spec: {podSelector: {matchLabels: {app: podx}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-empty, namespace: app}
+spec: {podSelector: {}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-empty-labels, namespace: app}
+spec: {podSelector: {matchLabels: {}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-no-selector, namespace: app}
+spec: {ingress: []}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-notin-absent-key, namespace: app}
+spec: {podSelector: {matchExpressions: [{key: nokey, operator: NotIn, values: [x]}]}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-notin-present, namespace: app}
+spec: {podSelector: {matchExpressions: [{key: app, operator: NotIn, values: [x]}]}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-dne-absent, namespace: app}
+spec: {podSelector: {matchExpressions: [{key: nokey, operator: DoesNotExist}]}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-exists-empty-values, namespace: app}
+spec: {podSelector: {matchExpressions: [{key: app, operator: Exists, values: []}]}}
+---
+# Non conformes (namespace app) : sélecteur sans cible, label du seul metadata, groupe tiers,
+# expressions invalides ou conjonction sans cible.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-nomatch, namespace: app}
+spec: {podSelector: {matchLabels: {app: nomatch}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-other-ns-target, namespace: app}
+spec: {podSelector: {matchLabels: {app: oth}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-metadata-only, namespace: app}
+spec: {podSelector: {matchLabels: {app: meta-only}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-tiers-group, namespace: app}
+spec: {podSelector: {matchLabels: {app: tiers}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-tiers-pod, namespace: app}
+spec: {podSelector: {matchLabels: {app: tiers-pod}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-apps-job-group, namespace: app}
+spec: {podSelector: {matchLabels: {app: apps-job}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-ext-sts-group, namespace: app}
+spec: {podSelector: {matchLabels: {app: ext-sts}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-core-dep, namespace: app}
+spec: {podSelector: {matchLabels: {app: core-dep}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-superset, namespace: app}
+spec: {podSelector: {matchLabels: {app: web, tier: back}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-expr-nomatch, namespace: app}
+spec: {podSelector: {matchExpressions: [{key: app, operator: In, values: [nope]}]}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-unknown-operator, namespace: app}
+spec: {podSelector: {matchExpressions: [{key: app, operator: Bogus, values: [web]}]}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-in-novalues, namespace: app}
+spec: {podSelector: {matchExpressions: [{key: app, operator: In}]}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-notin-novalues, namespace: app}
+spec: {podSelector: {matchExpressions: [{key: app, operator: NotIn}]}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-exists-values, namespace: app}
+spec: {podSelector: {matchExpressions: [{key: app, operator: Exists, values: [x]}]}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-two-expressions, namespace: app}
+spec: {podSelector: {matchExpressions: [{key: app, operator: In, values: [web]}, {key: tier, operator: In, values: [back]}]}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-labels-and-expression, namespace: app}
+spec: {podSelector: {matchLabels: {app: web}, matchExpressions: [{key: tier, operator: In, values: [back]}]}}
+---
+# Namespace other : un sélecteur vide y vise oth, un sélecteur sans cible est signalé.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ok-other-empty, namespace: other}
+spec: {podSelector: {}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-other-nomatch, namespace: other}
+spec: {podSelector: {matchLabels: {app: nomatch}}}
+---
+# Namespace solo : aucune cible, un sélecteur vide n'a rien à viser.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ko-solo-empty, namespace: solo}
+spec: {podSelector: {}}
+---
+# Hors scope : version networking.k8s.io/v1beta1, groupe tiers homonyme, et sélecteurs mal formés
+# (ignorés en entier).
+apiVersion: networking.k8s.io/v1beta1
+kind: NetworkPolicy
+metadata: {name: v1b1-nomatch, namespace: app}
+spec: {podSelector: {matchLabels: {app: nomatch}}}
+---
+apiVersion: example.io/v1
+kind: NetworkPolicy
+metadata: {name: tiers-group-nomatch, namespace: app}
+spec: {podSelector: {matchLabels: {app: nomatch}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: malformed-selector, namespace: app}
+spec: {podSelector: "x"}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: malformed-expression, namespace: app}
+spec: {podSelector: {matchExpressions: "x"}}

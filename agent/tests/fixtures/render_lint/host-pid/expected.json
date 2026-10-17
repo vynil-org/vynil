@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "host-pid",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "pid-partage-cron"
+  },
+  {
+    "rule": "host-pid",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "pid-partage"
+  },
+  {
+    "rule": "host-pid",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "pid-partage-job"
+  },
+  {
+    "rule": "host-pid",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pid-partage-pod"
+  },
+  {
+    "rule": "host-pid",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "pid-partage-sts"
+  }
+]

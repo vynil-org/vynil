@@ -1,0 +1,61 @@
+# Conforme : politique explicite AlwaysAllow.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: ok-always, namespace: app}
+spec:
+  minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector: {matchLabels: {app: web}}
+---
+# Conforme : politique explicite IfHealthyBudget (toute valeur explicite est acceptée).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: ok-if-healthy, namespace: app}
+spec:
+  minAvailable: 1
+  unhealthyPodEvictionPolicy: IfHealthyBudget
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : champ absent.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: absent, namespace: app}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : champ nul, traité comme absent.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: null-policy, namespace: app}
+spec:
+  minAvailable: 1
+  unhealthyPodEvictionPolicy: null
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : maxUnavailable sans politique explicite.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: max-absent, namespace: app}
+spec:
+  maxUnavailable: 1
+  selector: {matchLabels: {app: web}}
+---
+# Hors scope : policy/v1beta1 n'est pas évaluée par l'outil.
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata: {name: beta-absent, namespace: app}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app: web}}
+---
+# Hors scope : un Deployment n'est pas une PodDisruptionBudget.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}

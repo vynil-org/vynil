@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "host-network",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "reseau-partage-cron"
+  },
+  {
+    "rule": "host-network",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "reseau-partage"
+  },
+  {
+    "rule": "host-network",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "reseau-partage-job"
+  },
+  {
+    "rule": "host-network",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "reseau-partage-pod"
+  },
+  {
+    "rule": "host-network",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "reseau-partage-sts"
+  }
+]

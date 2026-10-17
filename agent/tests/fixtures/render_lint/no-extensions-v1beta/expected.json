@@ -1,0 +1,20 @@
+[
+  {
+    "rule": "no-extensions-v1beta",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "legacy-dep"
+  },
+  {
+    "rule": "no-extensions-v1beta",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "legacy-ingress"
+  },
+  {
+    "rule": "no-extensions-v1beta",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "legacy-ingress2"
+  }
+]

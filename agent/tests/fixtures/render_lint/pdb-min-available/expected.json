@@ -1,0 +1,176 @@
+[
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "bad-abc"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "bad-empty"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "beta-three"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "ds-zero"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "emptysel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "emptysel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "emptysel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "emptysel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "emptysel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "emptysel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "emptysel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "emptysel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "emptysel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "emptysel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "emptysel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "float-three"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "norep-one"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "nosel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "nullsel"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "pct-hundred"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "pct-ninety-nine"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "rs-three"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "str-three"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "sts-three"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "subset-dual"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "ten-ten"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "three"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "zero-one"
+  },
+  {
+    "rule": "pdb-min-available",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "zero-zero"
+  }
+]

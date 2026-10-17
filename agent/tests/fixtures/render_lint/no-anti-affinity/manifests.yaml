@@ -1,0 +1,182 @@
+# Conforme : anti-affinité requise avec contenu.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-required, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-required}}
+  template:
+    metadata: {labels: {app: ok-required}}
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: kubernetes.io/hostname
+            labelSelector: {matchLabels: {app: ok-required}}
+      containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Conforme : anti-affinité préférée avec contenu.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-preferred, namespace: app}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: ok-preferred}}
+  template:
+    metadata: {labels: {app: ok-preferred}}
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector: {matchLabels: {app: ok-preferred}}
+      containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Non conforme : aucun champ d'affinité.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: none-dep, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: none-dep}}
+  template:
+    metadata: {labels: {app: none-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : podAntiAffinity présent mais vide.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: empty-aa, namespace: app}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: empty-aa}}
+  template:
+    metadata: {labels: {app: empty-aa}}
+    spec:
+      affinity:
+        podAntiAffinity: {}
+      containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Non conforme : anti-affinité requise présente mais liste vide.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: empty-required, namespace: app}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: empty-required}}
+  template:
+    metadata: {labels: {app: empty-required}}
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution: []
+      containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Non conforme : seule podAffinity est définie, ce n'est pas une anti-affinité.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: affinity-only, namespace: app}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: affinity-only}}
+  template:
+    metadata: {labels: {app: affinity-only}}
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: kubernetes.io/hostname
+            labelSelector: {matchLabels: {app: affinity-only}}
+      containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Non conforme : StatefulSet à deux réplicas sans anti-affinité.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: db-sts, namespace: app}
+spec:
+  replicas: 2
+  serviceName: db
+  selector: {matchLabels: {app: db-sts}}
+  template:
+    metadata: {labels: {app: db-sts}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+# Non conforme : ReplicationController à deux réplicas sans anti-affinité.
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: rc-two, namespace: app}
+spec:
+  replicas: 2
+  selector: {app: rc-two}
+  template:
+    metadata: {labels: {app: rc-two}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Silencieux : un seul réplica, sous le seuil de deux.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: single-dep, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: single-dep}}
+  template:
+    metadata: {labels: {app: single-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Silencieux : replicas absent, valeur par défaut 1.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: default-dep, namespace: app}
+spec:
+  selector: {matchLabels: {app: default-dep}}
+  template:
+    metadata: {labels: {app: default-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Hors scope : DaemonSet, Job, CronJob et Pod n'ont pas de réplicas.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: agent-ds, namespace: app}
+spec:
+  selector: {matchLabels: {app: agent-ds}}
+  template:
+    metadata: {labels: {app: agent-ds}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: migrate-job, namespace: app}
+spec:
+  template:
+    metadata: {labels: {app: migrate-job}}
+    spec: {restartPolicy: Never, containers: [{name: migrate, image: "registry.example.test/migrate:3.1.0"}]}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: nightly-cron, namespace: app}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: nightly-cron}}
+        spec: {restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: solo-pod, namespace: app}
+spec:
+  containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Hors scope : groupe extensions/v1beta1.
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: legacy-ext, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: legacy-ext}}
+  template:
+    metadata: {labels: {app: legacy-ext}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}

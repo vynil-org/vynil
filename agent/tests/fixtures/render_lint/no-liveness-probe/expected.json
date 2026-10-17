@@ -1,0 +1,38 @@
+[
+  {
+    "rule": "no-liveness-probe",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-sans-liveness"
+  },
+  {
+    "rule": "no-liveness-probe",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "deux-conteneurs"
+  },
+  {
+    "rule": "no-liveness-probe",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sans-liveness"
+  },
+  {
+    "rule": "no-liveness-probe",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-sans-liveness"
+  },
+  {
+    "rule": "no-liveness-probe",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-nu-sans-liveness"
+  },
+  {
+    "rule": "no-liveness-probe",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "stateful-sans-liveness"
+  }
+]

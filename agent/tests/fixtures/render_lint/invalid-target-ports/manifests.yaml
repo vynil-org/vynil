@@ -1,0 +1,326 @@
+# Gabarits de pod des genres examinés (apps toutes versions, batch, noyau RC et Pod) : un nom de
+# port de conteneur invalide au sens IANA est signalé, un par sous-règle violée et par port.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dep-bad, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: dep-bad}}
+  template:
+    metadata: {labels: {app: dep-bad}}
+    spec:
+      containers:
+      - name: web
+        image: "registry.example.test/web:1.4.2"
+        ports:
+        - {name: Bad_Name, containerPort: 8080}
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata: {name: dep-beta-bad, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: dep-beta-bad}}
+  template:
+    metadata: {labels: {app: dep-beta-bad}}
+    spec:
+      containers:
+      - name: web
+        image: "registry.example.test/web:1.4.2"
+        ports:
+        - {name: "ab-", containerPort: 8080}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: sts-bad, namespace: app}
+spec:
+  serviceName: sts-bad
+  replicas: 1
+  selector: {matchLabels: {app: sts-bad}}
+  template:
+    metadata: {labels: {app: sts-bad}}
+    spec:
+      containers:
+      - name: db
+        image: "registry.example.test/db:16.2"
+        ports:
+        - {name: "a--b", containerPort: 5432}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: ds-bad, namespace: app}
+spec:
+  selector: {matchLabels: {app: ds-bad}}
+  template:
+    metadata: {labels: {app: ds-bad}}
+    spec:
+      containers:
+      - name: agent
+        image: "registry.example.test/agent:2.0.0"
+        ports:
+        - {name: "123", containerPort: 9100}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata: {name: rs-bad, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: rs-bad}}
+  template:
+    metadata: {labels: {app: rs-bad}}
+    spec:
+      containers:
+      - name: web
+        image: "registry.example.test/web:1.4.2"
+        ports:
+        - {name: "abcdefghijklmnop", containerPort: 80}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: job-bad, namespace: app}
+spec:
+  template:
+    metadata: {labels: {app: job-bad}}
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: migrate
+        image: "registry.example.test/migrate:3.1.0"
+        ports:
+        - {name: HTTP, containerPort: 8080}
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata: {name: cron-bad, namespace: app}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: cron-bad}}
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: nightly
+            image: "registry.example.test/nightly:1.0.0"
+            ports:
+            - {name: "-ab", containerPort: 8080}
+---
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: rc-bad, namespace: app}
+spec:
+  replicas: 1
+  selector: {app: rc-bad}
+  template:
+    metadata: {labels: {app: rc-bad}}
+    spec:
+      containers:
+      - name: web
+        image: "registry.example.test/web:1.4.2"
+        ports:
+        - {name: "a_b", containerPort: 8080}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: pod-bad, namespace: app}
+spec:
+  containers:
+  - name: web
+    image: "registry.example.test/web:1.4.2"
+    ports:
+    - {name: "Ab", containerPort: 8080}
+---
+# Deux ports et deux conteneurs, dont un conteneur d'init : un constat par port fautif.
+apiVersion: v1
+kind: Pod
+metadata: {name: pod-multi, namespace: app}
+spec:
+  initContainers:
+  - name: init
+    image: "registry.example.test/init:1"
+    ports:
+    - {name: "Bad_I", containerPort: 7000}
+  containers:
+  - name: web
+    image: "registry.example.test/web:1.4.2"
+    ports:
+    - {name: "Bad_A", containerPort: 80}
+    - {name: "Bad_B", containerPort: 81}
+  - name: side
+    image: "registry.example.test/side:1"
+    ports:
+    - {name: "Bad_C", containerPort: 82}
+---
+# Conformes : nom valide, port sans nom, nom de longueur 15, chiffres et lettres.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dep-ok, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: dep-ok}}
+  template:
+    metadata: {labels: {app: dep-ok}}
+    spec:
+      containers:
+      - name: web
+        image: "registry.example.test/web:1.4.2"
+        ports:
+        - {name: http, containerPort: 8080}
+        - {containerPort: 9100}
+        - {name: abcdefghijklmno, containerPort: 9200}
+        - {name: "a1b2-c3", containerPort: 9300}
+---
+# Genre hors scope : groupe extensions, groupe tiers homonyme, et genres non examinés.
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: ext-bad, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: ext-bad}}
+  template:
+    metadata: {labels: {app: ext-bad}}
+    spec:
+      containers:
+      - name: web
+        image: "registry.example.test/web:1.4.2"
+        ports:
+        - {name: Bad_Name, containerPort: 8080}
+---
+apiVersion: example.io/v1
+kind: Deployment
+metadata: {name: tiers-bad, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: tiers-bad}}
+  template:
+    metadata: {labels: {app: tiers-bad}}
+    spec:
+      containers:
+      - name: web
+        image: "registry.example.test/web:1.4.2"
+        ports:
+        - {name: Bad_Name, containerPort: 8080}
+---
+apiVersion: apps/v1
+kind: Job
+metadata: {name: apps-job-bad, namespace: app}
+spec:
+  template:
+    metadata: {labels: {app: apps-job-bad}}
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: web
+        image: "registry.example.test/web:1.4.2"
+        ports:
+        - {name: Bad_Name, containerPort: 8080}
+---
+apiVersion: v1
+kind: Deployment
+metadata: {name: core-dep-bad, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: core-dep-bad}}
+  template:
+    metadata: {labels: {app: core-dep-bad}}
+    spec:
+      containers:
+      - name: web
+        image: "registry.example.test/web:1.4.2"
+        ports:
+        - {name: Bad_Name, containerPort: 8080}
+---
+apiVersion: example.io/v1
+kind: Pod
+metadata: {name: tiers-pod-bad, namespace: app}
+spec:
+  containers:
+  - name: web
+    image: "registry.example.test/web:1.4.2"
+    ports:
+    - {name: Bad_Name, containerPort: 8080}
+---
+# Pod malformé (ports en chaîne) : ignoré en entier.
+apiVersion: v1
+kind: Pod
+metadata: {name: pod-malformed, namespace: app}
+spec:
+  containers:
+  - name: web
+    image: "registry.example.test/web:1.4.2"
+    ports: "oops"
+---
+# Services : targetPort chaîne, un constat par sous-règle violée.
+apiVersion: v1
+kind: Service
+metadata: {name: t-trail, namespace: app}
+spec: {selector: {app: none}, ports: [{port: 80, targetPort: "ab-"}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: t-double, namespace: app}
+spec: {selector: {app: none}, ports: [{port: 80, targetPort: "a--b"}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: t-digits, namespace: app}
+spec: {selector: {app: none}, ports: [{port: 80, targetPort: "123"}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: t-long, namespace: app}
+spec: {selector: {app: none}, ports: [{port: 80, targetPort: "abcdefghijklmnop"}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: t-upper, namespace: app}
+spec: {selector: {app: none}, ports: [{port: 80, targetPort: "HTTP"}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: t-empty, namespace: app}
+spec: {selector: {app: none}, ports: [{port: 80, targetPort: ""}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: t-space, namespace: other}
+spec: {ports: [{port: 80, targetPort: "a.b"}]}
+---
+# Conformes : nom valide de 15 caractères, chiffre et lettre, tiret interne, entier, absent.
+apiVersion: v1
+kind: Service
+metadata: {name: t-ok-15, namespace: app}
+spec: {selector: {app: none}, ports: [{port: 80, targetPort: "abcdefghijklmno"}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: t-ok-hyphen, namespace: app}
+spec: {selector: {app: none}, ports: [{port: 80, targetPort: "h-t-t-p"}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: t-ok-int, namespace: app}
+spec: {selector: {app: none}, ports: [{port: 80, targetPort: 8080}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: t-ok-absent, namespace: app}
+spec: {selector: {app: none}, ports: [{port: 80, name: http}]}
+---
+# Hors scope : nom du port de service (non examiné) et Service d'un groupe tiers.
+apiVersion: v1
+kind: Service
+metadata: {name: t-svc-portname, namespace: app}
+spec: {selector: {app: none}, ports: [{port: 80, name: "Bad_Name"}]}
+---
+apiVersion: example.io/v1
+kind: Service
+metadata: {name: tiers-svc, namespace: app}
+spec: {selector: {app: none}, ports: [{port: 80, targetPort: "Bad_Name"}]}
+---
+# Service mal formé (ports en chaîne) : ignoré.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-malformed, namespace: app}
+spec: {selector: {app: none}, ports: "junk"}

@@ -1,0 +1,110 @@
+[
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-apps-job-group"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-core-dep"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-exists-values"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-expr-nomatch"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-ext-sts-group"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-in-novalues"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-labels-and-expression"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-metadata-only"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-nomatch"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-notin-novalues"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-other-ns-target"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-superset"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-tiers-group"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-tiers-pod"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-two-expressions"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-unknown-operator"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "other",
+    "name": "ko-other-nomatch"
+  },
+  {
+    "rule": "dangling-networkpolicy",
+    "kind": "NetworkPolicy",
+    "namespace": "solo",
+    "name": "ko-solo-empty"
+  }
+]

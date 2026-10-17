@@ -1,0 +1,68 @@
+[
+  {
+    "rule": "wildcard-in-rules",
+    "kind": "ClusterRole",
+    "namespace": null,
+    "name": "cr-wild-verb"
+  },
+  {
+    "rule": "wildcard-in-rules",
+    "kind": "ClusterRole",
+    "namespace": "other",
+    "name": "cr-wild-resource-in-ns"
+  },
+  {
+    "rule": "wildcard-in-rules",
+    "kind": "Role",
+    "namespace": "app",
+    "name": "second-rule-wild"
+  },
+  {
+    "rule": "wildcard-in-rules",
+    "kind": "Role",
+    "namespace": "app",
+    "name": "wild-both"
+  },
+  {
+    "rule": "wildcard-in-rules",
+    "kind": "Role",
+    "namespace": "app",
+    "name": "wild-both"
+  },
+  {
+    "rule": "wildcard-in-rules",
+    "kind": "Role",
+    "namespace": "app",
+    "name": "wild-resource"
+  },
+  {
+    "rule": "wildcard-in-rules",
+    "kind": "Role",
+    "namespace": "app",
+    "name": "wild-resources-twice"
+  },
+  {
+    "rule": "wildcard-in-rules",
+    "kind": "Role",
+    "namespace": "app",
+    "name": "wild-resources-twice"
+  },
+  {
+    "rule": "wildcard-in-rules",
+    "kind": "Role",
+    "namespace": "app",
+    "name": "wild-verb"
+  },
+  {
+    "rule": "wildcard-in-rules",
+    "kind": "Role",
+    "namespace": "app",
+    "name": "wild-verbs-twice"
+  },
+  {
+    "rule": "wildcard-in-rules",
+    "kind": "Role",
+    "namespace": "app",
+    "name": "wild-verbs-twice"
+  }
+]

@@ -1,0 +1,86 @@
+[
+  {
+    "rule": "mismatching-selector",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "agent-ds"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "agent-nosel"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "emptysel-dep"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "mis-dne"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "mis-exists"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "mis-extra"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "mis-in"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "mis-labels"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "mis-notin"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "nosel-dep"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "tpl-nolabels"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-mis"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "ReplicaSet",
+    "namespace": "app",
+    "name": "rs-mis"
+  },
+  {
+    "rule": "mismatching-selector",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "db-sts"
+  }
+]

@@ -1,0 +1,110 @@
+[
+  {
+    "rule": "access-to-secrets",
+    "kind": "ClusterRoleBinding",
+    "namespace": null,
+    "name": "crb-cr-secrets-get"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "ClusterRoleBinding",
+    "namespace": null,
+    "name": "crb-cr-secrets-star-ns-other"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "ClusterRoleBinding",
+    "namespace": null,
+    "name": "crb-cr-secrets-update-api-other"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "ClusterRoleBinding",
+    "namespace": null,
+    "name": "crb-kind-role"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-apps-group"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-cross-rule"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-foo"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-get"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-get-api-other"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-get-kind-clusterrole"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-get-no-subjects"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-get-two-subjects"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-list"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-star-resource"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-star-update"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-star-verb"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-two-rules"
+  },
+  {
+    "rule": "access-to-secrets",
+    "kind": "RoleBinding",
+    "namespace": "app",
+    "name": "rb-s-update"
+  }
+]

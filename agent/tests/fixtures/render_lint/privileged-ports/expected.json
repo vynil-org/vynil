@@ -1,0 +1,44 @@
+[
+  {
+    "rule": "privileged-ports",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-privilegie"
+  },
+  {
+    "rule": "privileged-ports",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bornes"
+  },
+  {
+    "rule": "privileged-ports",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bornes"
+  },
+  {
+    "rule": "privileged-ports",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "http-et-udp"
+  },
+  {
+    "rule": "privileged-ports",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "http-et-udp"
+  },
+  {
+    "rule": "privileged-ports",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-privilegie"
+  },
+  {
+    "rule": "privileged-ports",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "init-privilegie"
+  }
+]

@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 8080
+            - containerPort: 1024
+            - containerPort: 1025
+            - containerPort: 0
+            - containerPort: 2222
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bornes
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: bornes}
+  template:
+    metadata:
+      labels: {app: bornes}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 1
+            - containerPort: 1023
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: http-et-udp
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: http}
+  template:
+    metadata:
+      labels: {app: http}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 80
+            - containerPort: 53
+              protocol: UDP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: init-privilegie
+  namespace: app
+spec:
+  serviceName: x
+  replicas: 1
+  selector:
+    matchLabels: {app: init}
+  template:
+    metadata:
+      labels: {app: init}
+    spec:
+      initContainers:
+        - name: prepare
+          image: registry.example.test/prepare:1.0.0
+          ports:
+            - containerPort: 443
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: host-port-seul
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: agent}
+  template:
+    metadata:
+      labels: {app: agent}
+    spec:
+      containers:
+        - name: agent
+          image: registry.example.test/agent:1.0.0
+          ports:
+            - containerPort: 9100
+              hostPort: 80
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-privilegie
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: task
+              image: registry.example.test/task:1.0.0
+              ports:
+                - containerPort: 25
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-privilegie
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+      ports:
+        - containerPort: 80
+          protocol: TCP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm
+  namespace: app
+data:
+  port: "80"

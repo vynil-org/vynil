@@ -1,0 +1,377 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet: {path: /healthz, port: 8080}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: port-nomme-conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: nomme}
+  template:
+    metadata:
+      labels: {app: nomme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: port-non-expose
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: non-expose}
+  template:
+    metadata:
+      labels: {app: non-expose}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet: {path: /healthz, port: 9090}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcp-non-expose
+  namespace: app
+spec:
+  serviceName: db
+  replicas: 1
+  selector:
+    matchLabels: {app: db}
+  template:
+    metadata:
+      labels: {app: db}
+    spec:
+      containers:
+        - name: db
+          image: registry.example.test/db:16
+          ports:
+            - containerPort: 5432
+          startupProbe:
+            tcpSocket: {port: 6379}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: init-port
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: agent}
+  template:
+    metadata:
+      labels: {app: agent}
+    spec:
+      initContainers:
+        - name: prepare
+          image: registry.example.test/prepare:1.0.0
+          ports:
+            - containerPort: 7000
+      containers:
+        - name: agent
+          image: registry.example.test/agent:1.0.0
+          ports:
+            - containerPort: 9100
+          startupProbe:
+            tcpSocket: {port: 9100}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-port-non-expose
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: task
+              image: registry.example.test/task:1.0.0
+              ports:
+                - containerPort: 8000
+              startupProbe:
+                httpGet: {path: /healthz, port: 8081}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-nu-port
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+      ports:
+        - containerPort: 8080
+      startupProbe:
+        httpGet: {path: /healthz, port: 7070}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deux-conteneurs
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: deux}
+  template:
+    metadata:
+      labels: {app: deux}
+    spec:
+      containers:
+        - name: ok
+          image: registry.example.test/ok:1.0.0
+          ports:
+            - containerPort: 8080
+          startupProbe:
+            httpGet: {path: /healthz, port: 8080}
+        - name: ko
+          image: registry.example.test/ko:1.0.0
+          ports:
+            - containerPort: 8080
+          startupProbe:
+            httpGet: {path: /healthz, port: 3000}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm
+  namespace: app
+data:
+  port: "9090"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sans-port-dans-sonde
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: sans-port}
+  template:
+    metadata:
+      labels: {app: sans-port}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 8080
+          startupProbe:
+            httpGet: {path: /healthz}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deux-handlers
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: deux-handlers}
+  template:
+    metadata:
+      labels: {app: deux-handlers}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 8080
+          startupProbe:
+            httpGet: {path: /healthz, port: 8080}
+            tcpSocket: {port: 7000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grpc-non-expose
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: grpc}
+  template:
+    metadata:
+      labels: {app: grpc}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 8080
+          startupProbe:
+            grpc: {port: 5000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: udp-seul
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: udp}
+  template:
+    metadata:
+      labels: {app: udp}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 8080
+              protocol: UDP
+          startupProbe:
+            httpGet: {path: /healthz, port: 8080}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nom-de-port-absent
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: nom-absent}
+  template:
+    metadata:
+      labels: {app: nom-absent}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet: {path: /healthz, port: metrics}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: port-chaine-numerique
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: chaine}
+  template:
+    metadata:
+      labels: {app: chaine}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 8080
+          startupProbe:
+            httpGet: {path: /healthz, port: "8080"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sans-aucun-port
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: sans-ports}
+  template:
+    metadata:
+      labels: {app: sans-ports}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          startupProbe:
+            httpGet: {path: /healthz, port: 8080}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: init-sonde-ignoree
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: init}
+  template:
+    metadata:
+      labels: {app: init}
+    spec:
+      initContainers:
+        - name: prepare
+          image: registry.example.test/prepare:1.0.0
+          startupProbe:
+            httpGet: {path: /healthz, port: 9999}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 8080
+          startupProbe:
+            httpGet: {path: /healthz, port: 8080}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: protocole-vide
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: vide}
+  template:
+    metadata:
+      labels: {app: vide}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          ports:
+            - containerPort: 8080
+              protocol: ""
+          startupProbe:
+            httpGet: {path: /healthz, port: 8080}

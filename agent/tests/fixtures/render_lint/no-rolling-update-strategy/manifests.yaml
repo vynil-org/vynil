@@ -1,0 +1,139 @@
+# Conforme : Deployment en RollingUpdate.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-rolling, namespace: app}
+spec:
+  replicas: 3
+  strategy: {type: RollingUpdate}
+  selector: {matchLabels: {app: ok-rolling}}
+  template:
+    metadata: {labels: {app: ok-rolling}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : StatefulSet en RollingUpdate.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: ok-sts, namespace: app}
+spec:
+  replicas: 3
+  serviceName: db
+  updateStrategy: {type: RollingUpdate}
+  selector: {matchLabels: {app: ok-sts}}
+  template:
+    metadata: {labels: {app: ok-sts}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+# Conforme : DaemonSet en RollingUpdate.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: ok-ds, namespace: app}
+spec:
+  updateStrategy: {type: RollingUpdate}
+  selector: {matchLabels: {app: ok-ds}}
+  template:
+    metadata: {labels: {app: ok-ds}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+# Non conforme : Deployment en Recreate.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dep-recreate, namespace: app}
+spec:
+  replicas: 3
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: dep-recreate}}
+  template:
+    metadata: {labels: {app: dep-recreate}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : Deployment sans stratégie.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dep-none, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: dep-none}}
+  template:
+    metadata: {labels: {app: dep-none}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : StatefulSet en OnDelete.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: sts-ondelete, namespace: app}
+spec:
+  replicas: 3
+  serviceName: db
+  updateStrategy: {type: OnDelete}
+  selector: {matchLabels: {app: sts-ondelete}}
+  template:
+    metadata: {labels: {app: sts-ondelete}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+# Non conforme : DaemonSet sans stratégie de mise à jour.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: ds-none, namespace: app}
+spec:
+  selector: {matchLabels: {app: ds-none}}
+  template:
+    metadata: {labels: {app: ds-none}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+# Non conforme : apps/v1beta1 est un Deployment du groupe apps, sans stratégie.
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata: {name: beta-dep, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: beta-dep}}
+  template:
+    metadata: {labels: {app: beta-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Hors scope : ReplicaSet, ReplicationController, Job, CronJob et Pod n'ont pas de stratégie de déploiement.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata: {name: rs-plain, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: rs-plain}}
+  template:
+    metadata: {labels: {app: rs-plain}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: rc-plain, namespace: app}
+spec:
+  replicas: 3
+  selector: {app: rc-plain}
+  template:
+    metadata: {labels: {app: rc-plain}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: migrate-job, namespace: app}
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata: {labels: {app: migrate-job}}
+    spec: {restartPolicy: Never, containers: [{name: migrate, image: "registry.example.test/migrate:3.1.0"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: solo-pod, namespace: app}
+spec:
+  containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Hors scope : groupe extensions/v1beta1.
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: legacy-ext, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: legacy-ext}}
+  template:
+    metadata: {labels: {app: legacy-ext}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}

@@ -1,0 +1,44 @@
+[
+  {
+    "rule": "deprecated-service-account-field",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-old"
+  },
+  {
+    "rule": "deprecated-service-account-field",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "dep-mismatch"
+  },
+  {
+    "rule": "deprecated-service-account-field",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "dep-name-empty"
+  },
+  {
+    "rule": "deprecated-service-account-field",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "dep-only"
+  },
+  {
+    "rule": "deprecated-service-account-field",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-old"
+  },
+  {
+    "rule": "deprecated-service-account-field",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-old"
+  },
+  {
+    "rule": "deprecated-service-account-field",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "db-sts"
+  }
+]

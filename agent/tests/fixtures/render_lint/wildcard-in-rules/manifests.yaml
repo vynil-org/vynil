@@ -1,0 +1,134 @@
+# Jokers "*" dans les règles de Role et ClusterRole (mesuré sur kube-linter v0.8.3) : un constat
+# par élément "*" de `resources` ou de `verbs` ; `apiGroups` et `nonResourceURLs` ne comptent pas ;
+# les objets rbac.authorization.k8s.io/v1beta1 et les groupes tiers sont ignorés.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: explicit, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: wild-verb, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: wild-resource, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: wild-both, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: wild-verbs-twice, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["*", "*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: wild-resources-twice, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["*", "*"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: second-rule-wild, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: wild-api-group, namespace: app}
+rules:
+- apiGroups: ["*"]
+  resources: ["pods"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: wild-non-resource, namespace: app}
+rules:
+- nonResourceURLs: ["*"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: no-rules, namespace: app}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cr-wild-verb}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cr-wild-resource-in-ns, namespace: other}
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cr-explicit}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: Role
+metadata: {name: beta-wild, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata: {name: beta-cr-wild}
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["get"]
+---
+apiVersion: rbac.example.com/v1
+kind: Role
+metadata: {name: homonym-wild, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["*"]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: not-a-role, namespace: app}
+data:
+  rules: "verbs: [\"*\"]"
