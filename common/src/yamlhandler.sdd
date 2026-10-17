@@ -124,6 +124,11 @@ Must:
     @YamlDoc::idx_get / @YamlDoc::idx_set liés en get/set d'indexeur plus les fonctions membres
     `keys`, `values`, `len`, `is_empty`, `contains` (liée à @YamlDoc::contains_key),
     `remove` (liée à @YamlDoc::remove) et `to_string` dont l'échec de dump devient `""` via @Result::unwrap_or_default.
+  Enregistrer `len`, `is_empty` et `contains` par des fermetures prenant `&mut YamlDoc` qui
+    appellent @YamlDoc::len, @YamlDoc::is_empty et @YamlDoc::contains_key : Rhai ne résout pas
+    une méthode enregistrée directement avec un récepteur `&self`, si bien que `doc.contains("k")`,
+    `doc.len()`, `doc.is_empty()` et `"k" in doc` échouaient avec `Function not found`. Les
+    signatures Rust publiques de ces trois méthodes ne changent pas.
   La traversée Rhai aplatit les erreurs : @crate::rhai_err cuit @crate::Error::YamlError en chaîne
     @rhai::EvalAltResult, donc les scripts ne voient que le préfixe de texte
     `YamlError: <backend message>` — tandis que la surface Rust directe (@std::str::FromStr,
@@ -541,3 +546,11 @@ Scenario: Removing a key keeps the order of the others
   And `remove` sur un @YamlDoc à racine séquence ou scalaire rend `false` et laisse le texte
     identique octet pour octet
   Test @removing-a-key-keeps-the-order-of-the-others
+
+Scenario: Read-only members resolve in scripts
+  Given `a: 1\nb: 2\n` décodé dans un @YamlDoc sur un engine enregistré
+  When un script évalue `doc.contains("a")`, `doc.contains("z")`, `"a" in doc`, `doc.len()` et
+    `doc.is_empty()`
+  Then les résultats sont `true`, `false`, `true`, `2` et `false`, sans erreur de fonction inconnue
+  And sur un document vide `is_empty()` rend `true` et `len()` rend `0`
+  Test @read-only-members-resolve-in-scripts
