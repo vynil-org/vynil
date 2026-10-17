@@ -54,9 +54,10 @@ Must:
     surcharger un fichier fourni, comme un paquet le fait.
   Évaluer chaque appel dans un moteur neuf, sans état partagé entre tests, avec les seules
     fonctions de manipulation de données du moteur de base, les fonctions `schema_*`,
-    `regex_is_match` de ./patterns.sdd et le type `Multimap` de ./multimap.sdd :
-    aucune fonction k8s, http, s3, shell ni fichier n'y est enregistrée, si bien qu'un script
-    qui les appelle échoue sur fonction inconnue.
+    `regex_is_match` de ./patterns.sdd, le type `Multimap` de ./multimap.sdd et les gabarits
+    de ./templates.sdd (seule lecture de fichiers permise, bornée au répertoire de lint) :
+    aucune fonction k8s, http, s3, shell ni écriture n'y est enregistrée, et aucune autre
+    lecture de fichier, si bien qu'un script qui les appelle échoue sur fonction inconnue.
   Appeler `lint(objs, ctx)` avec `objs` la carte de @Sections::to_dynamic — `all` (copie, en
     ordre de création, des objets du test) et une clé par section du paquet (`crds`, `systems`,
     `befores`, `vitals`, `scalables`, `others`, `posts`) plus `unsectioned`, toutes toujours
@@ -276,3 +277,12 @@ Scenario: a broken hint fails without a text
   When @run_hint s'exécute
   Then chacun est @HintOutcome::Failed et le message nomme la cause
   Test @a-broken-hint-fails-without-a-text
+
+Scenario: a hint renders a template file from the lint directory
+  Given un répertoire de lint dont `templates/hint.hbs` vaut `Retirer {{count}} limite(s) : {{rule}}`
+    et un `hint` qui enregistre le répertoire `templates`, rend `{{> hint}}` avec le nombre de
+    constats et la règle, et retourne le texte
+  When @run_hint s'exécute avec deux constats
+  Then le résultat est @HintOutcome::Text avec `Retirer 2 limite(s) : no-cpu-limits`
+  And un `hint` qui appelle `register_partial_dir(h, "..")` donne @HintOutcome::Failed
+  Test @a-hint-renders-a-template-file-from-the-lint-directory
