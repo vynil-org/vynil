@@ -201,6 +201,16 @@ Must:
     appel @LintRunner::run_suite ; si le script définit `lint_suite`, ajouter un
     enregistrement de test nommé `(suite)` portant ses lignes et ses suppressions, sinon ne
     rien ajouter.
+  Conserver tous les constats valides du lint — supprimés compris, dans l'ordre d'arrivée : ceux
+    de chaque @LintRunner::run_test (appelés par @run_test_inner, voies all et test unique) puis
+    ceux de @run_suite_lint. Rien d'autre ne les alimente, et sans @with_lint la liste reste
+    vide.
+  Exécuter @run_fixes une seule fois par règle ayant au moins un constat, dans l'ordre
+    alphabétique des règles. Chaque appel de @LintRunner::run_fix reçoit tous les constats de la
+    règle (supprimés compris, ordre d'arrivée) et le document tel que l'étape précédente l'a
+    laissé : un fix voit donc le travail des fix qui le précèdent. @FixStatus::Applied remplace
+    le document courant ; @FixStatus::NotApplicable et @FixStatus::Failed le laissent tel quel
+    et n'arrêtent pas les règles suivantes. Une étape par règle, dans l'ordre exécuté.
   # surfaces mortes et crochets
   Garde la surface verdict/artéfacts hors de ce fichier : il n'affiche rien, ne logge rien,
     n'écrit aucun fichier et ne rend jamais de junit — @TestHandler::results est lu par
@@ -218,7 +228,7 @@ Must not:
 Exposes:
   @TestHandler — `#[derive(@Clone, @Debug)]` ; seul champ `pub` : @results :
     @TestResultCollector (publiquement lisible, et @run_all_tests/@run_test sont ses seuls
-    rédacteurs ici) ; les sept autres champs sont privés ; réexporté par ./mod.rs sous
+    rédacteurs ici) ; les huit autres champs sont privés ; réexporté par ./mod.rs sous
     `client::testing::TestHandler`.
   @TestHandler::new(@package_dir, @script_dir, @config_dir, @template_dir,
     @testset_dirs: @Option<Vec<@PathBuf>>) -> @common::Result<@Self> — la voie de chargement.
@@ -226,6 +236,13 @@ Exposes:
     @common::Result<@Self> — active la voie lint ; consomme et rend le handler.
   @TestHandler::run_suite_lint(&mut self) -> `()` — le hook de suite ; ne fait rien sans
     @with_lint.
+  @TestHandler::run_fixes(&self, package: &@YamlDoc) -> @FixReport — rejoue les constats du
+    lint dans les `fix` de la distribution et rend le `package.yaml` corrigé ; pur : il ne lit ni
+    n'écrit aucun fichier. Sans @with_lint, ou sans constat, le rapport est vide.
+  @FixReport — `{ package: @YamlDoc, steps: Vec<@FixStep>, changed: bool }` : `package` est le
+    document final (le document reçu si rien n'a été appliqué), `changed` vaut vrai quand au
+    moins une étape est @FixStatus::Applied.
+  @FixStep — `{ rule: @String, status: @FixStatus, message: @String }`.
   @TestHandler::get_test(@name) et @TestHandler::get_test_set(@name) -> @Option, `#[must_use]`
     avec aucun appelant nulle part dans le workspace (Tasks).
   @TestHandler::list_tests -> @Vec<@String> — `#[must_use]`, noms ascendants.
@@ -448,3 +465,33 @@ Scenario: an unreadable status fails a lint sections row
     ligne `lint:sections` en échec porte l'erreur de lecture, en plus des lignes du script
   And un `status` lu avec succès sans aucune section déclarée ne produit aucune ligne
   Test @an-unreadable-status-fails-a-lint-sections-row
+
+Scenario: findings are kept across tests and the suite
+  Given un handler configuré par @with_lint, deux tests dont chacun reçoit un constat du
+    script `lint`, dont un supprimé, et un `lint_suite` qui en signale un
+  When la suite s'exécute puis @run_suite_lint
+  Then la liste des constats porte les trois dans l'ordre d'arrivée, le supprimé compris
+  Test @findings-are-kept-across-tests-and-the-suite
+
+Scenario: fixes run once per rule in alphabetical order
+  Given deux règles `b-rule` et `a-rule` ayant chacune des constats (deux pour `b-rule`), et un
+    `fix` par règle qui ajoute sa marque au document
+  When @run_fixes s'exécute sur un document
+  Then deux étapes, `a-rule` puis `b-rule`, chaque `fix` n'est appelé qu'une fois et reçoit tous
+    les constats de sa règle
+  And le `fix` de `b-rule` voit la marque ajoutée par celui de `a-rule`, et `changed` est vrai
+  Test @fixes-run-once-per-rule-in-alphabetical-order
+
+Scenario: a fix that does not apply leaves the document alone
+  Given une règle dont le `fix` répond `not_applicable`, une autre dont le `fix` lève, et une
+    troisième dont le `fix` s'applique
+  When @run_fixes s'exécute
+  Then les trois étapes portent leur statut et leur message, le document final ne porte que le
+    changement de la troisième, et les étapes qui suivent une étape en échec s'exécutent quand même
+  Test @a-fix-that-does-not-apply-leaves-the-document-alone
+
+Scenario: no findings means no fixes
+  Given un handler sans @with_lint, puis un handler configuré dont aucun constat n'existe
+  When @run_fixes s'exécute
+  Then le rapport n'a aucune étape, `changed` est faux et le document est celui reçu
+  Test @no-findings-means-no-fixes

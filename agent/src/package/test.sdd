@@ -51,8 +51,8 @@ References:
     `MissingTestDirectory` que le parent /agent/agent.sdd gèle comme stable.
 
 Must:
-  Gèle exactement la surface clap à douze arguments — les dix décrits ici plus `--lint-dir`
-    et `--schemas-dir` de l'entrée suivante : `-p`/`--package-dir`/env
+  Gèle exactement la surface clap à quatorze arguments — les dix décrits ici plus `--lint-dir`,
+    `--schemas-dir`, `--fix` et `--dry-run` des entrées suivantes : `-p`/`--package-dir`/env
     `PACKAGE_DIRECTORY` défaut `/tmp/package` ; `-s`/`--script-dir`/env
     `SCRIPT_DIRECTORY` défaut `./agent/scripts` ; `-t`/`--template-dir`/env
     `TEMPLATE_DIRECTORY` défaut `./agent/templates` ; `-c`/`--config-dir`/env
@@ -83,6 +83,22 @@ Must:
     @TestHandler::run_suite_lint. Les lignes de lint sont des asserts ordinaires : le
     verdict agrégé, le résumé et le JUnit les comptent sans nouveau chemin, et l'inventaire
     des suppressions figure dans le résumé selon ./../testing/result.sdd.
+  Porte deux arguments dédiés à la correction : `--fix` (pas de court, pas d'env), booléen, champ
+    Rust @fix, déclaré `requires` `lint-dir` ; `--dry-run` (pas de court, pas d'env), booléen,
+    champ Rust @dry_run, déclaré `requires` `fix`. Les poser sans leur prérequis est une erreur
+    d'usage clap. Sans `--fix`, aucun fix ne tourne et `package.yaml` n'est jamais écrit.
+  Quand `--fix` est posé, une fois la suite et le hook de suite exécutés (couloirs all et
+    mono-test) et le résumé affiché : lire `<package_dir>/package.yaml` comme @YamlDoc, appeler
+    @TestHandler::run_fixes, écrire sur stderr une ligne par étape —
+    `fix {rule}: {applied|not applicable|failed}` suivie de ` — {message}` quand le message
+    n'est pas vide — puis, si `changed` et pas `--dry-run`, réécrire `package.yaml` par
+    @YamlDoc::to_yaml_string. Avec `--dry-run`, ne rien écrire et afficher sur stderr le document
+    qui serait écrit, après les lignes d'étapes. Un fichier dont rien n'a changé n'est jamais
+    réécrit : sa mise en forme (commentaires, quoting), que @YamlDoc ne conserve pas, reste intacte.
+    Le verdict ne change pas : il vient de la suite telle qu'elle a tourné avant le fix, donc des
+    constats `error` qui viennent d'être corrigés valent encore exit 3 ; c'est une relance qui
+    vérifie la correction. Une lecture ou écriture de `package.yaml` en échec est un @Err
+    @Error::Stdio.
   Accepte sous @format exactement `text` et `json` (les noms @clap::ValueEnum, casse
     exacte ; l'enum ne dérive aucun @Default — la chaîne `default_value` de
     l'argument arme le défaut), et @format_results mappe @OutputFormat::Json vers
@@ -160,10 +176,11 @@ Must not:
     soit ce que dit `--format`.
 
 Exposes:
-  @Parameters — `#[derive(@clap::Args, @Debug, @Serialize, @Deserialize)]` avec douze
+  @Parameters — `#[derive(@clap::Args, @Debug, @Serialize, @Deserialize)]` avec quatorze
     champs privés (@package_dir, @script_dir, @template_dir, @config_dir,
     @testset_dir, @test_name, @start_all derrière `--all`, @format,
-    @junit_output_filename, @template_output_filename, @lint_dir, @schemas_dir) ; hors de ce module on n'y
+    @junit_output_filename, @template_output_filename, @lint_dir, @schemas_dir, @fix,
+    @dry_run) ; hors de ce module on n'y
     accède que via @Commands::Test dans ./mod.rs.
   @run — `pub fn @run(args: &@Parameters) -> @common::Result<@()>` ; synchrone,
     appelé en sync par la branche exit-3 de ./mod.sdd, attendu par personne.
@@ -381,3 +398,40 @@ Scenario: no lint dir leaves behaviour unchanged
   When @run tourne
   Then la sortie texte, JSON et JUnit est identique octet pour octet à celle d'avant le lint
   Test @no-lint-dir-leaves-behaviour-unchanged
+
+Scenario: fix rewrites package.yaml
+  Given `--all --lint-dir --fix`, une distribution dont `lint` signale `no-cpu-limits` en `error`
+    et dont `fix` retire toutes les `resources.*.limits.cpu`, et un `package.yaml` dont les clés
+    ne sont pas triées et dont `limits.memory` existe
+  When @run tourne
+  Then @Err @Error::TestFailure revient (le constat valait un échec avant le fix)
+  And `package.yaml` n'a plus aucune `limits.cpu`, garde `limits.memory`, et ses clés restent
+    dans l'ordre d'origine
+  And stderr porte `fix no-cpu-limits: applied`
+  Test @fix-rewrites-package-yaml
+
+Scenario: dry-run leaves package.yaml untouched
+  Given les mêmes entrées avec `--dry-run`
+  When @run tourne
+  Then `package.yaml` est identique octet pour octet et stderr porte l'étape puis le document
+    qui aurait été écrit
+  Test @dry-run-leaves-package-yaml-untouched
+
+Scenario: nothing to fix leaves the file byte-identical
+  Given `--fix` et une distribution dont aucun constat n'a de `fix` applicable, sur un
+    `package.yaml` commenté
+  When @run tourne
+  Then `package.yaml` est identique octet pour octet, commentaires compris
+  Test @nothing-to-fix-leaves-the-file-byte-identical
+
+Scenario: fix and dry-run need their prerequisites
+  Given `--fix` sans `--lint-dir`, puis `--dry-run` sans `--fix`
+  When la ligne de commande est analysée
+  Then chacune est refusée en erreur d'usage avant tout chargement
+  Test @fix-and-dry-run-need-their-prerequisites
+
+Scenario: no fix flag never writes package.yaml
+  Given `--all --lint-dir` sans `--fix` et un constat que le `fix` saurait corriger
+  When @run tourne
+  Then `package.yaml` est identique octet pour octet
+  Test @no-fix-flag-never-writes-package-yaml
