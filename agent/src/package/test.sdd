@@ -51,8 +51,8 @@ References:
     `MissingTestDirectory` que le parent /agent/agent.sdd gèle comme stable.
 
 Must:
-  Gèle exactement la surface clap à quatorze arguments — les dix décrits ici plus `--lint-dir`,
-    `--schemas-dir`, `--fix` et `--dry-run` des entrées suivantes : `-p`/`--package-dir`/env
+  Gèle exactement la surface clap à seize arguments — les dix décrits ici plus `--lint-dir`,
+    `--schemas-dir`, `--fix`, `--dry-run`, `--fix-rounds` et `--verbose` des entrées suivantes : `-p`/`--package-dir`/env
     `PACKAGE_DIRECTORY` défaut `/tmp/package` ; `-s`/`--script-dir`/env
     `SCRIPT_DIRECTORY` défaut `./agent/scripts` ; `-t`/`--template-dir`/env
     `TEMPLATE_DIRECTORY` défaut `./agent/templates` ; `-c`/`--config-dir`/env
@@ -96,12 +96,31 @@ Must:
     qui serait écrit, après les lignes d'étapes (sans changement, il n'y a rien à écrire donc rien
     à afficher). Un fichier dont rien n'a changé n'est jamais
     réécrit : sa mise en forme (commentaires, quoting), que @YamlDoc ne conserve pas, reste intacte.
-    Le verdict ne change pas : il vient de la suite telle qu'elle a tourné avant le fix, donc des
-    constats `error` qui viennent d'être corrigés valent encore exit 3 ; c'est une relance qui
-    vérifie la correction. Une lecture ou écriture de `package.yaml` en échec est un @Err
+    Le verdict est celui de la dernière exécution de la suite (voir `--fix-rounds`) : avec le
+    défaut d'une seule exécution, c'est la suite telle qu'elle a tourné avant le fix, donc des
+    constats `error` qui viennent d'être corrigés valent encore exit 3. Une lecture ou écriture de `package.yaml` en échec est un @Err
     @Error::Stdio ; un `package.yaml` qui ne s'analyse pas en YAML est un @Err
     @Error::YamlError dont le message nomme le fichier. Ces erreurs interrompent l'invocation
     avant le calcul du verdict.
+  Porte `--fix-rounds` (pas de court, pas d'env), entier @u32 de valeur au moins 1, défaut 1,
+    champ Rust @fix_rounds, déclaré `requires` `fix` : le nombre maximal d'exécutions de la suite.
+    Avec `--fix`, la boucle est : exécuter la suite avec un handler neuf (donc relire
+    `package.yaml`) ; si ce n'est pas la première exécution et que @TestHandler::finding_count
+    n'a pas baissé strictement depuis l'exécution précédente, s'arrêter sans appliquer de fix ;
+    sinon appliquer les fix comme ci-dessus ; s'arrêter si aucun fix n'a changé le document, si
+    l'écriture n'a pas eu lieu (`--dry-run`, qui ne fait donc qu'une exécution) ou si le nombre
+    d'exécutions atteint `--fix-rounds`. Sur stderr, une ligne
+    `round {k}: {n} finding(s)` par exécution et, à l'arrêt sans progrès,
+    `stop: no progress`. Le résumé, le JUnit et le dump de template ne sont produits qu'une fois,
+    depuis la dernière exécution, et le verdict est celui de cette dernière exécution : un fix qui
+    a tout corrigé donne exit 0 dès que `--fix-rounds` vaut au moins 2.
+  Porte `--verbose` (pas de court, pas d'env), booléen, champ Rust @verbose, déclaré `requires`
+    `lint-dir`. Avec lui, après les étapes de fix de la dernière exécution (ou sans fix, si
+    `--fix` est absent), appeler @TestHandler::run_hints avec le document courant et pour `skip`
+    les règles dont l'étape de fix est @FixStatus::Applied, et écrire sur stderr, pour chaque
+    étape, `hint {rule}:` suivi du texte, chaque ligne du texte indentée de deux espaces, ou
+    `hint {rule}: failed — {message}` pour @HintOutcome::Failed ; une étape @HintOutcome::None
+    n'écrit rien. Sans `--verbose`, aucun hint n'est calculé.
   Accepte sous @format exactement `text` et `json` (les noms @clap::ValueEnum, casse
     exacte ; l'enum ne dérive aucun @Default — la chaîne `default_value` de
     l'argument arme le défaut), et @format_results mappe @OutputFormat::Json vers
@@ -179,11 +198,11 @@ Must not:
     soit ce que dit `--format`.
 
 Exposes:
-  @Parameters — `#[derive(@clap::Args, @Debug, @Serialize, @Deserialize)]` avec quatorze
+  @Parameters — `#[derive(@clap::Args, @Debug, @Serialize, @Deserialize)]` avec seize
     champs privés (@package_dir, @script_dir, @template_dir, @config_dir,
     @testset_dir, @test_name, @start_all derrière `--all`, @format,
     @junit_output_filename, @template_output_filename, @lint_dir, @schemas_dir, @fix,
-    @dry_run) ; hors de ce module on n'y
+    @dry_run, @fix_rounds, @verbose) ; hors de ce module on n'y
     accède que via @Commands::Test dans ./mod.rs.
   @run — `pub fn @run(args: &@Parameters) -> @common::Result<@()>` ; synchrone,
     appelé en sync par la branche exit-3 de ./mod.sdd, attendu par personne.
@@ -441,3 +460,37 @@ Scenario: no fix flag never writes package.yaml
   When @run tourne
   Then `package.yaml` est identique octet pour octet
   Test @no-fix-flag-never-writes-package-yaml
+
+Scenario: fix rounds rerun until the findings are gone
+  Given `--all --lint-dir --fix --fix-rounds 3` et la distribution `no-cpu-limits`
+  When @run tourne
+  Then `package.yaml` n'a plus de `limits.cpu`, @Ok revient (la dernière exécution n'a aucun
+    constat) et le résumé n'a été produit qu'une fois
+  Test @fix-rounds-rerun-until-the-findings-are-gone
+
+Scenario: fix rounds stop when there is no progress
+  Given `--fix-rounds 5` et une distribution dont le constat ne disparaît jamais et dont le `fix`
+    ajoute une marque au document à chaque appel
+  When @run tourne
+  Then la marque n'est présente qu'une fois : la deuxième exécution n'a pas moins de constats que
+    la première, la boucle s'arrête sans appliquer de fix, et @Err @Error::TestFailure revient
+  Test @fix-rounds-stop-when-there-is-no-progress
+
+Scenario: the default is a single pass
+  Given `--fix` sans `--fix-rounds`
+  When @run tourne
+  Then la suite ne s'exécute qu'une fois et le verdict est celui d'avant le fix
+  Test @the-default-is-a-single-pass
+
+Scenario: hints are written for what is left
+  Given `--verbose` sans `--fix` et une distribution dont `hint` répond pour `no-cpu-limits`
+  When la sortie des hints est construite
+  Then elle porte `hint no-cpu-limits:` puis le texte indenté, et rien pour une règle sans hint
+  And avec `--fix` appliqué à cette règle, elle ne porte aucun hint pour elle
+  Test @hints-are-written-for-what-is-left
+
+Scenario: fix rounds and verbose need their prerequisites
+  Given `--fix-rounds 2` sans `--fix`, puis `--verbose` sans `--lint-dir`, puis `--fix-rounds 0`
+  When la ligne de commande est analysée
+  Then chacune est refusée en erreur d'usage avant tout chargement
+  Test @fix-rounds-and-verbose-need-their-prerequisites

@@ -259,6 +259,13 @@ Must:
     laissé : un fix voit donc le travail des fix qui le précèdent. @FixStatus::Applied remplace
     le document courant ; @FixStatus::NotApplicable et @FixStatus::Failed le laissent tel quel
     et n'arrêtent pas les règles suivantes. Une étape par règle, dans l'ordre exécuté.
+  Exécuter @run_hints une fois par règle ayant au moins un constat non supprimé, dans l'ordre
+    alphabétique, hors des règles nommées dans `skip` (celles qu'un fix vient de corriger) ; la
+    règle dont tous les constats sont supprimés n'a pas de hint et le script n'est pas appelé
+    pour elle. Chaque appel de @LintRunner::run_hint reçoit tous les constats de la règle,
+    supprimés compris, et le document reçu. Sans @with_lint, ou sans constat, la liste est vide.
+  Compter dans @finding_count les seuls constats non supprimés : c'est la mesure de progrès de la
+    boucle de correction de ./../package/test.sdd.
   # surfaces mortes et crochets
   Garde la surface verdict/artéfacts hors de ce fichier : il n'affiche rien, ne logge rien,
     n'écrit aucun fichier et ne rend jamais de junit — @TestHandler::results est lu par
@@ -291,6 +298,10 @@ Exposes:
     document final (le document reçu si rien n'a été appliqué), `changed` vaut vrai quand au
     moins une étape est @FixStatus::Applied.
   @FixStep — `{ rule: @String, status: @FixStatus, message: @String }`.
+  @TestHandler::finding_count(&self) -> `usize` — le nombre de constats non supprimés conservés.
+  @TestHandler::run_hints(&self, package: &@YamlDoc, skip: &[@String]) -> Vec<@HintStep> —
+    les hints de la distribution pour les règles qui ont encore des constats ; pur.
+  @HintStep — `{ rule: @String, outcome: @HintOutcome }`.
   @TestHandler::get_test(@name) et @TestHandler::get_test_set(@name) -> @Option, `#[must_use]`
     avec aucun appelant nulle part dans le workspace (Tasks).
   @TestHandler::list_tests -> @Vec<@String> — `#[must_use]`, noms ascendants.
@@ -674,3 +685,17 @@ Scenario: no findings means no fixes
   When @run_fixes s'exécute
   Then le rapport n'a aucune étape, `changed` est faux et le document est celui reçu
   Test @no-findings-means-no-fixes
+
+Scenario: hints skip fixed rules and fully suppressed rules
+  Given trois règles avec constats — `a-rule`, `b-rule` et `c-rule` dont tous les constats sont
+    supprimés — et un `hint` qui répond pour chacune
+  When @run_hints s'exécute avec `skip` valant `["a-rule"]`
+  Then une seule étape, `b-rule` : `a-rule` est écartée par `skip` et le script n'est pas appelé
+    pour `c-rule`
+  Test @hints-skip-fixed-rules-and-fully-suppressed-rules
+
+Scenario: the finding count ignores suppressed findings
+  Given trois constats dont un supprimé
+  When @finding_count s'exécute
+  Then il vaut deux, et zéro sans @with_lint
+  Test @the-finding-count-ignores-suppressed-findings
