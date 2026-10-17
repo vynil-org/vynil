@@ -416,9 +416,9 @@ Le script reste pur : il reçoit le document et retourne le nouveau, seule la co
 sont pas (même limite que `agent package update`), donc `package.yaml` n'est réécrit que lorsqu'un fix
 s'est appliqué.
 
-Deux pièges du type document : lire une clé imbriquée rend une copie, donc pour la modifier il faut lire
-le parent, modifier la copie et la ré-affecter ; et la présence d'une clé se teste avec
-`keys().contains(...)`, car `contains`, `len` et `is_empty` ne se résolvent pas sur le document lui-même.
+Un piège du type document : lire une clé imbriquée rend une copie, donc pour la modifier il faut lire
+le parent, modifier la copie et la ré-affecter. `keys()`, `contains(clé)`, `len()`, `is_empty()` et
+`remove(clé)` fonctionnent sur le document.
 
 Un constat supprimé est transmis à `fix` volontairement. Un fix qui édite tout le paquet ne doit pas
 passer outre la décision explicite d'un auteur : l'exemple ci-dessous renonce dès qu'un constat est

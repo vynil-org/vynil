@@ -86,7 +86,8 @@ agent package test -p ./my-package --all \
   ligne en échec `lint:execution`, et un constat invalide une ligne en échec `lint:invalid-finding`.
 - **Sans `--lint-dir`** : rien ne change. Aucune ligne de lint ni aucune suppression n'est produite.
 - **Avec `--fix`** : après le résumé, chaque règle qui a produit des constats est confiée à la fonction `fix`
-  du script, et `package.yaml` est réécrit si un fix s'est appliqué. Le rapport va sur stderr, donc un
+  du script, et `package.yaml` est réécrit si un fix s'est appliqué. L'ordre des clés est conservé ; les
+  commentaires et le quoting du fichier ne le sont pas (un fichier où aucun fix ne s'est appliqué n'est jamais réécrit). Le rapport va sur stderr, donc un
   `--format json` sur stdout reste exploitable. Avec le défaut d'une seule exécution, le code de sortie est celui
   de l'exécution *avant* le fix : relancer la commande pour vérifier que les constats ont disparu.
 - **Avec `--fix-rounds N`** : après un fix appliqué, la suite s'exécute à nouveau sur le `package.yaml`

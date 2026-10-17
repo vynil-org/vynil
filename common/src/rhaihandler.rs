@@ -251,4 +251,55 @@ mod tests {
         );
         assert_eq!(scalar.to_yaml_string().unwrap(), before);
     }
+
+    // ── Spec yamlhandler : « Read-only members resolve in scripts » ──────────
+    #[test]
+    fn read_only_members_resolve_in_scripts() {
+        let mut s = make_script();
+        s.ctx
+            .set_or_push("input_yaml", Dynamic::from("a: 1\nb: 2\n".to_string()));
+
+        let result = s
+            .eval(
+                r#"
+            let doc = yaml_decode_ordered(input_yaml);
+            [doc.contains("a"), doc.contains("z"), "a" in doc, doc.len(), doc.is_empty()]
+        "#,
+            )
+            .unwrap();
+
+        let results = result.into_array().expect("un tableau");
+        assert!(
+            results[0].clone().cast::<bool>(),
+            "contains(\"a\") doit rendre true"
+        );
+        assert!(
+            !results[1].clone().cast::<bool>(),
+            "contains(\"z\") doit rendre false"
+        );
+        assert!(results[2].clone().cast::<bool>(), "\"a\" in doc doit rendre true");
+        assert_eq!(results[3].clone().cast::<i64>(), 2, "len() doit rendre 2");
+        assert!(!results[4].clone().cast::<bool>(), "is_empty() doit rendre false");
+
+        s.ctx.set_or_push("input_yaml", Dynamic::from(String::new()));
+        let result = s
+            .eval(
+                r#"
+            let doc = yaml_decode_ordered(input_yaml);
+            [doc.is_empty(), doc.len()]
+        "#,
+            )
+            .unwrap();
+
+        let results = result.into_array().expect("un tableau");
+        assert!(
+            results[0].clone().cast::<bool>(),
+            "is_empty() sur un document vide doit rendre true"
+        );
+        assert_eq!(
+            results[1].clone().cast::<i64>(),
+            0,
+            "len() sur un document vide doit rendre 0"
+        );
+    }
 }
