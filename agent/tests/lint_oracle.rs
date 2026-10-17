@@ -179,7 +179,8 @@ fn catalogue_problems(catalogue: &Path, lib: &Path, fixtures: &Path) -> Vec<Stri
     problems
 }
 
-/// Clés d'un verdict de l'oracle, triées et sans doublon.
+/// Clés d'un verdict de l'oracle, triées. Les doublons sont gardés : deux constats identiques
+/// d'un côté et un seul de l'autre sont une divergence.
 fn verdict_keys(findings: &[Value]) -> Vec<Key> {
     let mut keys: Vec<Key> = findings
         .iter()

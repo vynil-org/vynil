@@ -300,7 +300,7 @@ All keys are optional.
 | `severity` | `"error"` for each check | Map from check name to `"error"` or `"warn"`. Applied after the check runs. |
 | `params` | empty | Map from check name to a map of parameters, using kube-linter parameter names. |
 | `ignore_prefix` | absent | Prefix of the suppression annotations. Without it, no suppression happens at all. |
-| `require_reason` | `false` | When `true`, a suppression with an empty annotation value is not applied. The finding stays, and one `suppression-without-reason` finding of severity `error` is added per object and rule, naming the annotation. When `false`, an empty annotation suppresses with the reason `(aucune raison donnée)`: the engine refuses a suppression without a reason. |
+| `require_reason` | `false` | When `true`, a suppression with an empty annotation value is not applied. The finding stays, and one `suppression-without-reason` finding of severity `error` is added per object and rule, naming the annotation. When `false`, an empty annotation suppresses with the reason `(aucune raison donnée)`: the engine refuses a suppression without a reason. Set it to `true` in a distribution that wants every suppression justified; the default only keeps the inventory honest. |
 
 Without options, `render_lint::all` runs the checks that kube-linter enables by default, which is what a
 distribution that copies the example will expect. Pass `include_optional: true` to run all sixty.
@@ -382,3 +382,6 @@ suppressible, pass its findings through `render_lint::apply_suppressions(finding
   proportional to the number of objects, and `render_lint::all` costs about sixteen thousand
   operations per object with all sixty checks.
 - A `warn` finding has no severity field in the verdict.
+- kube-linter crashes (SIGSEGV) on a `dnsConfig` option whose name is the searched key but which has no
+  value. That case cannot be compared with the oracle, so it has no `expected.json`; the library reports
+  it without crashing. It is the only known divergence recorded here.

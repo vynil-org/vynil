@@ -309,7 +309,7 @@ Toutes les clés sont facultatives.
 | `severity` | `"error"` pour chaque vérification | Carte nom de vérification vers `"error"` ou `"warn"`. Appliquée après l'exécution de la vérification. |
 | `params` | vide | Carte nom de vérification vers une carte de paramètres, avec les noms de paramètres de kube-linter. |
 | `ignore_prefix` | absent | Préfixe des annotations de suppression. Sans lui, aucune suppression n'a lieu. |
-| `require_reason` | `false` | Quand `true`, une suppression dont la valeur d'annotation est vide n'est pas appliquée. Le constat reste, et un constat `suppression-without-reason` de sévérité `error` est ajouté, une fois par objet et par règle, nommant l'annotation. Quand `false`, une annotation vide supprime avec la raison `(aucune raison donnée)` : le moteur refuse une suppression sans raison. |
+| `require_reason` | `false` | Quand `true`, une suppression dont la valeur d'annotation est vide n'est pas appliquée. Le constat reste, et un constat `suppression-without-reason` de sévérité `error` est ajouté, une fois par objet et par règle, nommant l'annotation. Quand `false`, une annotation vide supprime avec la raison `(aucune raison donnée)` : le moteur refuse une suppression sans raison. Mettre `true` dans une distribution qui veut chaque suppression justifiée ; le défaut garde seulement l'inventaire honnête. |
 
 Sans option, `render_lint::all` exécute les vérifications que kube-linter active par défaut, ce
 qu'attendra une distribution qui recopie l'exemple. `include_optional: true` exécute les soixante.
@@ -392,3 +392,6 @@ règle maison supprimable, faire passer ses constats par `render_lint::apply_sup
   proportionnel au nombre d'objets, et `render_lint::all` coûte environ seize mille opérations par objet avec
   les soixante vérifications.
 - Un constat `warn` n'a pas de champ de sévérité dans le verdict.
+- kube-linter plante (SIGSEGV) sur une option `dnsConfig` dont le nom est la clé cherchée mais qui n'a pas de
+  valeur. Ce cas ne se confronte pas à l'oracle, il n'a donc pas d'`expected.json` ; la bibliothèque le signale
+  sans planter. C'est la seule divergence connue consignée ici.
