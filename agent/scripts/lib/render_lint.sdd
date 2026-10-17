@@ -90,6 +90,15 @@ Must:
   Faire de @all un pur assemblage : pour chaque objet dans l'ordre, chaque vérification
     activée dans l'ordre alphabétique GLOBAL de son nom, tous thèmes confondus ; l'ordre des
     constats est donc déterministe et indépendant du thème qui porte la vérification.
+  Lire les seaux de l'index par `count` et `at` (./../../src/testing/lint/multimap.sdd) quand une
+    vérification parcourt le même seau pour chaque objet ou chaque politique — les cibles de
+    réseau, les étiquettes de Service, les cibles de PodDisruptionBudget — plutôt que par
+    `values`, qui recopie tout le seau à chaque appel. Le comportement observable ne change pas :
+    l'oracle reste le juge.
+  Ne signaler aucune anomalie de FORME : une entrée mal formée (une spec qui n'est pas un objet,
+    un `env` de mauvais type) donne un tableau vide, comme dans l'outil de référence. C'est la
+    validation de schéma (`render_lint_schema`) qui les signale ; @all ne l'appelle pas, et
+    l'exemple de script de distribution de la documentation appelle les deux.
   Importer la bibliothèque dans le corps des fonctions des modules thématiques et non en tête :
     ./render_lint.rhai importe les modules thématiques, un import en tête ferait un cycle.
   Prendre pour `rule` d'un constat le nom kube-linter exact, tirets compris, pour qu'une liste
@@ -255,3 +264,13 @@ Scenario: a kind is only recognised in its own API group
   Then seul le Deployment `apps/v1` porte un gabarit de pod ; les deux autres rendent un
     tableau vide
   Test @a-kind-is-only-recognised-in-its-own-api-group
+
+Scenario: the documented distribution script runs
+  Given le script `lint.rhai` de l'exemple de /docs/tooling/render-lint.md, recopié dans le test,
+    et un Deployment sans label `team` dont les conteneurs ont une forme invalide
+  When il s'exécute sur ce Deployment
+  Then il retourne le constat `team-label` de la règle maison, et un constat `schema/invalid`
+    de la validation de schéma : la forme invalide n'est pas silencieuse
+  And une modification de l'exemple de la documentation sans la même modification du test est
+    une dérive à corriger
+  Test @the-documented-distribution-script-runs
