@@ -56,6 +56,9 @@ Le script peut définir une de ces fonctions ou les deux. Une fonction non défi
 `lint` n'est pas appelée pour un test dont l'étape `value_script` ou l'install a échoué : l'échec est
 déjà signalé sur le test, et un rendu partiel produirait des constats trompeurs.
 
+Une troisième fonction, facultative, `fix`, transforme des constats en un `package.yaml` corrigé (voir
+[Corriger les constats](#corriger-les-constats-fix)). Elle n'est appelée qu'avec `agent package test --fix`.
+
 ### La carte `objs`
 
 `objs` est une carte aux clés fixes. Chaque clé est toujours présente ; une clé sans objet porte un
@@ -377,7 +380,115 @@ Un Deployment sans label `team` produit une ligne en échec `lint:team-label`. U
 maison construit son constat directement et ne passe pas par `render_lint::apply_suppressions`. Pour rendre une
 règle maison supprimable, faire passer ses constats par `render_lint::apply_suppressions(findings, objs.all, opts)`.
 
+## Corriger les constats : `fix`
+
+Un constat porte ce qu'il faut pour le corriger. Quand la commande tourne avec `--fix`, la fonction `fix`
+du script est appelée **une fois par règle** ayant produit au moins un constat, dans l'ordre
+alphabétique des règles :
+
+```rhai
+fn fix(rule, findings, pkg) { ... }
+```
+
+| Argument | Contenu |
+|---|---|
+| `rule` | Nom de la règle. |
+| `findings` | Tous les constats de cette règle, de tous les tests et de la suite, supprimés compris, dans l'ordre d'arrivée. Même forme qu'un constat retourné par `lint`. |
+| `pkg` | Le `package.yaml` sous forme de document ordonné (`yaml_decode_ordered`). `package` est un mot réservé de Rhai, d'où `pkg`. |
+
+Elle retourne une carte :
+
+| Clé | Contenu |
+|---|---|
+| `status` | `"applied"` ou `"not_applicable"`. |
+| `pkg` | Le document complet, modifié. Obligatoire avec `applied`. |
+| `message` | Texte facultatif, affiché dans le rapport. |
+
+Tout le reste (une erreur, un statut inconnu, `applied` sans `pkg`, un retour qui n'est pas une carte)
+est un fix en échec : le document reste tel qu'il était et les règles suivantes s'exécutent quand même.
+Une distribution sans `fix` n'est pas une erreur : ses règles n'ont simplement pas de fix. Chaque règle
+voit le document tel que la règle précédente l'a laissé. Vynil n'embarque aucun fix : le catalogue est
+celui de la distribution.
+
+Le script reste pur : il reçoit le document et retourne le nouveau, seule la commande écrit
+`package.yaml`. L'ordre des clés est conservé à tous les niveaux. Les commentaires et le quoting ne le
+sont pas (même limite que `agent package update`), donc `package.yaml` n'est réécrit que lorsqu'un fix
+s'est appliqué.
+
+Deux pièges du type document : lire une clé imbriquée rend une copie, donc pour la modifier il faut lire
+le parent, modifier la copie et la ré-affecter ; et la présence d'une clé se teste avec
+`keys().contains(...)`, car `contains`, `len` et `is_empty` ne se résolvent pas sur le document lui-même.
+
+Un constat supprimé est transmis à `fix` volontairement. Un fix qui édite tout le paquet ne doit pas
+passer outre la décision explicite d'un auteur : l'exemple ci-dessous renonce dès qu'un constat est
+supprimé.
+
+### Exemple : pas de limites CPU
+
+La règle (`lint`) signale chaque conteneur ayant une limite CPU ; le fix retire `limits.cpu` des
+`resources` du paquet, et le bloc `limits` quand il devient vide. La règle est globale au paquet, le fix
+l'est donc aussi : il renonce quand un constat est supprimé, pour ne pas écraser une décision explicite.
+
+```rhai
+fn lint(objs, ctx) {
+    let out = [];
+    for obj in objs.all {
+        if obj.kind == "Deployment" {
+            for c in obj.spec.template.spec.containers {
+                if "resources" in c && "limits" in c.resources && "cpu" in c.resources.limits {
+                    out.push(#{
+                        rule: "no-cpu-limits", severity: "error",
+                        object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
+                        message: "limite cpu sur " + c.name
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
+fn fix(rule, findings, pkg) {
+    for f in findings {
+        if f.suppressed { return #{ status: "not_applicable", message: "un objet est supprimé" }; }
+    }
+    let resources = pkg["resources"];
+    if type_of(resources) != "map" { return #{ status: "not_applicable" }; }
+    let changed = false;
+    for name in resources.keys() {
+        let component = resources[name];
+        let limits = component["limits"];
+        if type_of(limits) == "map" && limits.keys().contains("cpu") {
+            limits.remove("cpu");
+            if limits.keys().len() == 0 {
+                component.remove("limits");
+            } else {
+                component["limits"] = limits;
+            }
+            resources[name] = component;
+            changed = true;
+        }
+    }
+    if !changed { return #{ status: "not_applicable" }; }
+    pkg["resources"] = resources;
+    #{ status: "applied", pkg: pkg }
+}
+```
+
+```bash
+agent package test -p ./my-package --all --lint-dir ./distribution/lint --fix
+# stderr : fix no-cpu-limits: applied
+```
+
+L'exécution ci-dessus sort encore avec le code 3, puisque le constat existait quand la suite a tourné.
+Relancez-la : le fix appliqué, le constat a disparu.
+
 ## Limites
+
+- Un fix n'édite que `package.yaml`. Une valeur écrite en dur dans un template ou un script n'est pas
+  atteignable par `fix` ; son constat reste à l'exécution suivante.
+- `package.yaml` perd ses commentaires quand un fix s'applique. `--dry-run` affiche le document obtenu,
+  pas un diff.
 
 - Trois vérifications de kube-linter ne sont pas portées (voir la note de statut).
 - Les valeurs du budget d'opérations et sa configuration ne sont pas encore fixées. Le budget est

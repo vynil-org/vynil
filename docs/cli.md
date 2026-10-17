@@ -45,7 +45,7 @@ agent package test  -p <package-dir>
                    [--format text|json]
                    [--junit-output-filename <file>]
                    [--template-output-filename <file>]   # for a single test only => yamllint, kubelinter, ... usage
-                   [--lint-dir <dir> [--schemas-dir <dir>]]
+                   [--lint-dir <dir> [--schemas-dir <dir>] [--fix [--dry-run]]]
 ```
 
 The `<package-dir>/tests` directory must exist (otherwise error `MissingTestDirectory`).
@@ -54,6 +54,8 @@ The `<package-dir>/tests` directory must exist (otherwise error `MissingTestDire
 |---|---|---|
 | `--lint-dir <dir>` | `LINT_DIRECTORY` | Directory of the distribution's render lint script (`lint.rhai`). When given, the script runs at the end of each test and its findings are added to the verdict. Without it, no render lint runs. |
 | `--schemas-dir <dir>` | `SCHEMAS_DIRECTORY` | Directory of JSON Schemas and CRDs used by the lint script's `schema_*` functions. Requires `--lint-dir` (usage error otherwise). |
+| `--fix` | — | After the run, replays the lint findings into the distribution's `fix` function and rewrites `<package-dir>/package.yaml` when a fix applied. Requires `--lint-dir`. The verdict and the exit code are those of the run before the fix. |
+| `--dry-run` | — | With `--fix`, writes nothing: prints the steps and the resulting `package.yaml` on stderr. Requires `--fix`. |
 
 See [Package tests](tooling/test.md#render-lint) and [Render lint](tooling/render-lint.md).
 

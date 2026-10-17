@@ -33,6 +33,8 @@ agent package test -p ./my-package --all --format json \
 | `--template-output-filename <file>` | Rendered output dump (single test only). |
 | `--lint-dir <dir>` | Distribution lint script directory (`lint.rhai`). Enables the render lint. |
 | `--schemas-dir <dir>` | Distribution schema directory. Requires `--lint-dir`. |
+| `--fix` | Applies the distribution's fixes to `package.yaml` (see [Render lint](render-lint.md#fixing-findings-fix)). Requires `--lint-dir`. |
+| `--dry-run` | With `--fix`, shows what would be written without writing it. Requires `--fix`. |
 
 The `tests/` directory must exist, otherwise the agent returns `MissingTestDirectory`.
 
@@ -80,6 +82,10 @@ agent package test -p ./my-package --all \
   row, an invalid finding is a failed `lint:invalid-finding` row, and an unreadable instance
   status (every object then counts as unsectioned) is a failed `lint:sections` row.
 - **Without `--lint-dir`**: nothing changes. No lint row and no suppression is produced.
+- **With `--fix`**: after the summary, each rule that produced findings is given to the `fix` function of the
+  script, and `package.yaml` is rewritten if a fix applied. The report goes to stderr, so a `--format json`
+  on stdout stays parsable. The exit code is still the one of the run *before* the fix: run the command
+  again to check that the findings are gone.
 
 ### Suppressions
 
