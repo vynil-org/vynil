@@ -1,10 +1,14 @@
 use clap::{Args, ValueEnum};
-use client::testing::TestHandler;
-use common::{Error, Result, rhaihandler::Dynamic, yamlhandler::yaml_all_serialize_to_string};
+use client::testing::{FixStatus, FixStep, TestHandler};
+use common::{
+    Error, Result,
+    rhaihandler::Dynamic,
+    yamlhandler::{YamlDoc, yaml_all_serialize_to_string},
+};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
@@ -108,6 +112,12 @@ pub struct Parameters {
         requires = "lint_dir"
     )]
     schemas_dir: Option<PathBuf>,
+    /// Apply the distribution's fixes to package.yaml (requires --lint-dir)
+    #[arg(long = "fix", requires = "lint_dir")]
+    fix: bool,
+    /// Show the package.yaml that --fix would write, without writing it (requires --fix)
+    #[arg(long = "dry-run", requires = "fix")]
+    dry_run: bool,
 }
 
 fn format_results(results: &client::testing::TestResultCollector, format: &OutputFormat) -> String {
@@ -115,6 +125,54 @@ fn format_results(results: &client::testing::TestResultCollector, format: &Outpu
         OutputFormat::Json => results.to_json(),
         OutputFormat::Text => results.to_text(),
     }
+}
+
+/// Une ligne par étape (`fix {règle}: {statut}`, suivie de ` — {message}` si non vide), puis le
+/// document `dry_run` si on en a un. Rend le texte destiné à stderr.
+fn fix_output(steps: &[FixStep], document: Option<&str>) -> String {
+    let mut lines: Vec<String> = steps
+        .iter()
+        .map(|step| {
+            let status = match step.status {
+                FixStatus::Applied => "applied",
+                FixStatus::NotApplicable => "not applicable",
+                FixStatus::Failed => "failed",
+            };
+            if step.message.is_empty() {
+                format!("fix {}: {status}", step.rule)
+            } else {
+                format!("fix {}: {status} — {}", step.rule, step.message)
+            }
+        })
+        .collect();
+    if let Some(doc) = document {
+        lines.push(doc.trim_end().to_string());
+    }
+    let mut out = lines.join("\n");
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out
+}
+
+/// Lit `<package_dir>/package.yaml`, applique les fix du lint et rend le texte de stderr. Le
+/// fichier n'est réécrit que si un fix s'est appliqué, et jamais en `dry_run`.
+fn apply_fixes(handler: &TestHandler, package_dir: &Path, dry_run: bool) -> Result<String> {
+    let path = package_dir.join("package.yaml");
+    let text = fs::read_to_string(&path).map_err(Error::Stdio)?;
+    let doc: YamlDoc = text
+        .parse()
+        .map_err(|e| Error::YamlError(format!("{}: {e}", path.display())))?;
+    let report = handler.run_fixes(&doc);
+    if !report.changed {
+        return Ok(fix_output(&report.steps, None));
+    }
+    let yaml = report.package.to_yaml_string().map_err(Error::YamlError)?;
+    if dry_run {
+        return Ok(fix_output(&report.steps, Some(&yaml)));
+    }
+    fs::write(&path, &yaml).map_err(Error::Stdio)?;
+    Ok(fix_output(&report.steps, None))
 }
 
 pub fn run(args: &Parameters) -> Result<()> {
@@ -164,6 +222,10 @@ pub fn run(args: &Parameters) -> Result<()> {
         return Ok(());
     }
 
+    if args.fix {
+        eprint!("{}", apply_fixes(&handler, &args.package_dir, args.dry_run)?);
+    }
+
     if !handler.results.all_passed() {
         return Err(common::Error::TestFailure(
             handler.results.total_failed(),
@@ -176,8 +238,9 @@ pub fn run(args: &Parameters) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Parameters, run};
+    use super::{Parameters, fix_output, run};
     use clap::Parser;
+    use client::testing::{FixStatus, FixStep};
     use common::Error;
     use std::{fs, path::PathBuf};
 
@@ -213,6 +276,11 @@ mod tests {
     }
 
     fn tree(lint: Option<&str>) -> Tree {
+        tree_with(lint, INSTALL_ONE_CONFIGMAP, PACKAGE_YAML)
+    }
+
+    /// Package avec l'installation et le `package.yaml` donnés.
+    fn tree_with(lint: Option<&str>, install: &str, package_yaml: &str) -> Tree {
         let root = tempfile::tempdir().expect("répertoire temporaire");
         let package = root.path().join("package");
         let scripts = root.path().join("agent-scripts");
@@ -221,13 +289,13 @@ mod tests {
         fs::create_dir_all(package.join("tests")).expect("tests");
         fs::create_dir_all(scripts.join("lib")).expect("lib");
         fs::create_dir_all(&lint_dir).expect("distro");
-        fs::write(package.join("package.yaml"), PACKAGE_YAML).expect("package.yaml");
+        fs::write(package.join("package.yaml"), package_yaml).expect("package.yaml");
         fs::write(
             package.join("scripts/context.rhai"),
             "fn run(instance, args) { #{} }",
         )
         .expect("context");
-        fs::write(package.join("scripts/install.rhai"), INSTALL_ONE_CONFIGMAP).expect("install");
+        fs::write(package.join("scripts/install.rhai"), install).expect("install");
         fs::write(
             package.join("tests/default.yaml"),
             "apiVersion: vinyl.solidite.fr/v1beta1\nkind: Test\nmetadata:\n  name: default\ninstance:\n  name: demo\n  namespace: app\n",
@@ -293,5 +361,185 @@ mod tests {
         run(&args).expect("sans --lint-dir, le constat n'existe pas et la suite passe");
         let xml = fs::read_to_string(&junit).expect("junit écrit");
         assert!(!xml.contains("lint:"), "{xml}");
+    }
+
+    /// Installation qui crée un `Deployment` `app/web` dont le conteneur a une limite CPU.
+    const INSTALL_DEPLOYMENT_WITH_CPU: &str = r#"fn run(instance, context) {
+    let h = k8s_resource("deployments", "app");
+    h.create(#{
+        apiVersion: "apps/v1", kind: "Deployment",
+        metadata: #{ name: "web", namespace: "app" },
+        spec: #{ template: #{ spec: #{ containers: [#{ name: "app", resources: #{ limits: #{ cpu: "500m" } } }] } } }
+    });
+}
+"#;
+
+    /// `package.yaml` aux clés non triées : `zeta` précède `alpha`, et `limits.memory` existe.
+    const PACKAGE_WITH_CPU_LIMITS: &str = "apiVersion: vinyl.solidite.fr/v1beta1\nkind: Package\nmetadata:\n  name: demo\n  category: core\n  description: demo package\n  type: tenant\n  features: []\nrequirements: []\nresources:\n  zeta:\n    limits:\n      memory: 256Mi\n      cpu: 500m\n  alpha:\n    limits:\n      cpu: 100m\n";
+
+    /// `package.yaml` commenté dont aucune limite CPU n'est à retirer.
+    const PACKAGE_COMMENTED_NO_CPU: &str = "# commentaire de tête, perdu par un aller-retour YamlDoc\napiVersion: vinyl.solidite.fr/v1beta1\nkind: Package\nmetadata:\n  name: demo  # nom du paquet\n  category: core\n  description: demo package\n  type: tenant\n  features: []\nrequirements: []\nresources:\n  app:\n    limits:\n      memory: 128Mi\n";
+
+    /// Distribution : `lint` signale chaque `Deployment` dont un conteneur a une limite CPU ;
+    /// `fix` retire toutes les `resources.*.limits.cpu`, et le bloc `limits` s'il devient vide.
+    const NO_CPU_LIMITS_DISTRO: &str = r#"fn lint(objs, ctx) {
+    let out = [];
+    for obj in objs.all {
+        if obj.kind == "Deployment" {
+            for c in obj.spec.template.spec.containers {
+                if "resources" in c && "limits" in c.resources && "cpu" in c.resources.limits {
+                    out.push(#{
+                        rule: "no-cpu-limits", severity: "error",
+                        object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
+                        message: "cpu limit on " + c.name
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
+fn fix(rule, findings, pkg) {
+    let resources = pkg["resources"];
+    if type_of(resources) != "map" { return #{ status: "not_applicable" }; }
+    let changed = false;
+    for name in resources.keys() {
+        let component = resources[name];
+        let limits = component["limits"];
+        if type_of(limits) == "map" && limits.keys().contains("cpu") {
+            limits.remove("cpu");
+            if limits.keys().len() == 0 {
+                component.remove("limits");
+            } else {
+                component["limits"] = limits;
+            }
+            resources[name] = component;
+            changed = true;
+        }
+    }
+    if !changed { return #{ status: "not_applicable" }; }
+    pkg["resources"] = resources;
+    #{ status: "applied", pkg: pkg }
+}
+"#;
+
+    fn read(path: &std::path::Path) -> String {
+        fs::read_to_string(path).expect("lecture de package.yaml")
+    }
+
+    #[test]
+    fn fix_rewrites_package_yaml() {
+        let t = tree_with(
+            Some(NO_CPU_LIMITS_DISTRO),
+            INSTALL_DEPLOYMENT_WITH_CPU,
+            PACKAGE_WITH_CPU_LIMITS,
+        );
+        let args = params(&t, &[
+            "--all",
+            "--lint-dir",
+            &t.lint.display().to_string(),
+            "--fix",
+        ]);
+        let err = run(&args).expect_err("le constat valait un échec avant le fix");
+        assert!(matches!(err, Error::TestFailure(1, 1)), "{err}");
+        let text = read(&t.package.join("package.yaml"));
+        assert!(!text.contains("cpu"), "{text}");
+        assert!(text.contains("memory: 256Mi"), "{text}");
+        assert!(
+            text.find("zeta") < text.find("alpha"),
+            "l'ordre des clés est conservé : {text}"
+        );
+        assert!(text.find("apiVersion") < text.find("resources"), "{text}");
+    }
+
+    #[test]
+    fn dry_run_leaves_package_yaml_untouched() {
+        let t = tree_with(
+            Some(NO_CPU_LIMITS_DISTRO),
+            INSTALL_DEPLOYMENT_WITH_CPU,
+            PACKAGE_WITH_CPU_LIMITS,
+        );
+        let before = read(&t.package.join("package.yaml"));
+        let args = params(&t, &[
+            "--all",
+            "--lint-dir",
+            &t.lint.display().to_string(),
+            "--fix",
+            "--dry-run",
+        ]);
+        let err = run(&args).expect_err("le verdict ne change pas avec --dry-run");
+        assert!(matches!(err, Error::TestFailure(1, 1)), "{err}");
+        assert_eq!(read(&t.package.join("package.yaml")), before);
+    }
+
+    #[test]
+    fn nothing_to_fix_leaves_the_file_byte_identical() {
+        let t = tree_with(
+            Some(NO_CPU_LIMITS_DISTRO),
+            INSTALL_DEPLOYMENT_WITH_CPU,
+            PACKAGE_COMMENTED_NO_CPU,
+        );
+        let args = params(&t, &[
+            "--all",
+            "--lint-dir",
+            &t.lint.display().to_string(),
+            "--fix",
+        ]);
+        let err = run(&args).expect_err("le constat reste un échec");
+        assert!(matches!(err, Error::TestFailure(1, 1)), "{err}");
+        assert_eq!(read(&t.package.join("package.yaml")), PACKAGE_COMMENTED_NO_CPU);
+    }
+
+    #[test]
+    fn fix_and_dry_run_need_their_prerequisites() {
+        assert!(Cli::try_parse_from(["test", "-p", "/pkg", "--fix"]).is_err());
+        assert!(Cli::try_parse_from(["test", "-p", "/pkg", "--dry-run", "--lint-dir", "/d"]).is_err());
+        assert!(Cli::try_parse_from(["test", "-p", "/pkg", "--fix", "--lint-dir", "/d"]).is_ok());
+        assert!(
+            Cli::try_parse_from(["test", "-p", "/pkg", "--fix", "--dry-run", "--lint-dir", "/d"]).is_ok()
+        );
+    }
+
+    #[test]
+    fn no_fix_flag_never_writes_package_yaml() {
+        let t = tree_with(
+            Some(NO_CPU_LIMITS_DISTRO),
+            INSTALL_DEPLOYMENT_WITH_CPU,
+            PACKAGE_WITH_CPU_LIMITS,
+        );
+        let before = read(&t.package.join("package.yaml"));
+        let args = params(&t, &["--all", "--lint-dir", &t.lint.display().to_string()]);
+        let err = run(&args).expect_err("le constat échoue sans fix");
+        assert!(matches!(err, Error::TestFailure(1, 1)), "{err}");
+        assert_eq!(read(&t.package.join("package.yaml")), before);
+    }
+
+    #[test]
+    fn fix_output_has_one_line_per_step_then_the_document() {
+        let steps = [
+            FixStep {
+                rule: "no-cpu-limits".to_string(),
+                status: FixStatus::Applied,
+                message: String::new(),
+            },
+            FixStep {
+                rule: "other".to_string(),
+                status: FixStatus::NotApplicable,
+                message: "rien à retirer".to_string(),
+            },
+            FixStep {
+                rule: "broken".to_string(),
+                status: FixStatus::Failed,
+                message: "boom".to_string(),
+            },
+        ];
+        let text = fix_output(&steps, None);
+        assert_eq!(
+            text,
+            "fix no-cpu-limits: applied\nfix other: not applicable — rien à retirer\nfix broken: failed — boom\n"
+        );
+        let with_doc = fix_output(&steps[..1], Some("a: 1\n"));
+        assert_eq!(with_doc, "fix no-cpu-limits: applied\na: 1\n");
     }
 }
