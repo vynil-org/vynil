@@ -78,19 +78,19 @@ Must:
     budget d'opérations ne protège pas d'une boucle `s += s` qui double à chaque tour.
   Rester déterministe : mêmes objets et mêmes contextes donnent les mêmes lignes.
 
-  Appeler `fix(rule, findings, package)` quand @run_fix s'exécute : `rule` le nom de la règle,
+  Appeler `fix(rule, findings, pkg)` quand @run_fix s'exécute : `rule` le nom de la règle,
     `findings` les constats de cette règle sous la forme que `finding.sdd` donne à
     @findings_to_dynamic (supprimés compris : c'est le script qui décide de ce que la
-    suppression implique), `package` une copie du `package.yaml` décodé en carte. Le script
-    retourne une carte `#{ status, package, message }` : `status` vaut `"applied"` (alors
-    `package` est la carte modifiée, complète) ou `"not_applicable"` ; `message` est optionnel.
-    Le runner traduit `applied` en @FixStatus::Applied avec le `package` retourné,
+    suppression implique), `pkg` une copie du `package.yaml` décodé en carte (`package` est un mot réservé de Rhai). Le script
+    retourne une carte `#{ status, pkg, message }` : `status` vaut `"applied"` (alors
+    `pkg` est la carte modifiée, complète) ou `"not_applicable"` ; `message` est optionnel.
+    Le runner traduit `applied` en @FixStatus::Applied avec le `pkg` retourné,
     `not_applicable` en @FixStatus::NotApplicable sans package.
   Rendre @FixStatus::NotApplicable, sans échec, quand la distribution ne définit pas `fix` :
     une distribution n'est jamais obligée de savoir corriger.
   Rendre @FixStatus::Failed, avec le message de l'erreur et sans package, pour toute erreur
     d'exécution de `fix`, tout dépassement de la limite d'opérations ou de mémoire, tout retour
-    qui n'est pas une carte, tout `status` inconnu, et tout `applied` sans `package` de type
+    qui n'est pas une carte, tout `status` inconnu, et tout `applied` sans `pkg` de type
     carte. Un fix qui échoue ne modifie rien : l'appelant garde le `package` d'avant.
   Évaluer `fix` dans les mêmes conditions que `lint` : moteur neuf, mêmes fonctions et
     mêmes bornes mémoire, budget d'opérations réduit à la base. Le script est pur : il ne
@@ -244,7 +244,7 @@ Scenario: a throwing fix fails without changing anything
   Test @a-throwing-fix-fails-without-changing-anything
 
 Scenario: a malformed fix return fails
-  Given un `fix` qui retourne un tableau, ou un `status` inconnu, ou `applied` sans `package`
+  Given un `fix` qui retourne un tableau, ou un `status` inconnu, ou `applied` sans `pkg`
   When @run_fix s'exécute
   Then chaque cas est @FixStatus::Failed, avec un message qui dit ce qui manque
   Test @a-malformed-fix-return-fails
@@ -256,9 +256,9 @@ Scenario: a fix cannot touch the cluster or loop forever
   Test @a-fix-cannot-touch-the-cluster-or-loop-forever
 
 Scenario: the cpu limit fix is idempotent
-  Given la règle maison `no-cpu-limits` (son `lint` constate toute `limits.cpu` d'un conteneur,
-    son `fix` retire toutes les `resources.*.limits.cpu` du `package`, et le bloc `limits`
-    s'il devient vide), et un `package` à deux composants dont un seul `limits` ne porte
+  Given le `fix` de la règle maison `no-cpu-limits` (il retire toutes les
+    `resources.*.limits.cpu` du `package`, et le bloc `limits` s'il devient vide ; son `lint`
+    est exercé de bout en bout par la tranche de câblage, pas ici), et un `package` à deux composants dont un seul `limits` ne porte
     que `cpu`
   When @run_fix s'exécute une première fois, puis une seconde sur le `package` rendu
   Then la première est @FixStatus::Applied et le `package` n'a plus aucune `limits.cpu`,
