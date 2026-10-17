@@ -19,6 +19,8 @@ References:
   ./../schema/rhai.sdd — les fonctions `schema_*` enregistrées dans le moteur du script.
   ./patterns.sdd, ./multimap.sdd — les fonctions et le type natifs offerts à la bibliothèque.
   /common/src/rhaihandler.sdd — @Script, @Dynamic, le moteur.
+  /common/src/yamlhandler.sdd — @YamlDoc, le document YAML qui garde l'ordre des clés, et son
+    `remove` ; seul l'ordre des clés survit à un aller-retour, pas les commentaires.
 
 Exposes:
   @LintRunner — `new(lint_dir: &Path, script_dir: &Path, schemas: SchemaRegistry)
@@ -32,9 +34,9 @@ Exposes:
   @LintOutcome — `{ rows: Vec<VynilAssertResult>, suppressions: Vec<Suppression>,
     findings: Vec<Finding> }` ; `findings` porte tous les constats valides du script, y compris
     les supprimés, dans l'ordre de retour, pour que l'appelant puisse les remettre à `fix`.
-  @LintRunner::run_fix — `(&self, rule: &str, findings: &[Finding], package: &serde_json::Value)
+  @LintRunner::run_fix — `(&self, rule: &str, findings: &[Finding], package: &YamlDoc)
     -> FixOutcome`.
-  @FixOutcome — `{ status: FixStatus, package: Option<serde_json::Value>, message: String }`.
+  @FixOutcome — `{ status: FixStatus, package: Option<YamlDoc>, message: String }`.
   @FixStatus — `Applied`, `NotApplicable` ou `Failed`.
   @Sections — défini par ./sections.sdd, importé ici.
 
@@ -81,9 +83,13 @@ Must:
   Appeler `fix(rule, findings, pkg)` quand @run_fix s'exécute : `rule` le nom de la règle,
     `findings` les constats de cette règle sous la forme que `finding.sdd` donne à
     @findings_to_dynamic (supprimés compris : c'est le script qui décide de ce que la
-    suppression implique), `pkg` une copie du `package.yaml` décodé en carte (`package` est un mot réservé de Rhai). Le script
+    suppression implique), `pkg` une copie du `package.yaml` sous la forme d'un @YamlDoc (`package`
+    est un mot réservé de Rhai). L'ordre des clés d'un @YamlDoc survit à tous les niveaux, ce
+    que ne ferait pas une carte Rhai, triée par clé : le moteur de `fix` enregistre donc la
+    surface @YamlDoc (`yaml_ordered_rhai_register`, /common/src/yamlhandler.sdd) en plus de
+    celle de `lint`. Le script
     retourne une carte `#{ status, pkg, message }` : `status` vaut `"applied"` (alors
-    `pkg` est la carte modifiée, complète) ou `"not_applicable"` ; `message` est optionnel.
+    `pkg` est le @YamlDoc modifié, complet) ou `"not_applicable"` ; `message` est optionnel.
     Le runner traduit `applied` en @FixStatus::Applied avec le `pkg` retourné,
     `not_applicable` en @FixStatus::NotApplicable sans package.
   Rendre @FixStatus::NotApplicable, sans échec, quand la distribution ne définit pas `fix` :
@@ -91,7 +97,7 @@ Must:
   Rendre @FixStatus::Failed, avec le message de l'erreur et sans package, pour toute erreur
     d'exécution de `fix`, tout dépassement de la limite d'opérations ou de mémoire, tout retour
     qui n'est pas une carte, tout `status` inconnu, et tout `applied` sans `pkg` de type
-    carte. Un fix qui échoue ne modifie rien : l'appelant garde le `package` d'avant.
+    @YamlDoc. Un fix qui échoue ne modifie rien : l'appelant garde le `package` d'avant.
   Évaluer `fix` dans les mêmes conditions que `lint` : moteur neuf, mêmes fonctions et
     mêmes bornes mémoire, budget d'opérations réduit à la base. Le script est pur : il ne
     reçoit ni n'écrit aucun fichier, il rend le nouveau `package.yaml` et c'est l'appelant qui
@@ -222,6 +228,8 @@ Scenario: a fix returns the modified package
   When @run_fix s'exécute avec la règle `no-cpu-limits`, un constat et ce `package`
   Then le statut est @FixStatus::Applied et le `package` rendu n'a plus la clé, `memory`
     restant en place
+  And les clés restantes gardent leur ordre d'origine à chaque niveau (un `package` dont les
+    clés ne sont pas triées, `z` avant `a`, est ré-encodé dans le même ordre)
   And le `package` d'entrée de l'appelant est inchangé
   Test @a-fix-returns-the-modified-package
 
