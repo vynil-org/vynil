@@ -193,6 +193,10 @@ Must:
     test, appel @LintRunner::run_test ; les lignes obtenues sont ajoutées en fin du vecteur
     d'asserts (ordre final : ligne `value_script` éventuelle, asserts, lignes de lint) et les
     suppressions sont enregistrées auprès du collecteur sous le nom du test.
+  Ne rien faire de la voie lint de test — ni lecture du `status`, ni classement, ni ligne
+    `lint:sections` — quand la distribution ne définit pas `lint` (@LintRunner::has_test_hook) :
+    un statut illisible ne doit pas faire rougir un test pour un point d'entrée qui n'existe pas.
+    Le hook de suite, lui, ne lit aucun statut.
   Ne pas exécuter le lint quand la voie value_script ou la voie install a échoué : un rendu
     incomplet donnerait des constats trompeurs, et la ligne `value_script` ou `execution`
     existante porte déjà le diagnostic.
@@ -448,3 +452,10 @@ Scenario: an unreadable status fails a lint sections row
     ligne `lint:sections` en échec porte l'erreur de lecture, en plus des lignes du script
   And un `status` lu avec succès sans aucune section déclarée ne produit aucune ligne
   Test @an-unreadable-status-fails-a-lint-sections-row
+
+Scenario: a suite only distribution reads no status
+  Given un handler configuré par @with_lint sur un script qui ne définit que `lint_suite`, et un
+    test dont la lecture du `status` de l'instance échoue
+  When le test s'exécute
+  Then aucune ligne `lint:sections` n'est ajoutée et les asserts du test sont inchangés
+  Test @a-suite-only-distribution-reads-no-status
