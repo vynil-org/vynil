@@ -2,6 +2,11 @@ use super::vyniltestset::VynilAssertResult;
 use junit_report::{Duration, ReportBuilder, TestCase, TestSuiteBuilder};
 use serde::Serialize;
 
+/// Préfixe du nom d'une ligne du lint (`lint:{règle}`), contrat de `./lint/finding.sdd`.
+pub(crate) const LINT_PREFIX: &str = "lint:";
+/// Préfixe du message d'un constat `warn` passant, contrat de `./lint/finding.sdd`.
+pub(crate) const WARN_PREFIX: &str = "warning: ";
+
 #[derive(Clone, Debug, Serialize)]
 pub struct TestResult {
     pub test_name: String,
@@ -198,19 +203,23 @@ impl TestResultCollector {
             let nanos_part = i32::try_from(per_assert_nanos % 1_000_000_000).unwrap_or(i32::MAX);
             let tc_dur = Duration::new(secs, nanos_part);
             for a in &result.asserts {
-                let tc = if a.passed {
+                let mut tc = if a.passed {
                     TestCase::success(&a.name, tc_dur)
                 } else {
                     TestCase::failure(&a.name, tc_dur, "assertion", &a.message)
                 };
+                if let Some(object) = lint_object(a) {
+                    tc.set_classname(object);
+                }
                 suite.add_testcase(tc);
             }
-            let lines: Vec<String> = self
+            let skips = self
                 .suppressions
                 .iter()
                 .filter(|s| s.test == result.test_name)
-                .map(|s| format!("[SKIP] {}", s.detail()))
-                .collect();
+                .map(|s| format!("[SKIP] {}", s.detail()));
+            let warns = result.asserts.iter().filter_map(warn_line);
+            let lines: Vec<String> = skips.chain(warns).collect();
             if !lines.is_empty() {
                 suite.set_system_out(&lines.join("\n"));
             }
@@ -226,6 +235,26 @@ impl TestResultCollector {
             Err(e) => panic!("JUnit XML is not valid UTF-8: {e}"),
         }
     }
+}
+
+/// Description d'objet d'une ligne du lint, si elle en porte une non vide : elle devient le
+/// `classname` du cas de test `JUnit`.
+fn lint_object(a: &VynilAssertResult) -> Option<&str> {
+    if !a.name.starts_with(LINT_PREFIX) {
+        return None;
+    }
+    a.description.as_deref().filter(|d| !d.is_empty())
+}
+
+/// Ligne `[WARN]` d'un constat `warn` passant du lint, pour le `<system-out>` de la suite.
+fn warn_line(a: &VynilAssertResult) -> Option<String> {
+    if !(a.passed && a.name.starts_with(LINT_PREFIX) && a.message.starts_with(WARN_PREFIX)) {
+        return None;
+    }
+    Some(lint_object(a).map_or_else(
+        || format!("[WARN] {}: {}", a.name, a.message),
+        |object| format!("[WARN] {} ({object}): {}", a.name, a.message),
+    ))
 }
 
 impl Default for TestResultCollector {
@@ -427,5 +456,103 @@ mod tests {
         assert!(text.contains("Results:"));
         assert!(text.contains("1 passed"));
         assert!(text.contains("1 failed"));
+    }
+
+    /// Ligne de verdict d'un constat du lint : nom `lint:{règle}`, description d'objet.
+    fn lint_row(name: &str, description: &str, passed: bool, message: &str) -> VynilAssertResult {
+        VynilAssertResult {
+            name: name.to_string(),
+            description: Some(description.to_string()),
+            passed,
+            message: message.to_string(),
+        }
+    }
+
+    #[test]
+    fn lint_rows_carry_their_object_in_the_junit() {
+        let mut c = TestResultCollector::new();
+        c.add(
+            "t1".to_string(),
+            vec![
+                lint_row(
+                    "lint:latest-tag",
+                    "Deployment app/a",
+                    false,
+                    "image uses the latest tag",
+                ),
+                lint_row(
+                    "lint:latest-tag",
+                    "Deployment app/b",
+                    false,
+                    "image uses the latest tag",
+                ),
+                lint_row(
+                    "lint:latest-tag",
+                    "Deployment app/c",
+                    false,
+                    "image uses the latest tag",
+                ),
+            ],
+            std::time::Duration::ZERO,
+        );
+        let junit = c.to_junit();
+        for object in ["Deployment app/a", "Deployment app/b", "Deployment app/c"] {
+            let opening = format!("<testcase name=\"lint:latest-tag\" time=\"0\" classname=\"{object}\">");
+            assert!(junit.contains(&opening), "{junit}");
+        }
+        assert!(!junit.contains("system-out"), "{junit}");
+    }
+
+    #[test]
+    fn warnings_are_listed_in_the_junit_system_out() {
+        let mut c = TestResultCollector::new();
+        c.add(
+            "t1".to_string(),
+            vec![lint_row(
+                "lint:no-liveness-probe",
+                "Deployment app/web",
+                true,
+                "warning: no probe",
+            )],
+            std::time::Duration::ZERO,
+        );
+        c.add_suppressions(vec![suppression("t1")]);
+        let junit = c.to_junit();
+        assert!(
+            junit.contains(
+                "<system-out><![CDATA[[SKIP] latest-tag Deployment app/web: legacy image\n\
+                 [WARN] lint:no-liveness-probe (Deployment app/web): warning: no probe]]></system-out>"
+            ),
+            "{junit}"
+        );
+    }
+
+    #[test]
+    fn ordinary_asserts_keep_their_junit() {
+        let mut c = TestResultCollector::new();
+        c.add(
+            "t1".to_string(),
+            vec![
+                VynilAssertResult {
+                    name: "a".to_string(),
+                    description: Some("une description".to_string()),
+                    passed: true,
+                    message: "ok".to_string(),
+                },
+                VynilAssertResult {
+                    name: "b".to_string(),
+                    description: None,
+                    passed: true,
+                    message: "warning: pas une ligne lint".to_string(),
+                },
+            ],
+            std::time::Duration::ZERO,
+        );
+        assert_eq!(
+            without_timestamp(&c.to_junit()),
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite id=\"0\" name=\"t1\" \
+             package=\"testsuite/t1\" tests=\"2\" errors=\"0\" failures=\"0\" hostname=\"localhost\" \
+             time=\"0\"><testcase name=\"a\" time=\"0\"/><testcase name=\"b\" time=\"0\"/></testsuite></testsuites>"
+        );
     }
 }

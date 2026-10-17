@@ -183,13 +183,13 @@ impl SchemaRegistry {
             let origin = format!("table native, Kubernetes {}", native_k8s_version());
             (schema, false, origin)
         } else {
-            return Err(Error::Other(format!("aucun schéma pour {api_version} {kind}")));
+            return Err(Error::Other(format!("no schema for {api_version} {kind}")));
         };
         let schema = prepare(raw, crd, strict);
         jsonschema::options()
             .with_draft(Draft::Draft202012)
             .build(&schema)
-            .map_err(|e| Error::Other(format!("schéma {api_version} {kind} invalide ({origin}) : {e}")))
+            .map_err(|e| Error::Other(format!("invalid schema for {api_version} {kind} ({origin}): {e}")))
     }
 
     /// Nombre de validateurs compilés, pour vérifier le cache.
@@ -282,7 +282,7 @@ fn load_crd_file(path: &Path, into: &mut BTreeMap<Key, Source>) -> common::Resul
 /// Charge un schéma JSON rangé `<groupe>/<Kind>_<version>.json` (`core` pour le groupe vide).
 fn load_json_schema(root: &Path, path: &Path, into: &mut BTreeMap<Key, Source>) -> common::Result<()> {
     let origin = path.display().to_string();
-    let naming_error = || Error::Other(format!("{origin} : nom attendu <groupe>/<Kind>_<version>.json"));
+    let naming_error = || Error::Other(format!("{origin}: expected name <group>/<Kind>_<version>.json"));
     let group = match path.parent() {
         Some(parent) if parent != root => parent.file_name().and_then(|n| n.to_str()),
         _ => None,

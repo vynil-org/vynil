@@ -78,9 +78,10 @@ Handles:
 
 Tasks:
   [x] Couvrir chaque scénario par un test de même nom.
-  [?] Une ligne `warn` est `passed: true` avec un préfixe de message : le modèle de résultat
-      n'a pas de notion de sévérité. Décider si @VynilAssertResult doit porter un champ de
-      sévérité (changement additif des formes JSON et JUnit).
+  [x] Une ligne `warn` est `passed: true` avec un préfixe de message `warning: ` : décision —
+      pas de champ de sévérité dans @VynilAssertResult ; le JUnit liste ces lignes en `[WARN]`
+      dans le `<system-out>` de la suite (voir ./../result.sdd), le texte les montre déjà par
+      leur préfixe.
 
 Done when:
   Chaque scénario a un test passant et le harnais statique est vert.
@@ -139,3 +140,9 @@ Scenario: an empty namespace is no namespace
   When @parse_findings puis @to_rows s'exécutent
   Then `namespace` vaut `None` et la description est `{kind} {name}`, sans espace ni barre oblique
   Test @an-empty-namespace-is-no-namespace
+
+Scenario: invalid finding messages are in English
+  Given un constat de règle réservée `sections`, un sans `message`, et un dont `severity` est inconnue
+  When @parse_findings s'exécute
+  Then chaque description `finding #{index}: ...` est rédigée en anglais et nomme la cause
+  Test @invalid-finding-messages-are-in-english

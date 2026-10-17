@@ -56,6 +56,12 @@ Must:
     verdict.
   Rendre toute suppression visible : un constat supprimé ne fait jamais échouer le test,
     mais figure dans l'inventaire des suppressions avec sa règle, son objet et sa raison.
+  Écrire en anglais tout message que le moteur de lint produit à destination de l'utilisateur
+    — messages et descriptions des lignes `lint:execution`, `lint:invalid-finding` et
+    `lint:sections`, erreurs de construction du runner, erreurs de script du moteur — comme les
+    messages déjà en anglais du reste de la CLI (`Missing tests directory`, `Tests failed:`). Les
+    noms de ligne, les clés et les noms de règle ne se traduisent pas ; les specs, les commentaires
+    et la documentation gardent leur langue.
   Garder le script pur : il reçoit des données, retourne des constats, et n'a accès ni au
     cluster, ni au réseau, ni au système de fichiers, ni à une horloge.
 

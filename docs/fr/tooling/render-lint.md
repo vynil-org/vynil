@@ -193,9 +193,15 @@ namespacé. Pour le hook de suite, les lignes appartiennent à un enregistrement
 Une ligne en échec compte comme n'importe quel assert en échec : le résumé, le rapport JUnit et le code
 de sortie 3 s'appliquent sans changement. Un constat `warn` ne fait jamais échouer le test.
 
-Le modèle de verdict n'ayant pas de champ de sévérité, un avertissement n'est exprimé que par sa ligne
-réussie et son préfixe `warning: `. L'ajout d'un champ de sévérité explicite est une question ouverte
-dans les spécifications.
+Le modèle de verdict n'a pas de champ de sévérité : un avertissement est une ligne réussie au préfixe
+`warning: `. Le résumé texte le montre tel quel. Le rapport JUnit ajoute deux choses pour les lignes
+nommées `lint:...` (un assert ordinaire garde son rapport inchangé, octet pour octet) :
+
+- la description de la ligne (`Deployment app/web`) est écrite en `classname` du cas de test, si bien que
+  dix objets en échec sur la même règle sont dix cas distincts et non dix cas `lint:{rule}` identiques ;
+- une ligne réussie dont le message commence par `warning: ` est listée dans le `<system-out>` de la suite
+  sous la forme `[WARN] {nom} ({description}): {message}`, après les lignes `[SKIP]` des suppressions.
+  Sans cela, un lint dont tous les constats sont des avertissements paraîtrait vert et muet.
 
 ## Suppressions
 
@@ -401,7 +407,7 @@ règle maison supprimable, faire passer ses constats par `render_lint::apply_sup
 - Les valeurs du budget d'opérations et sa configuration ne sont pas encore fixées. Le budget est
   proportionnel au nombre d'objets, et `render_lint::all` coûte environ seize mille opérations par objet avec
   les soixante vérifications.
-- Un constat `warn` n'a pas de champ de sévérité dans le verdict.
+- Un constat `warn` n'a pas de champ de sévérité dans le verdict : c'est une ligne réussie à préfixe, listée en `[WARN]` dans le rapport JUnit.
 - `env-value-from` résout une référence à un Secret ou à un ConfigMap par kind et nom, **dans n'importe quel
   namespace**, comme kube-linter : la fixture `env-value-from` référence un Secret d'un autre namespace et
   l'outil ne signale rien. Un Secret de même nom dans un autre namespace satisfait donc la référence.

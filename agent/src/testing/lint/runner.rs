@@ -110,7 +110,7 @@ impl LintRunner {
         let path = lint_dir.join(ENTRY_FILE);
         if !path.is_file() {
             return Err(common::Error::Other(format!(
-                "{}: fichier de lint introuvable",
+                "{}: lint file not found",
                 path.display()
             )));
         }
@@ -122,7 +122,7 @@ impl LintRunner {
         let has_suite_hook = ast.iter_functions().any(|f| f.name == SUITE_HOOK);
         if !has_test_hook && !has_suite_hook {
             return Err(common::Error::Other(format!(
-                "{}: ni `{TEST_HOOK}` ni `{SUITE_HOOK}` n'est défini",
+                "{}: neither `{TEST_HOOK}` nor `{SUITE_HOOK}` is defined",
                 path.display()
             )));
         }
@@ -203,7 +203,7 @@ impl LintRunner {
     fn outcome(hook: &str, value: &Dynamic, test_name: &str) -> LintOutcome {
         if !value.is_array() {
             return execution_outcome(format!(
-                "le retour de `{hook}` doit être un tableau, reçu {}",
+                "the return value of `{hook}` must be an array, got {}",
                 value.type_name()
             ));
         }
@@ -431,10 +431,29 @@ mod tests {
         assert_eq!(outcome.rows[0].name, "lint:execution");
         assert!(!outcome.rows[0].passed);
         assert!(
-            outcome.rows[0].message.contains("tableau"),
+            outcome.rows[0].message.contains("must be an array"),
             "{}",
             outcome.rows[0].message
         );
+    }
+
+    #[test]
+    fn engine_messages_are_in_english() {
+        let (_fx, runner) = runner(r#"fn lint(objs, ctx) { #{ rule: "x" } }"#);
+        let outcome = runner.run_test(&test_ctx("default"), &Sections::default());
+        assert_eq!(outcome.rows.len(), 1);
+        assert!(
+            outcome.rows[0].message.contains("must be an array"),
+            "{}",
+            outcome.rows[0].message
+        );
+
+        let fx = fixture(None);
+        let registry = SchemaRegistry::new(None, None).expect("registre natif");
+        let err = LintRunner::new(&fx.lint_dir, &fx.script_dir, registry)
+            .expect_err("sans lint.rhai, la construction échoue");
+        let text = err.to_string();
+        assert!(text.contains("lint.rhai") && text.contains("not found"), "{text}");
     }
 
     #[test]
