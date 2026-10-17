@@ -96,6 +96,17 @@ impl YamlDoc {
         }
     }
 
+    /// Retire `key` d'une racine mapping. Retrait par décalage : les autres clés gardent leur
+    /// ordre. Rend `false` (document inchangé) si la clé est absente ou si la racine n'est
+    /// pas un mapping.
+    pub fn remove(&mut self, key: ImmutableString) -> bool {
+        let key: String = key.into();
+        match &mut self.0 {
+            Value::Mapping(m) => m.shift_remove(&Value::String(key)).is_some(),
+            _ => false,
+        }
+    }
+
     #[must_use]
     pub fn contains_key(&self, key: ImmutableString) -> bool {
         let key: String = key.into();
@@ -226,6 +237,7 @@ pub fn yaml_ordered_rhai_register(engine: &mut Engine) {
         .register_fn("len", YamlDoc::len)
         .register_fn("is_empty", YamlDoc::is_empty)
         .register_fn("contains", YamlDoc::contains_key)
+        .register_fn("remove", YamlDoc::remove)
         .register_fn("to_string", |yd: &mut YamlDoc| -> String {
             yd.to_yaml_string().unwrap_or_default()
         });

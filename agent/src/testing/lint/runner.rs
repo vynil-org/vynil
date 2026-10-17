@@ -10,7 +10,10 @@ use crate::testing::{
     schema::{registry::SchemaRegistry, rhai::schema_rhai_register},
     vyniltestset::VynilAssertResult,
 };
-use common::rhaihandler::{AST, Dynamic, Engine, FileModuleResolver, Map, ModuleResolversCollection, Scope};
+use common::{
+    rhaihandler::{AST, Dynamic, Engine, FileModuleResolver, Map, ModuleResolversCollection, Scope},
+    yamlhandler::{YamlDoc, yaml_ordered_rhai_register},
+};
 use rhai::packages::Package;
 use std::path::{Path, PathBuf};
 
@@ -55,10 +58,10 @@ pub enum FixStatus {
 }
 
 /// Résultat de `fix` : le `package` corrigé seulement si `Applied`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct FixOutcome {
     pub status: FixStatus,
-    pub package: Option<serde_json::Value>,
+    pub package: Option<YamlDoc>,
     pub message: String,
 }
 
@@ -214,7 +217,7 @@ impl LintRunner {
     /// Appelle `fix(rule, findings, package)` ; `findings` porte aussi les constats supprimés.
     /// Le `package` reçu n'est jamais modifié : le script en reçoit une copie.
     #[must_use]
-    pub fn run_fix(&self, rule: &str, findings: &[Finding], package: &serde_json::Value) -> FixOutcome {
+    pub fn run_fix(&self, rule: &str, findings: &[Finding], package: &YamlDoc) -> FixOutcome {
         if !self.has_fix_hook {
             return FixOutcome {
                 status: FixStatus::NotApplicable,
@@ -228,19 +231,13 @@ impl LintRunner {
         }
     }
 
-    fn fix_call(
-        &self,
-        rule: &str,
-        findings: &[Finding],
-        package: &serde_json::Value,
-    ) -> Result<Dynamic, String> {
-        let package = rhai::serde::to_dynamic(package).map_err(|e| e.to_string())?;
+    fn fix_call(&self, rule: &str, findings: &[Finding], package: &YamlDoc) -> Result<Dynamic, String> {
         let args = vec![
             Dynamic::from(rule.to_string()),
             findings_to_dynamic(findings),
-            package,
+            Dynamic::from(package.clone()),
         ];
-        self.invoke(FIX_HOOK, args, operations_budget(0))
+        self.invoke(FIX_HOOK, args, operations_budget(0), true)
     }
 
     fn fix_outcome(value: &Dynamic) -> FixOutcome {
@@ -260,16 +257,13 @@ impl LintRunner {
         let status = map.get("status").and_then(|s| s.clone().into_string().ok());
         match status.as_deref() {
             Some("applied") => {
-                let Some(package) = map.get("pkg").and_then(|p| p.clone().try_cast::<Map>()) else {
-                    return FixOutcome::failed("`applied` exige un `pkg` de type carte".to_string());
+                let Some(package) = map.get("pkg").and_then(|p| p.clone().try_cast::<YamlDoc>()) else {
+                    return FixOutcome::failed("`applied` exige un `pkg` de type YamlDoc".to_string());
                 };
-                match rhai::serde::from_dynamic::<serde_json::Value>(&Dynamic::from(package)) {
-                    Ok(package) => FixOutcome {
-                        status: FixStatus::Applied,
-                        package: Some(package),
-                        message,
-                    },
-                    Err(e) => FixOutcome::failed(e.to_string()),
+                FixOutcome {
+                    status: FixStatus::Applied,
+                    package: Some(package),
+                    message,
                 }
             }
             Some("not_applicable") => FixOutcome {
@@ -294,7 +288,7 @@ impl LintRunner {
         let mut args = Vec::with_capacity(2);
         args.extend(objs);
         args.push(ctx);
-        self.invoke(name, args, max_operations)
+        self.invoke(name, args, max_operations, false)
     }
 
     /// Évalue le script dans un moteur neuf puis appelle `name` avec `args`.
@@ -302,6 +296,19 @@ impl LintRunner {
         let engine = build_engine(&self.lint_dir, &self.script_dir, &self.schemas, max_operations);
         // `call_fn` évalue déjà les instructions de premier niveau (`eval_ast` vrai par défaut) :
         // une évaluation préalable du script les exécuterait une seconde fois.
+    /// Évalue le script dans un moteur neuf puis appelle `name` avec `args`. `yaml_ordered`
+    /// ajoute la surface `YamlDoc` (`fix` en a besoin, `lint` non).
+    fn invoke(
+        &self,
+        name: &str,
+        args: Vec<Dynamic>,
+        max_operations: u64,
+        yaml_ordered: bool,
+    ) -> Result<Dynamic, String> {
+        let mut engine = build_engine(&self.lint_dir, &self.script_dir, &self.schemas, max_operations);
+        if yaml_ordered {
+            yaml_ordered_rhai_register(&mut engine);
+        }
         let mut scope = Scope::new();
         engine
             .call_fn::<Dynamic>(&mut scope, &self.ast, name, args)
@@ -329,7 +336,7 @@ mod tests {
     use super::*;
     use crate::testing::lint::finding::{ObjectRef, Severity};
     use serde_json::json;
-    use std::{fs, path::PathBuf};
+    use std::{fs, path::PathBuf, str::FromStr};
 
     /// Répertoires de test : `lint/` (lint.rhai) et `scripts/lib/` (modules de la bibliothèque).
     struct Fixture {
@@ -670,16 +677,23 @@ mod tests {
                 }
             }
             let changed = false;
-            if "resources" in pkg {
-                for name in pkg.resources.keys() {
-                    if "limits" in pkg.resources[name] && "cpu" in pkg.resources[name].limits {
-                        pkg.resources[name].limits.remove("cpu");
-                        changed = true;
-                        if pkg.resources[name].limits.len() == 0 {
-                            pkg.resources[name].remove("limits");
+            if pkg.keys().contains("resources") {
+                let resources = pkg["resources"];
+                for name in resources.keys() {
+                    let component = resources[name];
+                    if component.keys().contains("limits") && component["limits"].keys().contains("cpu") {
+                        let limits = component["limits"];
+                        limits.remove("cpu");
+                        if limits.keys().len() == 0 {
+                            component.remove("limits");
+                        } else {
+                            component["limits"] = limits;
                         }
+                        resources[name] = component;
+                        changed = true;
                     }
                 }
+                pkg["resources"] = resources;
             }
             if changed {
                 #{ status: "applied", pkg: pkg }
@@ -689,8 +703,16 @@ mod tests {
         }
     "#;
 
-    fn package() -> serde_json::Value {
-        json!({"resources": {"app": {"limits": {"cpu": "500m", "memory": "256Mi"}}}})
+    /// Le `package.yaml` de test : `z` précède `a` au premier niveau, et `zapp` précède `app`
+    /// dans `resources` ; seul `app` porte un `cpu`.
+    const PACKAGE_YAML: &str = "z: eu\na: 1\nresources:\n  zapp:\n    limits:\n      memory: 256Mi\n  app:\n    limits:\n      memory: 512Mi\n      cpu: 500m\n";
+
+    fn package() -> YamlDoc {
+        YamlDoc::from_str(PACKAGE_YAML).expect("package.yaml de test")
+    }
+
+    fn encoded(doc: &YamlDoc) -> String {
+        doc.to_yaml_string().expect("encodage du package")
     }
 
     fn finding(rule: &str, suppressed: bool) -> Finding {
@@ -718,22 +740,37 @@ mod tests {
             r#"
             fn lint(objs, ctx) { [] }
             fn fix(rule, findings, pkg) {
-                pkg.resources.app.limits.remove("cpu");
+                let resources = pkg["resources"];
+                let app = resources["app"];
+                let limits = app["limits"];
+                limits.remove("cpu");
+                app["limits"] = limits;
+                resources["app"] = app;
+                pkg["resources"] = resources;
                 #{ status: "applied", pkg: pkg }
             }
             "#,
         );
         let input = package();
-        let before = input.clone();
+        let before = encoded(&input);
         let outcome = runner.run_fix("no-cpu-limits", &[finding("no-cpu-limits", false)], &input);
         assert_eq!(outcome.status, FixStatus::Applied, "{}", outcome.message);
         let rendered = outcome.package.expect("package rendu");
-        assert!(rendered.pointer("/resources/app/limits/cpu").is_none());
+        // Le texte attendu est lu dans l'ordre d'écriture : `z` avant `a`, `zapp` avant `app`.
+        let expected = YamlDoc::from_str(
+            "z: eu\na: 1\nresources:\n  zapp:\n    limits:\n      memory: 256Mi\n  app:\n    limits:\n      memory: 512Mi\n",
+        )
+        .expect("rendu attendu");
         assert_eq!(
-            rendered.pointer("/resources/app/limits/memory"),
-            Some(&json!("256Mi"))
+            encoded(&rendered),
+            encoded(&expected),
+            "cpu retiré, ordre conservé"
         );
-        assert_eq!(input, before, "le package d'entrée ne doit pas être modifié");
+        assert_eq!(
+            encoded(&input),
+            before,
+            "le package d'entrée ne doit pas être modifié"
+        );
     }
 
     #[test]
@@ -785,6 +822,10 @@ mod tests {
                 "status",
             ),
             (r#"fn fix(rule, findings, pkg) { #{ status: "applied" } }"#, "pkg"),
+            (
+                r#"fn fix(rule, findings, pkg) { #{ status: "applied", pkg: #{ a: 1 } } }"#,
+                "YamlDoc",
+            ),
         ];
         for (script, expected) in cases {
             let (_fx, runner) = runner(&format!("fn lint(objs, ctx) {{ [] }}\n{script}"));
@@ -820,18 +861,19 @@ mod tests {
     #[test]
     fn the_cpu_limit_fix_is_idempotent() {
         let (_fx, runner) = runner(NO_CPU_LIMITS_FIX);
-        let input = json!({"resources": {
-            "app": {"limits": {"cpu": "500m", "memory": "256Mi"}},
-            "sidecar": {"limits": {"cpu": "100m"}},
-        }});
+        let input = YamlDoc::from_str(
+            "resources:\n  app:\n    limits:\n      cpu: 500m\n      memory: 256Mi\n  sidecar:\n    limits:\n      cpu: 100m\n",
+        )
+        .expect("package de test");
         let first = runner.run_fix("no-cpu-limits", &[finding("no-cpu-limits", false)], &input);
         assert_eq!(first.status, FixStatus::Applied, "{}", first.message);
         let rendered = first.package.expect("package rendu");
-        assert!(rendered.pointer("/resources/app/limits/cpu").is_none());
-        assert!(rendered.pointer("/resources/sidecar/limits").is_none());
-        assert_eq!(
-            rendered.pointer("/resources/app/limits/memory"),
-            Some(&json!("256Mi"))
+        let text = encoded(&rendered);
+        assert!(!text.contains("cpu"), "plus aucune limits.cpu : {text}");
+        assert!(text.contains("memory: 256Mi"), "memory reste en place : {text}");
+        assert!(
+            !text.contains("sidecar:\n    limits"),
+            "le bloc limits vide disparaît : {text}"
         );
 
         let second = runner.run_fix("no-cpu-limits", &[finding("no-cpu-limits", false)], &rendered);
