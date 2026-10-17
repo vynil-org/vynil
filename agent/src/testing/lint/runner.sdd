@@ -34,6 +34,9 @@ Exposes:
     -> FixOutcome`.
   @FixOutcome — `{ status: FixStatus, package: Option<YamlDoc>, message: String }`.
   @FixStatus — `Applied`, `NotApplicable` ou `Failed`.
+  @LintRunner::run_hint — `(&self, rule: &str, findings: &[Finding], package: &YamlDoc)
+    -> HintOutcome`.
+  @HintOutcome — `Text(String)`, `None` ou `Failed(String)`.
   @Sections — défini par ./sections.sdd, importé ici.
 
 Accepts:
@@ -93,6 +96,14 @@ Must:
     mêmes bornes mémoire, budget d'opérations réduit à la base. Le script est pur : il ne
     reçoit ni n'écrit aucun fichier, il rend le nouveau `package.yaml` et c'est l'appelant qui
     l'écrit.
+  Appeler `hint(rule, findings, pkg)` quand @run_hint s'exécute, avec les mêmes arguments, le
+    même moteur (surface @YamlDoc comprise), les mêmes bornes et le même budget que `fix`. Un
+    hint est le texte qui dit à un lecteur — un humain, un LLM — comment corriger ce que `fix`
+    n'a pas su corriger ; il se construit avec les données que `fix` reçoit.
+    Le runner traduit : une chaîne non vide en @HintOutcome::Text (telle quelle) ; une chaîne vide,
+    ou l'absence de la fonction `hint`, en @HintOutcome::None ; une erreur d'exécution, un
+    dépassement de limite ou un retour qui n'est pas une chaîne en @HintOutcome::Failed avec le
+    message. Un `hint` ne modifie rien : il ne retourne pas de document.
 
 Must not:
   Modifier les objets du test : le script reçoit une copie.
@@ -246,3 +257,22 @@ Scenario: a suppressed finding makes the cpu limit fix not applicable
   Then le statut est @FixStatus::NotApplicable et le message dit qu'un objet est supprimé :
     le fix global ne contredit pas la décision explicite d'un auteur
   Test @a-suppressed-finding-makes-the-cpu-limit-fix-not-applicable
+
+Scenario: a hint returns the text built from the findings
+  Given un `lint.rhai` dont `hint` retourne un texte qui cite la règle, le nombre de constats et
+    une clé du `pkg`
+  When @run_hint s'exécute avec deux constats
+  Then le résultat est @HintOutcome::Text avec ce texte, et le `package` d'entrée est inchangé
+  Test @a-hint-returns-the-text-built-from-the-findings
+
+Scenario: a missing or empty hint is none
+  Given un `lint.rhai` sans `hint`, puis un dont `hint` retourne `""`
+  When @run_hint s'exécute
+  Then les deux donnent @HintOutcome::None
+  Test @a-missing-or-empty-hint-is-none
+
+Scenario: a broken hint fails without a text
+  Given un `hint` qui lève, un qui retourne une carte, et un qui boucle sans fin
+  When @run_hint s'exécute
+  Then chacun est @HintOutcome::Failed et le message nomme la cause
+  Test @a-broken-hint-fails-without-a-text

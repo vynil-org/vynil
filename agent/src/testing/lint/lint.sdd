@@ -57,9 +57,10 @@ Must:
   Rendre toute suppression visible : un constat supprimé ne fait jamais échouer le test,
     mais figure dans l'inventaire des suppressions avec sa règle, son objet et sa raison.
   Garder le script pur : il reçoit des données, retourne des constats, et n'a accès ni au
-    cluster, ni au réseau, ni au système de fichiers, ni à une horloge. Le point d'entrée
-    optionnel `fix(rule, findings, package)` suit la même règle : il reçoit le `package.yaml`
-    décodé et rend le nouveau ; seul le moteur écrit un fichier (./runner.sdd).
+    cluster, ni au réseau, ni au système de fichiers, ni à une horloge. Les points d'entrée
+    optionnels `fix(rule, findings, pkg)` et `hint(rule, findings, pkg)` suivent la même règle :
+    ils reçoivent le `package.yaml` décodé ; `fix` rend le nouveau, `hint` rend un texte ; seul le
+    moteur écrit un fichier (./runner.sdd).
 
 Forbids:
   @common::context::init_k8s
