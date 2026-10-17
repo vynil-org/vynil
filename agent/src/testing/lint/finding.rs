@@ -191,6 +191,47 @@ pub fn to_suppressions(test: &str, findings: &[Finding]) -> Vec<Suppression> {
         .collect()
 }
 
+/// Inverse de [`parse_findings`] : remet des constats à un point d'entrée du script (`fix`).
+/// `path`, `source`, `reason` et `origin` n'apparaissent que lorsqu'ils sont présents.
+pub fn findings_to_dynamic(findings: &[Finding]) -> Dynamic {
+    Dynamic::from(findings.iter().map(finding_to_dynamic).collect::<Vec<Dynamic>>())
+}
+
+fn finding_to_dynamic(finding: &Finding) -> Dynamic {
+    let mut object = Map::new();
+    object.insert(
+        "apiVersion".into(),
+        Dynamic::from(finding.object.api_version.clone()),
+    );
+    object.insert("kind".into(), Dynamic::from(finding.object.kind.clone()));
+    object.insert("name".into(), Dynamic::from(finding.object.name.clone()));
+    if let Some(namespace) = &finding.object.namespace {
+        object.insert("namespace".into(), Dynamic::from(namespace.clone()));
+    }
+    let severity = match finding.severity {
+        Severity::Error => "error",
+        Severity::Warn => "warn",
+    };
+    let mut map = Map::new();
+    map.insert("rule".into(), Dynamic::from(finding.rule.clone()));
+    map.insert("severity".into(), Dynamic::from(severity.to_string()));
+    map.insert("object".into(), Dynamic::from(object));
+    map.insert("message".into(), Dynamic::from(finding.message.clone()));
+    map.insert("suppressed".into(), Dynamic::from(finding.suppressed));
+    let optional = [
+        ("path", &finding.path),
+        ("source", &finding.source),
+        ("reason", &finding.reason),
+        ("origin", &finding.origin),
+    ];
+    for (key, value) in optional {
+        if let Some(value) = value {
+            map.insert(key.into(), Dynamic::from(value.clone()));
+        }
+    }
+    Dynamic::from(map)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,5 +348,62 @@ mod tests {
         ));
         let rows = to_rows(&parsed.findings, &parsed.invalid);
         assert_eq!(rows[0].description.as_deref(), Some("ClusterRole admin"));
+    }
+
+    #[test]
+    fn findings_survive_a_round_trip_to_a_script() {
+        let findings = vec![
+            Finding {
+                rule: "no-limits".to_string(),
+                severity: Severity::Warn,
+                object: ObjectRef {
+                    api_version: "apps/v1".to_string(),
+                    kind: "Deployment".to_string(),
+                    namespace: Some("app".to_string()),
+                    name: "web".to_string(),
+                },
+                path: None,
+                message: "pas de limites".to_string(),
+                source: None,
+                suppressed: false,
+                reason: None,
+                origin: None,
+            },
+            Finding {
+                rule: "latest-tag".to_string(),
+                severity: Severity::Error,
+                object: ObjectRef {
+                    api_version: "apps/v1".to_string(),
+                    kind: "Deployment".to_string(),
+                    namespace: Some("app".to_string()),
+                    name: "api".to_string(),
+                },
+                path: Some("spec.template.spec.containers[0].image".to_string()),
+                message: "image uses the latest tag".to_string(),
+                source: Some("values.yaml".to_string()),
+                suppressed: true,
+                reason: Some("legacy image".to_string()),
+                origin: Some("distro".to_string()),
+            },
+            Finding {
+                rule: "no-wildcard".to_string(),
+                severity: Severity::Error,
+                object: ObjectRef {
+                    api_version: "rbac.authorization.k8s.io/v1".to_string(),
+                    kind: "ClusterRole".to_string(),
+                    namespace: None,
+                    name: "admin".to_string(),
+                },
+                path: None,
+                message: "wildcard verb".to_string(),
+                source: None,
+                suppressed: false,
+                reason: None,
+                origin: None,
+            },
+        ];
+        let parsed = parse_findings(&findings_to_dynamic(&findings));
+        assert_eq!(parsed.findings, findings);
+        assert!(parsed.invalid.is_empty(), "{:?}", parsed.invalid);
     }
 }

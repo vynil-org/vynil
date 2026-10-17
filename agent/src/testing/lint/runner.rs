@@ -2,7 +2,7 @@
 
 use crate::testing::{
     lint::{
-        finding::{parse_findings, to_rows, to_suppressions},
+        finding::{Finding, findings_to_dynamic, parse_findings, to_rows, to_suppressions},
         multimap, patterns,
         sections::Sections,
     },
@@ -10,13 +10,14 @@ use crate::testing::{
     schema::{registry::SchemaRegistry, rhai::schema_rhai_register},
     vyniltestset::VynilAssertResult,
 };
-use common::rhaihandler::{AST, Dynamic, Engine, FileModuleResolver, ModuleResolversCollection, Scope};
+use common::rhaihandler::{AST, Dynamic, Engine, FileModuleResolver, Map, ModuleResolversCollection, Scope};
 use rhai::packages::Package;
 use std::path::{Path, PathBuf};
 
 const ENTRY_FILE: &str = "lint.rhai";
 const TEST_HOOK: &str = "lint";
 const SUITE_HOOK: &str = "lint_suite";
+const FIX_HOOK: &str = "fix";
 const SUITE_TEST_NAME: &str = "(suite)";
 const EXECUTION_RULE: &str = "lint:execution";
 /// Budget d'opérations d'un appel : `OPERATIONS_BASE` plus `OPERATIONS_PER_OBJECT` par objet
@@ -36,14 +37,42 @@ const fn operations_budget(object_count: usize) -> u64 {
     OPERATIONS_BASE.saturating_add(OPERATIONS_PER_OBJECT.saturating_mul(object_count as u64))
 }
 
-/// Résultat d'un appel du script : lignes de verdict et inventaire de suppressions.
+/// Résultat d'un appel du script : lignes de verdict, inventaire de suppressions, et tous les
+/// constats valides dans l'ordre de retour (supprimés compris) pour `fix`.
 #[derive(Clone, Debug, Default)]
 pub struct LintOutcome {
     pub rows: Vec<VynilAssertResult>,
     pub suppressions: Vec<Suppression>,
+    pub findings: Vec<Finding>,
 }
 
-/// Charge le script de lint d'une distribution et l'appelle par test ou par suite.
+/// Issue d'un appel de `fix`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FixStatus {
+    Applied,
+    NotApplicable,
+    Failed,
+}
+
+/// Résultat de `fix` : le `package` corrigé seulement si `Applied`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FixOutcome {
+    pub status: FixStatus,
+    pub package: Option<serde_json::Value>,
+    pub message: String,
+}
+
+impl FixOutcome {
+    const fn failed(message: String) -> Self {
+        Self {
+            status: FixStatus::Failed,
+            package: None,
+            message,
+        }
+    }
+}
+
+/// Charge le script de lint d'une distribution et l'appelle par test, par suite ou par fix.
 #[derive(Clone, Debug)]
 pub struct LintRunner {
     lint_dir: PathBuf,
@@ -52,6 +81,7 @@ pub struct LintRunner {
     ast: AST,
     has_test_hook: bool,
     has_suite_hook: bool,
+    has_fix_hook: bool,
 }
 
 /// Moteur neuf : bibliothèques de données de base, sans horloge, système de fichiers,
@@ -98,6 +128,7 @@ fn execution_outcome(message: String) -> LintOutcome {
             message,
         }],
         suppressions: Vec::new(),
+        findings: Vec::new(),
     }
 }
 
@@ -120,6 +151,7 @@ impl LintRunner {
             .map_err(|e| common::Error::Other(format!("{}: {e}", path.display())))?;
         let has_test_hook = ast.iter_functions().any(|f| f.name == TEST_HOOK);
         let has_suite_hook = ast.iter_functions().any(|f| f.name == SUITE_HOOK);
+        let has_fix_hook = ast.iter_functions().any(|f| f.name == FIX_HOOK);
         if !has_test_hook && !has_suite_hook {
             return Err(common::Error::Other(format!(
                 "{}: ni `{TEST_HOOK}` ni `{SUITE_HOOK}` n'est défini",
@@ -133,6 +165,7 @@ impl LintRunner {
             ast,
             has_test_hook,
             has_suite_hook,
+            has_fix_hook,
         })
     }
 
@@ -172,8 +205,78 @@ impl LintRunner {
         }
     }
 
-    /// Évalue le script dans un moteur neuf puis appelle `name` avec `objs` (si présent)
-    /// puis `ctx`.
+    /// Appelle `fix(rule, findings, package)` ; `findings` porte aussi les constats supprimés.
+    /// Le `package` reçu n'est jamais modifié : le script en reçoit une copie.
+    #[must_use]
+    pub fn run_fix(&self, rule: &str, findings: &[Finding], package: &serde_json::Value) -> FixOutcome {
+        if !self.has_fix_hook {
+            return FixOutcome {
+                status: FixStatus::NotApplicable,
+                package: None,
+                message: String::new(),
+            };
+        }
+        match self.fix_call(rule, findings, package) {
+            Ok(value) => Self::fix_outcome(&value),
+            Err(message) => FixOutcome::failed(message),
+        }
+    }
+
+    fn fix_call(
+        &self,
+        rule: &str,
+        findings: &[Finding],
+        package: &serde_json::Value,
+    ) -> Result<Dynamic, String> {
+        let package = rhai::serde::to_dynamic(package).map_err(|e| e.to_string())?;
+        let args = vec![
+            Dynamic::from(rule.to_string()),
+            findings_to_dynamic(findings),
+            package,
+        ];
+        self.invoke(FIX_HOOK, args, operations_budget(0))
+    }
+
+    fn fix_outcome(value: &Dynamic) -> FixOutcome {
+        let Some(map) = value.clone().try_cast::<Map>() else {
+            return FixOutcome::failed(format!(
+                "le retour de `{FIX_HOOK}` doit être une carte, reçu {}",
+                value.type_name()
+            ));
+        };
+        let message = match map.get("message") {
+            None => String::new(),
+            Some(message) => match message.clone().into_string() {
+                Ok(message) => message,
+                Err(_) => return FixOutcome::failed("`message` doit être une chaîne".to_string()),
+            },
+        };
+        let status = map.get("status").and_then(|s| s.clone().into_string().ok());
+        match status.as_deref() {
+            Some("applied") => {
+                let Some(package) = map.get("pkg").and_then(|p| p.clone().try_cast::<Map>()) else {
+                    return FixOutcome::failed("`applied` exige un `pkg` de type carte".to_string());
+                };
+                match rhai::serde::from_dynamic::<serde_json::Value>(&Dynamic::from(package)) {
+                    Ok(package) => FixOutcome {
+                        status: FixStatus::Applied,
+                        package: Some(package),
+                        message,
+                    },
+                    Err(e) => FixOutcome::failed(e.to_string()),
+                }
+            }
+            Some("not_applicable") => FixOutcome {
+                status: FixStatus::NotApplicable,
+                package: None,
+                message,
+            },
+            Some(other) => FixOutcome::failed(format!("`status` inconnu : `{other}`")),
+            None => FixOutcome::failed("`status` absent ou non textuel".to_string()),
+        }
+    }
+
+    /// Appelle `name` avec `objs` (si présent) puis `ctx`.
     fn call(
         &self,
         name: &str,
@@ -185,6 +288,11 @@ impl LintRunner {
         let mut args = Vec::with_capacity(2);
         args.extend(objs);
         args.push(ctx);
+        self.invoke(name, args, max_operations)
+    }
+
+    /// Évalue le script dans un moteur neuf puis appelle `name` avec `args`.
+    fn invoke(&self, name: &str, args: Vec<Dynamic>, max_operations: u64) -> Result<Dynamic, String> {
         let engine = build_engine(&self.lint_dir, &self.script_dir, &self.schemas, max_operations);
         let mut scope = Scope::new();
         engine
@@ -206,6 +314,7 @@ impl LintRunner {
         LintOutcome {
             rows: to_rows(&parsed.findings, &parsed.invalid),
             suppressions: to_suppressions(test_name, &parsed.findings),
+            findings: parsed.findings,
         }
     }
 }
@@ -213,6 +322,7 @@ impl LintRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::lint::finding::{ObjectRef, Severity};
     use serde_json::json;
     use std::{fs, path::PathBuf};
 
@@ -459,5 +569,226 @@ mod tests {
         assert_eq!(outcome.rows.len(), 1);
         assert_eq!(outcome.rows[0].name, "lint:execution");
         assert!(!outcome.rows[0].passed);
+    }
+
+    #[test]
+    fn outcome_carries_every_finding_suppressed_included() {
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) { [
+                #{
+                    rule: "latest-tag", severity: "error",
+                    object: #{ apiVersion: "apps/v1", kind: "Deployment", name: "web" },
+                    message: "image uses the latest tag"
+                },
+                #{
+                    rule: "latest-tag", severity: "error",
+                    object: #{ apiVersion: "apps/v1", kind: "Deployment", name: "api" },
+                    message: "image uses the latest tag", suppressed: true, reason: "legacy image"
+                }
+            ] }
+            "#,
+        );
+        let outcome = runner.run_test(
+            &test_ctx("default"),
+            &plain(vec![deployment("web"), deployment("api")]),
+        );
+        assert_eq!(outcome.findings.len(), 2);
+        assert_eq!(outcome.findings[0].object.name, "web");
+        assert!(!outcome.findings[0].suppressed);
+        assert_eq!(outcome.findings[1].object.name, "api");
+        assert!(outcome.findings[1].suppressed);
+        assert_eq!(outcome.rows.len(), 1);
+        assert_eq!(outcome.suppressions.len(), 1);
+    }
+
+    /// Règle maison `no-cpu-limits` : `lint` ne constate rien (ces tests n'exercent que `fix`) ;
+    /// `fix` retire toutes les `limits.cpu` du package, et le bloc `limits` s'il devient vide.
+    /// Un constat supprimé rend le fix global non applicable.
+    const NO_CPU_LIMITS_FIX: &str = r#"
+        fn lint(objs, ctx) { [] }
+        fn fix(rule, findings, pkg) {
+            for f in findings {
+                if f.suppressed {
+                    return #{ status: "not_applicable", message: "un objet est supprimé : " + f.object.name };
+                }
+            }
+            let changed = false;
+            if "resources" in pkg {
+                for name in pkg.resources.keys() {
+                    if "limits" in pkg.resources[name] && "cpu" in pkg.resources[name].limits {
+                        pkg.resources[name].limits.remove("cpu");
+                        changed = true;
+                        if pkg.resources[name].limits.len() == 0 {
+                            pkg.resources[name].remove("limits");
+                        }
+                    }
+                }
+            }
+            if changed {
+                #{ status: "applied", pkg: pkg }
+            } else {
+                #{ status: "not_applicable", message: "aucune limits.cpu à retirer" }
+            }
+        }
+    "#;
+
+    fn package() -> serde_json::Value {
+        json!({"resources": {"app": {"limits": {"cpu": "500m", "memory": "256Mi"}}}})
+    }
+
+    fn finding(rule: &str, suppressed: bool) -> Finding {
+        Finding {
+            rule: rule.to_string(),
+            severity: Severity::Error,
+            object: ObjectRef {
+                api_version: "apps/v1".to_string(),
+                kind: "Deployment".to_string(),
+                namespace: Some("app".to_string()),
+                name: "web".to_string(),
+            },
+            path: Some("spec.template.spec.containers[0].resources.limits.cpu".to_string()),
+            message: "limits.cpu défini".to_string(),
+            source: None,
+            suppressed,
+            reason: suppressed.then(|| "choix explicite".to_string()),
+            origin: None,
+        }
+    }
+
+    #[test]
+    fn a_fix_returns_the_modified_package() {
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) { [] }
+            fn fix(rule, findings, pkg) {
+                pkg.resources.app.limits.remove("cpu");
+                #{ status: "applied", pkg: pkg }
+            }
+            "#,
+        );
+        let input = package();
+        let before = input.clone();
+        let outcome = runner.run_fix("no-cpu-limits", &[finding("no-cpu-limits", false)], &input);
+        assert_eq!(outcome.status, FixStatus::Applied, "{}", outcome.message);
+        let rendered = outcome.package.expect("package rendu");
+        assert!(rendered.pointer("/resources/app/limits/cpu").is_none());
+        assert_eq!(
+            rendered.pointer("/resources/app/limits/memory"),
+            Some(&json!("256Mi"))
+        );
+        assert_eq!(input, before, "le package d'entrée ne doit pas être modifié");
+    }
+
+    #[test]
+    fn a_distribution_without_fix_is_not_applicable() {
+        let (_fx, runner) = runner(r"fn lint(objs, ctx) { [] }");
+        let outcome = runner.run_fix("no-cpu-limits", &[], &package());
+        assert_eq!(outcome.status, FixStatus::NotApplicable);
+        assert!(outcome.package.is_none());
+    }
+
+    #[test]
+    fn a_fix_declares_itself_not_applicable() {
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) { [] }
+            fn fix(rule, findings, pkg) { #{ status: "not_applicable", message: "rien à retirer" } }
+            "#,
+        );
+        let outcome = runner.run_fix("no-cpu-limits", &[], &package());
+        assert_eq!(outcome.status, FixStatus::NotApplicable);
+        assert_eq!(outcome.message, "rien à retirer");
+        assert!(outcome.package.is_none());
+    }
+
+    #[test]
+    fn a_throwing_fix_fails_without_changing_anything() {
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) { [] }
+            fn fix(rule, findings, pkg) { throw "boom from the fix"; }
+            "#,
+        );
+        let outcome = runner.run_fix("no-cpu-limits", &[], &package());
+        assert_eq!(outcome.status, FixStatus::Failed);
+        assert!(
+            outcome.message.contains("boom from the fix"),
+            "{}",
+            outcome.message
+        );
+        assert!(outcome.package.is_none());
+    }
+
+    #[test]
+    fn a_malformed_fix_return_fails() {
+        let cases = [
+            (r"fn fix(rule, findings, pkg) { [] }", "carte"),
+            (
+                r#"fn fix(rule, findings, pkg) { #{ status: "maybe" } }"#,
+                "status",
+            ),
+            (r#"fn fix(rule, findings, pkg) { #{ status: "applied" } }"#, "pkg"),
+        ];
+        for (script, expected) in cases {
+            let (_fx, runner) = runner(&format!("fn lint(objs, ctx) {{ [] }}\n{script}"));
+            let outcome = runner.run_fix("no-cpu-limits", &[], &package());
+            assert_eq!(outcome.status, FixStatus::Failed, "script : {script}");
+            assert!(outcome.package.is_none(), "script : {script}");
+            assert!(
+                outcome.message.contains(expected),
+                "script : {script} : {}",
+                outcome.message
+            );
+        }
+    }
+
+    #[test]
+    fn a_fix_cannot_touch_the_cluster_or_loop_forever() {
+        let (_fx, cluster) = runner(
+            r#"
+            fn lint(objs, ctx) { [] }
+            fn fix(rule, findings, pkg) { k8s_resource("Deployment", "web", "app"); #{ status: "applied", pkg: pkg } }
+            "#,
+        );
+        let outcome = cluster.run_fix("no-cpu-limits", &[], &package());
+        assert_eq!(outcome.status, FixStatus::Failed);
+        assert!(outcome.message.contains("not found"), "{}", outcome.message);
+
+        let (_fx, looping) = runner(r"fn lint(objs, ctx) { [] } fn fix(rule, findings, pkg) { loop {} }");
+        let outcome = looping.run_fix("no-cpu-limits", &[], &package());
+        assert_eq!(outcome.status, FixStatus::Failed);
+        assert!(outcome.package.is_none());
+    }
+
+    #[test]
+    fn the_cpu_limit_fix_is_idempotent() {
+        let (_fx, runner) = runner(NO_CPU_LIMITS_FIX);
+        let input = json!({"resources": {
+            "app": {"limits": {"cpu": "500m", "memory": "256Mi"}},
+            "sidecar": {"limits": {"cpu": "100m"}},
+        }});
+        let first = runner.run_fix("no-cpu-limits", &[finding("no-cpu-limits", false)], &input);
+        assert_eq!(first.status, FixStatus::Applied, "{}", first.message);
+        let rendered = first.package.expect("package rendu");
+        assert!(rendered.pointer("/resources/app/limits/cpu").is_none());
+        assert!(rendered.pointer("/resources/sidecar/limits").is_none());
+        assert_eq!(
+            rendered.pointer("/resources/app/limits/memory"),
+            Some(&json!("256Mi"))
+        );
+
+        let second = runner.run_fix("no-cpu-limits", &[finding("no-cpu-limits", false)], &rendered);
+        assert_eq!(second.status, FixStatus::NotApplicable, "{}", second.message);
+        assert!(second.package.is_none());
+    }
+
+    #[test]
+    fn a_suppressed_finding_makes_the_cpu_limit_fix_not_applicable() {
+        let (_fx, runner) = runner(NO_CPU_LIMITS_FIX);
+        let outcome = runner.run_fix("no-cpu-limits", &[finding("no-cpu-limits", true)], &package());
+        assert_eq!(outcome.status, FixStatus::NotApplicable);
+        assert!(outcome.message.contains("supprimé"), "{}", outcome.message);
+        assert!(outcome.package.is_none());
     }
 }
