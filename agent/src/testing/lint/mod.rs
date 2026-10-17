@@ -5,3 +5,4 @@ pub mod multimap;
 pub mod patterns;
 pub mod runner;
 pub mod sections;
+pub mod templates;
