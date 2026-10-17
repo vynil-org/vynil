@@ -208,6 +208,25 @@ fn instance_status(rhai: &mut Script, fun_name: &str) -> Result<Dynamic, String>
         .map_err(|e| e.to_string())
 }
 
+/// Voie lint de test : rend les lignes et les suppressions du script `lint` sur les objets
+/// créés. Sans le hook `lint` (distribution qui ne définit que `lint_suite`), rien n'est lu ni
+/// appelé : `read_status` n'est pas invoquée.
+fn lint_test_lane(
+    lint: &LintRunner,
+    created: &[Dynamic],
+    ctx: &serde_json::Value,
+    read_status: impl FnOnce() -> Result<Dynamic, String>,
+) -> (Vec<VynilAssertResult>, Vec<Suppression>) {
+    if !lint.has_test_hook() {
+        return (Vec::new(), Vec::new());
+    }
+    let (sections, unreadable) = lint_sections(created, read_status());
+    let outcome = lint.run_test(ctx, &sections);
+    let mut rows: Vec<VynilAssertResult> = unreadable.into_iter().collect();
+    rows.extend(outcome.rows);
+    (rows, outcome.suppressions)
+}
+
 /// Sections des objets créés d'après le `status` lu. Un statut illisible laisse toutes les
 /// sections vides et rend en plus une ligne `lint:sections` en échec : une règle « pour chaque
 /// objet de `objs.scalables` » ne passerait sinon vert sans rien avoir vérifié. Un statut lu
@@ -691,11 +710,10 @@ impl TestHandler {
                 .and_then(|loaded| loaded.testSets.clone())
                 .unwrap_or_default();
             let ctx = build_test_context(&self.package, &test, &refs);
-            let (sections, unreadable) = lint_sections(&created, instance_status(&mut rhai, fun_name));
-            asserts.extend(unreadable);
-            let outcome = lint.run_test(&ctx, &sections);
-            asserts.extend(outcome.rows);
-            suppressions.extend(outcome.suppressions);
+            let (rows, lane_suppressions) =
+                lint_test_lane(lint, &created, &ctx, || instance_status(&mut rhai, fun_name));
+            asserts.extend(rows);
+            suppressions.extend(lane_suppressions);
         }
 
         Ok(asserts)
@@ -780,8 +798,8 @@ impl TestHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::Value;
-    use std::fs;
+    use serde_json::{Value, json};
+    use std::{cell::Cell, fs};
 
     const PACKAGE_YAML: &str = "apiVersion: vinyl.solidite.fr/v1beta1\nkind: Package\nmetadata:\n  name: demo\n  category: core\n  description: demo package\n  type: tenant\n  features: []\nrequirements: []\n";
 
@@ -1092,5 +1110,34 @@ mod tests {
         assert_eq!(sections.unsectioned.len(), 1);
         let (_, none) = lint_sections(&created, Ok(Dynamic::from(rhai::Map::new())));
         assert!(none.is_none(), "un statut lu sans section n'est pas une erreur");
+    }
+
+    #[test]
+    fn a_suite_only_distribution_reads_no_status() {
+        let ctx = json!({"package": {"name": "demo"}, "test": {"name": "default"}});
+        let fx = fixture(&[], INSTALL_ONE_CONFIGMAP, Some("fn lint_suite(ctx) { [] }\n"));
+        let h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        let lint = h.lint.as_ref().expect("voie lint");
+        let read = Cell::new(false);
+        let (rows, suppressions) = lint_test_lane(lint, &[], &ctx, || {
+            read.set(true);
+            Err("statut illisible".to_string())
+        });
+        assert!(!read.get(), "le statut ne doit pas être lu sans hook `lint`");
+        assert!(rows.is_empty(), "{rows:?}");
+        assert!(suppressions.is_empty());
+
+        let fx = fixture(&[], INSTALL_ONE_CONFIGMAP, Some("fn lint(objs, ctx) { [] }\n"));
+        let h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        let lint = h.lint.as_ref().expect("voie lint");
+        let read = Cell::new(false);
+        let (rows, _) = lint_test_lane(lint, &[], &ctx, || {
+            read.set(true);
+            Err("statut illisible".to_string())
+        });
+        assert!(read.get(), "le statut doit être lu avec un hook `lint`");
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0].name, "lint:sections");
+        assert!(!rows[0].passed);
     }
 }

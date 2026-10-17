@@ -132,6 +132,12 @@ impl LintRunner {
         })
     }
 
+    /// Vrai si la distribution définit `lint` (voie de test).
+    #[must_use]
+    pub const fn has_test_hook(&self) -> bool {
+        self.has_test_hook
+    }
+
     /// Appelle `lint(objs, ctx)` ; `ctx.test.name` nomme les suppressions.
     /// Vrai si la distribution définit `lint_suite` (le hook de suite n'a alors qu'un
     /// enregistrement de suite à produire, même sans constat).
@@ -182,10 +188,9 @@ impl LintRunner {
         args.extend(objs);
         args.push(ctx);
         let engine = build_engine(&self.lint_dir, &self.script_dir, &self.schemas, max_operations);
+        // `call_fn` évalue déjà les instructions de premier niveau (`eval_ast` vrai par défaut) :
+        // une évaluation préalable du script les exécuterait une seconde fois.
         let mut scope = Scope::new();
-        engine
-            .run_ast_with_scope(&mut scope, &self.ast)
-            .map_err(|e| e.to_string())?;
         engine
             .call_fn::<Dynamic>(&mut scope, &self.ast, name, args)
             .map_err(|e| e.to_string())
@@ -418,6 +423,38 @@ mod tests {
         assert_eq!(outcome.rows.len(), 1);
         assert_eq!(outcome.rows[0].name, "lint:suite-size");
         assert_eq!(outcome.rows[0].description.as_deref(), Some("Suite all"));
+    }
+
+    /// Itérations de la boucle de premier niveau : environ 3 opérations chacune, soit près de
+    /// 60 % du budget d'un appel sans objet (10 000 000).
+    const TOP_LEVEL_ITERATIONS: u64 = 2_000_000;
+
+    /// Garde de non-régression, pas une preuve d'évaluation unique : le nombre d'évaluations du
+    /// premier niveau n'est pas observable depuis le script (les compteurs d'opérations étaient
+    /// distincts, le budget par appel n'était pas consommé deux fois). Ce test vérifie que la
+    /// boucle de premier niveau tient dans le budget et que la liaison `seuil` reste visible au
+    /// premier niveau. Une fonction Rhai ne voit pas les liaisons du premier niveau, `lint`
+    /// compris : ce n'est pas testable depuis `lint`.
+    #[test]
+    fn top_level_statements_run_once_per_call() {
+        let script = format!(
+            "let seuil = 7;\nlet spent = 0;\nfor i in 0..{TOP_LEVEL_ITERATIONS} {{ spent += 1; }}\n\
+             if seuil != 7 {{ throw \"liaison de premier niveau invisible\"; }}\n\
+             fn lint(objs, ctx) {{ [] }}\n"
+        );
+        let (_fx, runner) = runner(&script);
+        let outcome = runner.run_test(&test_ctx("default"), &Sections::default());
+        assert!(outcome.rows.is_empty(), "{:?}", outcome.rows);
+    }
+
+    #[test]
+    fn the_test_hook_is_exposed() {
+        let (_fx, suite_only) = runner("fn lint_suite(ctx) { [] }");
+        assert!(!suite_only.has_test_hook());
+        assert!(suite_only.has_suite_hook());
+        let (_fx2, test_only) = runner("fn lint(objs, ctx) { [] }");
+        assert!(test_only.has_test_hook());
+        assert!(!test_only.has_suite_hook());
     }
 
     #[test]

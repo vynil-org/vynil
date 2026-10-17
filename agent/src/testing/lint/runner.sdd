@@ -43,8 +43,10 @@ Must:
     posé dans @lint_dir masque donc le module standard du même nom : la distribution peut
     surcharger un fichier fourni, comme un paquet le fait.
   Évaluer les instructions de premier niveau du script UNE fois par appel, pas deux : elles
-    s'exécutent dans l'appel du point d'entrée, sans exécution à blanc préalable qui
-    consommerait deux fois le budget d'opérations.
+    s'exécutent dans l'appel du point d'entrée, sans exécution à blanc préalable. Le compteur
+    d'opérations est propre à chaque évaluation, donc la double exécution ne consommait pas deux
+    fois le budget : elle coûtait seulement du temps de calcul pour rien, et un premier niveau
+    coûteux se payait deux fois.
   Évaluer chaque appel dans un moteur neuf, sans état partagé entre tests, avec les seules
     fonctions de manipulation de données du moteur de base et les fonctions `schema_*` :
     aucune fonction k8s, http, s3, shell ni fichier n'y est enregistrée, si bien qu'un script
@@ -142,10 +144,16 @@ Scenario: the script sees every section
   Test @the-script-sees-every-section
 
 Scenario: top level statements run once per call
-  Given un `lint.rhai` dont le premier niveau fait une boucle qui coûte plus de la moitié du
-    budget d'opérations d'un appel sans objet, et dont `lint` retourne `[]`
+  Given un `lint.rhai` dont le premier niveau pose `let seuil = 7;`, fait une boucle qui coûte
+    plus de la moitié du budget d'opérations d'un appel sans objet, puis lève si `seuil` ne vaut
+    plus 7, et dont `lint` retourne `[]`
   When @run_test s'exécute
-  Then aucune ligne `lint:execution` n'est produite : le premier niveau n'a été évalué qu'une fois
+  Then aucune ligne `lint:execution` n'est produite : le premier niveau s'évalue sans erreur et
+    sans budget cumulé
+  And les liaisons de premier niveau ne sont pas visibles des fonctions du script (sémantique de
+    Rhai : une fonction ne capture pas la portée globale) ; seuls les `import` y ont leur usage
+  And le nombre d'évaluations du premier niveau n'est pas observable depuis le script : ce test
+    est une garde de non-régression, l'évaluation unique s'établit par la lecture du code
   Test @top-level-statements-run-once-per-call
 
 Scenario: the test hook is exposed

@@ -454,8 +454,12 @@ Scenario: an unreadable status fails a lint sections row
   Test @an-unreadable-status-fails-a-lint-sections-row
 
 Scenario: a suite only distribution reads no status
-  Given un handler configuré par @with_lint sur un script qui ne définit que `lint_suite`, et un
-    test dont la lecture du `status` de l'instance échoue
-  When le test s'exécute
-  Then aucune ligne `lint:sections` n'est ajoutée et les asserts du test sont inchangés
+  Given la fonction de la voie lint de test, appelée avec une lecture du `status` injectée sous
+    la forme d'une fermeture qui enregistre son appel et échoue, sur un @LintRunner dont le
+    script ne définit que `lint_suite`
+  When la voie lint s'exécute
+  Then la lecture du `status` n'est pas appelée, aucune ligne `lint:sections` n'est produite et
+    le script n'est pas appelé
+  And avec un script qui définit `lint`, la même lecture est appelée et son échec produit la
+    ligne `lint:sections`
   Test @a-suite-only-distribution-reads-no-status

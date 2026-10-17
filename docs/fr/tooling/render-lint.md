@@ -24,6 +24,10 @@ agent package test -p ./my-package --all \
 | `--lint-dir <dir>` | `LINT_DIRECTORY` | Répertoire contenant `lint.rhai`, le point d'entrée du script de la distribution. |
 | `--schemas-dir <dir>` | `SCHEMAS_DIRECTORY` | Répertoire de JSON Schemas et de CRD utilisé par les fonctions `schema_*`. Exige `--lint-dir`. |
 
+Les deux variables suivent les autres variables de répertoire de l'agent (`PACKAGE_DIRECTORY`).
+`SCHEMAS_DIRECTORY` seule, par exemple exportée par un job de CI qui ne pose pas `--lint-dir`, est une erreur
+d'usage de clap à cause du `requires` : poser `LINT_DIRECTORY` avec elle.
+
 ## Le répertoire de lint
 
 `lint.rhai` est le point d'entrée fixe. Les modules qu'il importe sont résolus dans cet ordre :
@@ -141,15 +145,19 @@ ctx
     └── executed        noms des tests exécutés par cette invocation, par ordre croissant
 ```
 
+`lint_suite` s'exécute aussi avec `--test-name` : `executed` ne contient alors que ce test. Une règle qui exige
+quelque chose de *chaque* test doit comparer `executed` à `tests`, et ne pas supposer que toute la suite a
+tourné.
+
 ## Forme d'un constat
 
 Un constat est une carte renvoyée dans le tableau. Champs :
 
 | Champ | Type | Obligatoire | Sens |
 |---|---|---|---|
-| `rule` | chaîne non vide | oui | Nom de la règle. Conservé tel quel dans le verdict, `/` compris (`schema/invalid`). |
+| `rule` | chaîne non vide | oui | Nom de la règle. Conservé tel quel dans le verdict, `/` compris (`schema/invalid`). Les noms `execution`, `invalid-finding` et `sections` sont réservés : le moteur produit lui-même les lignes `lint:execution`, `lint:invalid-finding` et `lint:sections`, et un constat qui en utilise un est invalide. |
 | `severity` | `"error"` ou `"warn"` | oui | Effet sur le verdict (voir ci-dessous). |
-| `object` | carte `{apiVersion, kind, namespace?, name}` | oui | Objet concerné. `apiVersion`, `kind` et `name` sont des chaînes non vides ; `namespace` est optionnel. |
+| `object` | carte `{apiVersion, kind, namespace?, name}` | oui | Objet concerné. `apiVersion`, `kind` et `name` sont des chaînes non vides ; `namespace` est optionnel, et un `namespace` vide vaut absent. |
 | `message` | chaîne non vide | oui | Message affiché dans le verdict. |
 | `path` | chaîne | non | Chemin pointé dans l'objet, par exemple `spec.template.spec.containers[0].image`. |
 | `source` | chaîne | non | Information libre sur l'origine. |
