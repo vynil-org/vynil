@@ -63,7 +63,9 @@ Must:
     noms de ligne, les clés et les noms de règle ne se traduisent pas ; les specs, les commentaires
     et la documentation gardent leur langue.
   Garder le script pur : il reçoit des données, retourne des constats, et n'a accès ni au
-    cluster, ni au réseau, ni au système de fichiers, ni à une horloge.
+    cluster, ni au réseau, ni au système de fichiers, ni à une horloge. Le point d'entrée
+    optionnel `fix(rule, findings, package)` suit la même règle : il reçoit le `package.yaml`
+    décodé et rend le nouveau ; seul le moteur écrit un fichier (./runner.sdd).
 
 Forbids:
   @common::context::init_k8s
