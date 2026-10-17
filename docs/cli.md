@@ -45,7 +45,7 @@ agent package test  -p <package-dir>
                    [--format text|json]
                    [--junit-output-filename <file>]
                    [--template-output-filename <file>]   # for a single test only => yamllint, kubelinter, ... usage
-                   [--lint-dir <dir> [--schemas-dir <dir>] [--fix [--dry-run]]]
+                   [--lint-dir <dir> [--schemas-dir <dir>] [--fix [--dry-run] [--fix-rounds <n>]] [--verbose]]
 ```
 
 The `<package-dir>/tests` directory must exist (otherwise error `MissingTestDirectory`).
@@ -55,8 +55,10 @@ The `<package-dir>/tests` directory must exist (otherwise error `MissingTestDire
 | `--lint-dir <dir>` | `LINT_DIRECTORY` | Directory of the distribution's render lint script (`lint.rhai`). When given, the script runs at the end of each test and its findings are added to the verdict. Without it, no render lint runs. |
 | `--schemas-dir <dir>` | `SCHEMAS_DIRECTORY` | Directory of JSON Schemas and CRDs used by the lint script's `schema_*` functions. Requires `--lint-dir` (usage error otherwise): `SCHEMAS_DIRECTORY` alone in the environment is that same usage error. |
 | `--schemas-dir <dir>` | `SCHEMAS_DIRECTORY` | Directory of JSON Schemas and CRDs used by the lint script's `schema_*` functions. Requires `--lint-dir` (usage error otherwise). |
-| `--fix` | — | After the run, replays the lint findings into the distribution's `fix` function and rewrites `<package-dir>/package.yaml` when a fix applied. Requires `--lint-dir`. The verdict and the exit code are those of the run before the fix. |
+| `--fix` | — | After the run, replays the lint findings into the distribution's `fix` function and rewrites `<package-dir>/package.yaml` when a fix applied. Requires `--lint-dir`. The verdict and the exit code are those of the last run of the suite (see `--fix-rounds`). |
 | `--dry-run` | — | With `--fix`, writes nothing: prints the steps and the resulting `package.yaml` on stderr. Requires `--fix`. |
+| `--fix-rounds <n>` | — | With `--fix`, maximum number of runs of the suite (default `1`, minimum `1`). After a fix applied, the suite runs again on the rewritten `package.yaml`; the loop stops as soon as nothing changed or the number of findings no longer decreases. The summary and the verdict are those of the last run. Requires `--fix`. |
+| `--verbose` | — | Prints on stderr the hint of each rule that still has findings (see [Render lint](tooling/render-lint.md#hints-hint)). Requires `--lint-dir`. |
 
 See [Package tests](tooling/test.md#render-lint) and [Render lint](tooling/render-lint.md).
 
