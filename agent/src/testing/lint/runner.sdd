@@ -161,3 +161,10 @@ Scenario: the test hook is exposed
   When @has_test_hook et @has_suite_hook sont lus
   Then le premier répond faux puis vrai, le second vrai puis faux
   Test @the-test-hook-is-exposed
+
+Scenario: engine messages are in English
+  Given un `lint.rhai` dont `lint` retourne une carte, et un répertoire de lint sans `lint.rhai`
+  When @run_test s'exécute, puis @LintRunner::new
+  Then le message de la ligne `lint:execution` contient `must be an array` et l'erreur de
+    construction contient `lint.rhai` et un texte anglais (`not found`)
+  Test @engine-messages-are-in-english
