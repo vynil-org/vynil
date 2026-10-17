@@ -5,7 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use client::testing::{
-    lint::{multimap, patterns},
+    lint::{multimap, patterns, runner::LintRunner, sections::Sections},
     schema::{registry::SchemaRegistry, rhai::schema_rhai_register},
 };
 use common::rhaihandler::Script;
@@ -2682,4 +2682,165 @@ fn an_empty_annotation_suppresses_with_an_explicit_reason() {
     assert_eq!(items.len(), 1);
     assert_eq!(items[0]["suppressed"], json!(true));
     assert_eq!(items[0]["reason"], json!("(aucune raison donnée)"));
+}
+
+/// Vrai quand la vérification `function` signale le conteneur `web` porteur de `resources`.
+fn flagged_by(rhai: &mut Script, function: &str, resources: &Value, params: &str) -> bool {
+    let obj = deployment_with_resources("q", resources);
+    !pod_findings(rhai, function, &obj, params)
+        .as_array()
+        .expect("tableau de constats")
+        .is_empty()
+}
+
+#[test]
+fn extended_quantity_forms_are_read() {
+    // Valeurs exactes selon la grammaire des `Quantity` de Kubernetes (pas de binaire de
+    // référence : les attendus sont calculés à la main). CPU en millicores arrondies vers le
+    // haut ; mémoire en MB de 2^20 octets. Pour chaque forme, des bornes qui contiennent la
+    // valeur la signalent, des bornes qui l'excluent ne la signalent pas.
+    let mut rhai = lib_script();
+    let cpu = [
+        ("1e3", 1_000_000_i64), // exposant : 1000 cœurs
+        ("100000n", 1),         // 0,1 millicore, arrondi vers le haut
+        ("250u", 1),            // 0,25 millicore, arrondi vers le haut
+        ("1k", 1_000_000),      // suffixe décimal : 1000 cœurs
+    ];
+    for (q, v) in cpu {
+        let res = json!({ "requests": { "cpu": q } });
+        let inside =
+            format!(r#"#{{requirementsType: "request", lowerBoundMillis: {v}, upperBoundMillis: {v}}}"#);
+        assert!(
+            flagged_by(&mut rhai, "unset_cpu_requirements", &res, &inside),
+            "cpu {q} doit être lu comme {v}"
+        );
+        let outside = format!(
+            r#"#{{requirementsType: "request", lowerBoundMillis: {}, upperBoundMillis: {}}}"#,
+            v + 1,
+            v + 10
+        );
+        assert!(
+            !flagged_by(&mut rhai, "unset_cpu_requirements", &res, &outside),
+            "cpu {q} hors bornes"
+        );
+    }
+    // Mémoire : (forme, valeur MB attendue entre lo et hi).
+    let memory = [
+        ("129e6", 123.0, 123.1),                           // 129 000 000 octets = 123,024 MB
+        ("1P", 953_674_316.0, 953_674_317.0),              // 10^15 octets
+        ("1Ei", 1_099_511_627_775.0, 1_099_511_627_777.0), // 2^60 octets = 2^40 MB
+        ("1E3", 0.0009, 0.001),                            // 1000 octets
+        ("2e-3", 1e-9, 1e-6),                              // 0,002 octet
+    ];
+    for (q, lo, hi) in memory {
+        let res = json!({ "requests": { "memory": q } });
+        let inside = format!(r#"#{{requirementsType: "request", lowerBoundMB: {lo}, upperBoundMB: {hi}}}"#);
+        assert!(
+            flagged_by(&mut rhai, "unset_memory_requirements", &res, &inside),
+            "memory {q} doit tomber dans [{lo} ; {hi}]"
+        );
+        let outside = format!(
+            r#"#{{requirementsType: "request", lowerBoundMB: {}, upperBoundMB: {}}}"#,
+            hi + 1.0,
+            hi + 2.0
+        );
+        assert!(
+            !flagged_by(&mut rhai, "unset_memory_requirements", &res, &outside),
+            "memory {q} hors bornes"
+        );
+    }
+    // Hors grammaire : sautée, sans constat ni erreur, quelles que soient les bornes.
+    for q in ["-1", "12x", "abc", ""] {
+        let cpu_res = json!({ "requests": { "cpu": q } });
+        let mem_res = json!({ "requests": { "memory": q } });
+        let any_cpu =
+            r#"#{requirementsType: "request", lowerBoundMillis: 0, upperBoundMillis: 1000000000000000}"#;
+        let any_mem = r#"#{requirementsType: "request", lowerBoundMB: 0, upperBoundMB: 1000000000000000}"#;
+        assert!(
+            !flagged_by(&mut rhai, "unset_cpu_requirements", &cpu_res, any_cpu),
+            "cpu `{q}` doit être sautée"
+        );
+        assert!(
+            !flagged_by(&mut rhai, "unset_memory_requirements", &mem_res, any_mem),
+            "memory `{q}` doit être sautée"
+        );
+    }
+}
+
+/// Script `lint.rhai` de l'exemple de `docs/tooling/render-lint.md` (section « Example:
+/// `lint.rhai` »), recopié tel quel : toute modification de l'un sans l'autre est une dérive.
+const DOCUMENTED_LINT_RHAI: &str = r#"
+import "render_lint" as render_lint;
+import "render_lint_schema" as schema;
+
+// House rule: every Deployment must carry a `team` label.
+fn team_label(objs) {
+    let findings = [];
+    for obj in objs {
+        if render_lint::kind_of_group(obj, ["Deployment"], "apps") {
+            let labels = if "labels" in obj.metadata { obj.metadata.labels } else { #{} };
+            if !("team" in labels) {
+                findings.push(render_lint::finding("team-label", "error", obj, "label `team` is required"));
+            }
+        }
+    }
+    findings
+}
+
+fn lint(objs, ctx) {
+    let findings = team_label(objs.all);
+    findings += render_lint::all(objs.all, ctx, #{
+        exclude: ["latest-tag"],
+        severity: #{ "no-read-only-root-fs": "warn" },
+        ignore_prefix: "ignore-check.example/",
+        require_reason: true
+    });
+    // The checks above stay silent on a malformed object (they return nothing, like kube-linter):
+    // the schema validation is what reports it.
+    for obj in objs.all {
+        findings += schema::check(obj);
+    }
+    findings
+}
+"#;
+
+#[test]
+fn the_documented_distribution_script_runs() {
+    // Exécution réelle du script de la documentation par le runner de lint, sur un Deployment
+    // sans label `team` et dont `containers` n'est pas un tableau : les deux constats attendus.
+    let dir = tempfile::tempdir().expect("répertoire temporaire");
+    std::fs::write(dir.path().join("lint.rhai"), DOCUMENTED_LINT_RHAI).expect("lint.rhai");
+    let script_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts");
+    let registry = SchemaRegistry::new(None, None).expect("registre de schémas natif");
+    let runner = LintRunner::new(dir.path(), &script_dir, registry).expect("runner");
+    let deployment = json!({
+        "apiVersion": "apps/v1", "kind": "Deployment",
+        "metadata": { "name": "broken", "namespace": "app" },
+        "spec": {
+            "replicas": 1,
+            "selector": { "matchLabels": { "app": "broken" } },
+            "template": {
+                "metadata": { "labels": { "app": "broken" } },
+                "spec": { "containers": "oops" }
+            }
+        }
+    });
+    let objs = Sections {
+        all: vec![common::rhaihandler::to_dynamic(deployment).expect("objet Rhai")],
+        ..Sections::default()
+    };
+    let outcome = runner.run_test(&json!({ "test": { "name": "documented" } }), &objs);
+    let rules: Vec<(&str, bool)> = outcome.rows.iter().map(|r| (r.name.as_str(), r.passed)).collect();
+    assert!(
+        rules.contains(&("lint:team-label", false)),
+        "constat team-label attendu, reçu {rules:?} ({:?})",
+        outcome.rows.iter().map(|r| &r.message).collect::<Vec<_>>()
+    );
+    assert!(
+        rules
+            .iter()
+            .any(|(name, passed)| *name == "lint:schema/invalid" && !passed),
+        "constat schema/invalid attendu, reçu {rules:?} ({:?})",
+        outcome.rows.iter().map(|r| &r.message).collect::<Vec<_>>()
+    );
 }

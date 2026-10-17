@@ -337,6 +337,7 @@ A minimal distribution script with one house rule, plus the call to the library:
 
 ```rhai
 import "render_lint" as render_lint;
+import "render_lint_schema" as schema;
 
 // House rule: every Deployment must carry a `team` label.
 fn team_label(objs) {
@@ -360,9 +361,19 @@ fn lint(objs, ctx) {
         ignore_prefix: "ignore-check.example/",
         require_reason: true
     });
+    // The checks above stay silent on a malformed object (they return nothing, like kube-linter):
+    // the schema validation is what reports it.
+    for obj in objs.all {
+        findings += schema::check(obj);
+    }
     findings
 }
 ```
+
+The checks of `render_lint::all` return no finding for an object whose shape they cannot read (a `spec` that
+is not a map, an `env` of the wrong type). That is the behaviour of the reference tool, and it is only safe
+next to the schema validation, which reports exactly those shapes: `render_lint::all` does not call it, so
+the example calls both.
 
 Run it with:
 
@@ -382,6 +393,13 @@ suppressible, pass its findings through `render_lint::apply_suppressions(finding
   proportional to the number of objects, and `render_lint::all` costs about sixteen thousand
   operations per object with all sixty checks.
 - A `warn` finding has no severity field in the verdict.
+- `env-value-from` resolves a Secret or ConfigMap reference by kind and name, **in any namespace**, as
+  kube-linter does: the fixture `env-value-from` references a Secret of another namespace and the tool
+  reports nothing. A Secret of the same name in another namespace therefore satisfies the reference.
+- A resource quantity outside the Kubernetes grammar (a sign, an unknown unit, free text) is skipped by
+  `unset-cpu-requirements` and `unset-memory-requirements`. The forms with an exponent (`129e6`) and the
+  suffixes `P`, `E`, `Pi`, `Ei`, `n`, `u` are read. The extended forms are tested against the definition of
+  the Kubernetes `Quantity`, not against the reference tool.
 - kube-linter crashes (SIGSEGV) on a `dnsConfig` option whose name is the searched key but which has no
   value. That case cannot be compared with the oracle, so it has no `expected.json`; the library reports
   it without crashing. It is the only known divergence recorded here.

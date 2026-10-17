@@ -509,39 +509,82 @@ private fn requirement_types(value, default_type) {
     if t == "request" { ["requests"] } else if t == "limit" { ["limits"] } else if t == "any" { ["requests", "limits"] } else { [] }
 }
 
+// Forme décimale non signée de la grammaire des `Quantity` : `5`, `0.5`, `.5`, `5.`.
+private fn decimal_number(s) {
+    regex_is_match("^(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)$", s)
+}
+
+// Suffixes CPU : [suffixe, multiplicateur, diviseur] donnant des millicores (1 cœur = 1000). Les
+// diviseurs gardent `250u` et `100000n` exacts avant l'arrondi. Le suffixe "" est le nombre nu.
+private fn cpu_units() {
+    [
+        ["n", 1.0, 1000000.0], ["u", 1.0, 1000.0], ["m", 1.0, 1.0], ["", 1000.0, 1.0],
+        ["k", 1000000.0, 1.0], ["M", 1000000000.0, 1.0], ["G", 1000000000000.0, 1.0],
+        ["T", 1000000000000000.0, 1.0], ["P", 1000000000000000000.0, 1.0],
+        ["E", 1000000000000000000000.0, 1.0],
+        ["Ki", 1024000.0, 1.0], ["Mi", 1048576000.0, 1.0], ["Gi", 1073741824000.0, 1.0],
+        ["Ti", 1099511627776000.0, 1.0], ["Pi", 1125899906842624000.0, 1.0],
+        ["Ei", 1152921504606846976000.0, 1.0],
+    ]
+}
+
+// Suffixes mémoire : [suffixe, multiplicateur en octets, 1.0]. Le suffixe "" est le nombre nu.
+private fn memory_units() {
+    [
+        ["n", 0.000000001, 1.0], ["u", 0.000001, 1.0], ["m", 0.001, 1.0], ["", 1.0, 1.0],
+        ["k", 1000.0, 1.0], ["M", 1000000.0, 1.0], ["G", 1000000000.0, 1.0],
+        ["T", 1000000000000.0, 1.0], ["P", 1000000000000000.0, 1.0],
+        ["E", 1000000000000000000.0, 1.0],
+        ["Ki", 1024.0, 1.0], ["Mi", 1048576.0, 1.0], ["Gi", 1073741824.0, 1.0],
+        ["Ti", 1099511627776.0, 1.0], ["Pi", 1125899906842624.0, 1.0],
+        ["Ei", 1152921504606846976.0, 1.0],
+    ]
+}
+
+// Valeur d'une `Quantity` de Kubernetes dans l'unité de `units` ; `()` si la forme est hors
+// grammaire (signe, unité inconnue, texte). L'exposant est cherché d'abord : `1E3` est un
+// exposant, `1E` un exa.
+private fn quantity_value(q, units) {
+    if type_of(q) != "string" { return (); }
+    let bare = ();
+    for u in units { if u[0] == "" { bare = u; } }
+    if regex_is_match("^(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)[eE][+-]?[0-9]+$", q) {
+        return parse_float(q) * bare[1] / bare[2];
+    }
+    for u in units {
+        if u[0] != "" && q.ends_with(u[0]) {
+            let body = q.sub_string(0, q.len() - u[0].len());
+            if !decimal_number(body) { return (); }
+            return parse_float(body) * u[1] / u[2];
+        }
+    }
+    if !decimal_number(q) { return (); }
+    parse_float(q) * bare[1] / bare[2]
+}
+
 // Demande ou limite de CPU d'un conteneur, en millicores entières (arrondies vers le haut, comme
-// `MilliValue()` de kube-linter) ; 0 si absente ; `()` si la forme n'est pas reconnue.
+// `MilliValue()` de kube-linter) ; 0 si absente ; `()` si la forme n'est pas reconnue (grammaire
+// des `Quantity`, voir `cpu_units`).
 private fn cpu_millis(container, which) {
     let q = field(field(field(container, "resources"), which), "cpu");
     if q == () { return 0.0; }
     if type_of(q) == "i64" { return ceiling(q.to_float() * 1000.0); }
     if type_of(q) == "f64" { return ceiling(q * 1000.0); }
-    if type_of(q) != "string" { return (); }
-    if regex_is_match("^[0-9]+(\\.[0-9]+)?m$", q) {
-        return ceiling(parse_float(q.sub_string(0, q.len() - 1)));
-    }
-    if regex_is_match("^[0-9]+(\\.[0-9]+)?$", q) { return ceiling(parse_float(q) * 1000.0); }
-    ()
+    let v = quantity_value(q, cpu_units());
+    if v == () { return (); }
+    ceiling(v)
 }
 
 // Mémoire d'un conteneur en MB (2^20 octets, unité de kube-linter), flottant ; 0 si absente ; `()`
-// si la forme n'est pas reconnue. Suffixes binaires (Ki, Mi, Gi, Ti) et décimaux (k, M, G, T, m).
+// si la forme n'est pas reconnue (grammaire des `Quantity`, voir `memory_units`).
 private fn memory_mb(container, which) {
     let q = field(field(field(container, "resources"), which), "memory");
     if q == () { return 0.0; }
     if type_of(q) == "i64" { return q.to_float() / 1048576.0; }
     if type_of(q) == "f64" { return q / 1048576.0; }
-    if type_of(q) != "string" { return (); }
-    let units = [["Ki", 1024.0], ["Mi", 1048576.0], ["Gi", 1073741824.0], ["Ti", 1099511627776.0], ["k", 1000.0], ["M", 1000000.0], ["G", 1000000000.0], ["T", 1000000000000.0], ["m", 0.001]];
-    for u in units {
-        if q.ends_with(u[0]) {
-            let body = q.sub_string(0, q.len() - u[0].len());
-            if !regex_is_match("^[0-9]+(\\.[0-9]+)?$", body) { return (); }
-            return parse_float(body) * u[1] / 1048576.0;
-        }
-    }
-    if !regex_is_match("^[0-9]+(\\.[0-9]+)?$", q) { return (); }
-    parse_float(q) / 1048576.0
+    let v = quantity_value(q, memory_units());
+    if v == () { return (); }
+    v / 1048576.0
 }
 
 // Valeur de la ressource `resource` (`cpu` ou `memory`) sous `which` (`requests` ou `limits`).

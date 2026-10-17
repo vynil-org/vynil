@@ -136,8 +136,8 @@ fn dangling_service(obj, idx, ctx, params) {
     let sel = field(spec, "selector");
     let ns = ns_of(obj);
     if type_of(sel) == "map" {
-        for labels in idx.net_targets.values(ns) {
-            if selects(sel, labels) { return []; }
+        for i in 0..idx.net_targets.count(ns) {
+            if selects(sel, idx.net_targets.at(ns, i)) { return []; }
         }
     }
     let name = name_of(obj);
@@ -489,8 +489,8 @@ private fn label_selector_matches(sel, labels) {
 // Vrai quand une cible du namespace `ns` (même genre que pour dangling-service) est atteinte par le
 // sélecteur. Un sélecteur vide n'atteint que les cibles de son propre namespace (mesuré).
 private fn selector_reaches_target(sel, ns, idx) {
-    for labels in idx.net_targets.values(ns) {
-        if label_selector_matches(sel, labels) { return true; }
+    for i in 0..idx.net_targets.count(ns) {
+        if label_selector_matches(sel, idx.net_targets.at(ns, i)) { return true; }
     }
     false
 }
@@ -636,8 +636,8 @@ fn dangling_servicemonitor(obj, idx, ctx, params) {
     if !label_selector_well_formed(sel) { return []; }
     let ml = field(sel, "matchLabels");
     if type_of(ml) == "map" {
-        for labels in idx.net_service_labels.values("") {
-            if selects(ml, labels) { return []; }
+        for i in 0..idx.net_service_labels.count("") {
+            if selects(ml, idx.net_service_labels.at("", i)) { return []; }
         }
     }
     let name = name_of(obj);
