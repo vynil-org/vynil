@@ -21,6 +21,7 @@ const ENTRY_FILE: &str = "lint.rhai";
 const TEST_HOOK: &str = "lint";
 const SUITE_HOOK: &str = "lint_suite";
 const FIX_HOOK: &str = "fix";
+const HINT_HOOK: &str = "hint";
 const SUITE_TEST_NAME: &str = "(suite)";
 const EXECUTION_RULE: &str = "lint:execution";
 /// Budget d'opérations d'un appel : `OPERATIONS_BASE` plus `OPERATIONS_PER_OBJECT` par objet
@@ -75,7 +76,16 @@ impl FixOutcome {
     }
 }
 
-/// Charge le script de lint d'une distribution et l'appelle par test, par suite ou par fix.
+/// Résultat de `hint` : le texte qui dit comment corriger, aucun texte, ou l'échec du script.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HintOutcome {
+    Text(String),
+    None,
+    Failed(String),
+}
+
+/// Charge le script de lint d'une distribution et l'appelle par test, par suite, par fix ou
+/// par hint.
 #[derive(Clone, Debug)]
 pub struct LintRunner {
     lint_dir: PathBuf,
@@ -276,6 +286,41 @@ impl LintRunner {
         }
     }
 
+    /// Appelle `hint(rule, findings, pkg)` ; `findings` porte aussi les constats supprimés.
+    /// Le `package` reçu n'est jamais modifié : le script en reçoit une copie.
+    #[must_use]
+    pub fn run_hint(&self, rule: &str, findings: &[Finding], package: &YamlDoc) -> HintOutcome {
+        if !self.has_hint_hook() {
+            return HintOutcome::None;
+        }
+        let args = vec![
+            Dynamic::from(rule.to_string()),
+            findings_to_dynamic(findings),
+            Dynamic::from(package.clone()),
+        ];
+        match self.invoke(HINT_HOOK, args, operations_budget(0), true) {
+            Ok(value) => Self::hint_outcome(&value),
+            Err(message) => HintOutcome::Failed(message),
+        }
+    }
+
+    /// Vrai si `lint.rhai` définit `hint`. Détecté à l'appel, pas stocké : la structure n'a
+    /// déjà que trois booléens (`struct_excessive_bools` de clippy pedantic).
+    fn has_hint_hook(&self) -> bool {
+        self.ast.iter_functions().any(|f| f.name == HINT_HOOK)
+    }
+
+    fn hint_outcome(value: &Dynamic) -> HintOutcome {
+        match value.clone().into_string() {
+            Ok(text) if text.is_empty() => HintOutcome::None,
+            Ok(text) => HintOutcome::Text(text),
+            Err(_) => HintOutcome::Failed(format!(
+                "le retour de `{HINT_HOOK}` doit être une chaîne, reçu {}",
+                value.type_name()
+            )),
+        }
+    }
+
     /// Appelle `name` avec `objs` (si présent) puis `ctx`.
     fn call(
         &self,
@@ -297,7 +342,7 @@ impl LintRunner {
         // `call_fn` évalue déjà les instructions de premier niveau (`eval_ast` vrai par défaut) :
         // une évaluation préalable du script les exécuterait une seconde fois.
     /// Évalue le script dans un moteur neuf puis appelle `name` avec `args`. `yaml_ordered`
-    /// ajoute la surface `YamlDoc` (`fix` en a besoin, `lint` non).
+    /// ajoute la surface `YamlDoc` (`fix` et `hint` en ont besoin, `lint` non).
     fn invoke(
         &self,
         name: &str,
@@ -888,5 +933,64 @@ mod tests {
         assert_eq!(outcome.status, FixStatus::NotApplicable);
         assert!(outcome.message.contains("supprimé"), "{}", outcome.message);
         assert!(outcome.package.is_none());
+    }
+
+    #[test]
+    fn a_hint_returns_the_text_built_from_the_findings() {
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) { [] }
+            fn hint(rule, findings, pkg) {
+                let has = pkg.keys().contains("resources");
+                let state = if has { "présent" } else { "absent" };
+                "règle " + rule + " : " + findings.len().to_string() + " constats, resources " + state
+            }
+            "#,
+        );
+        let input = package();
+        let before = encoded(&input);
+        let findings = [finding("no-cpu-limits", false), finding("no-cpu-limits", true)];
+        let outcome = runner.run_hint("no-cpu-limits", &findings, &input);
+        assert_eq!(
+            outcome,
+            HintOutcome::Text("règle no-cpu-limits : 2 constats, resources présent".to_string())
+        );
+        assert_eq!(
+            encoded(&input),
+            before,
+            "le package d'entrée ne doit pas être modifié"
+        );
+    }
+
+    #[test]
+    fn a_missing_or_empty_hint_is_none() {
+        let (_fx, bare) = runner(r"fn lint(objs, ctx) { [] }");
+        assert_eq!(bare.run_hint("no-cpu-limits", &[], &package()), HintOutcome::None);
+
+        let (_fx, empty) = runner(r#"fn lint(objs, ctx) { [] } fn hint(rule, findings, pkg) { "" }"#);
+        assert_eq!(
+            empty.run_hint("no-cpu-limits", &[], &package()),
+            HintOutcome::None
+        );
+    }
+
+    #[test]
+    fn a_broken_hint_fails_without_a_text() {
+        let scripts = [
+            r#"fn hint(rule, findings, pkg) { throw "boom from the hint"; }"#,
+            r#"fn hint(rule, findings, pkg) { #{ text: "x" } }"#,
+            r"fn hint(rule, findings, pkg) { loop {} }",
+        ];
+        for script in scripts {
+            let (_fx, runner) = runner(&format!("fn lint(objs, ctx) {{ [] }} {script}"));
+            let outcome = runner.run_hint("no-cpu-limits", &[], &package());
+            let HintOutcome::Failed(message) = outcome else {
+                panic!("script : {script}, reçu {outcome:?}");
+            };
+            assert!(!message.is_empty(), "script : {script}");
+            if script.contains("throw") {
+                assert!(message.contains("boom from the hint"), "{message}");
+            }
+        }
     }
 }
