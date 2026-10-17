@@ -2,7 +2,7 @@ use super::{
     lint::{
         context::{build_suite_context, build_test_context},
         finding::Finding,
-        runner::{FixStatus, LintRunner},
+        runner::{FixStatus, HintOutcome, LintRunner},
         sections::Sections,
     },
     result::{Suppression, TestResultCollector},
@@ -294,6 +294,13 @@ pub struct FixStep {
     pub message: String,
 }
 
+/// Une étape de `run_hints` : la règle et le résultat de son `hint`.
+#[derive(Clone, Debug)]
+pub struct HintStep {
+    pub rule: String,
+    pub outcome: HintOutcome,
+}
+
 #[derive(Clone, Debug)]
 pub struct TestHandler {
     package_dir: PathBuf,
@@ -413,6 +420,40 @@ impl TestHandler {
             });
         }
         report
+    }
+
+    /// Demande à `hint` de la distribution un texte pour chaque règle ayant au moins un constat
+    /// non supprimé, en ordre alphabétique, hors des règles de `skip`. Chaque appel reçoit tous
+    /// les constats de la règle, supprimés compris. Pur. Vide sans lint ou sans constat.
+    #[must_use]
+    pub fn run_hints(&self, package: &YamlDoc, skip: &[String]) -> Vec<HintStep> {
+        let Some(lint) = self.lint.as_ref() else {
+            return Vec::new();
+        };
+        let mut by_rule: BTreeMap<&str, Vec<Finding>> = BTreeMap::new();
+        for finding in &self.findings {
+            by_rule
+                .entry(finding.rule.as_str())
+                .or_default()
+                .push(finding.clone());
+        }
+        by_rule
+            .into_iter()
+            .filter(|(rule, findings)| {
+                !skip.iter().any(|s| s.as_str() == *rule) && findings.iter().any(|f| !f.suppressed)
+            })
+            .map(|(rule, findings)| HintStep {
+                rule: rule.to_string(),
+                outcome: lint.run_hint(rule, &findings, package),
+            })
+            .collect()
+    }
+
+    /// Nombre de constats non supprimés collectés : la mesure de progrès de la boucle de
+    /// correction.
+    #[must_use]
+    pub fn finding_count(&self) -> usize {
+        self.findings.iter().filter(|f| !f.suppressed).count()
     }
 
     /// Scans a directory for .yml/.yaml files (potentially multi-document)
@@ -1310,5 +1351,42 @@ fn fix(rule, findings, pkg) {
         assert!(report.steps.is_empty());
         assert!(!report.changed);
         assert_eq!(report.package.to_yaml_string(), doc.to_yaml_string());
+    }
+
+    /// `hint` qui répond `hint <règle> <nombre de constats>` ; pour `c-rule` il lève, pour
+    /// vérifier que le script n'est pas appelé.
+    const HINT_ECHO: &str = r#"fn lint(objs, ctx) { [] }
+
+fn hint(rule, findings, pkg) {
+    if rule == "c-rule" { throw "hint called for c-rule"; }
+    "hint " + rule + " " + findings.len().to_string()
+}
+"#;
+
+    #[test]
+    fn hints_skip_fixed_rules_and_fully_suppressed_rules() {
+        let fx = fixture(&[], INSTALL_ONE_CONFIGMAP, Some(HINT_ECHO));
+        let mut h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        let mut suppressed = finding("c-rule", "z");
+        suppressed.suppressed = true;
+        h.findings = vec![finding("a-rule", "x"), finding("b-rule", "y"), suppressed];
+        let doc: YamlDoc = "k: v\n".parse().expect("YAML");
+        let steps = h.run_hints(&doc, &["a-rule".to_string()]);
+        assert_eq!(steps.len(), 1, "{steps:?}");
+        assert_eq!(steps[0].rule, "b-rule");
+        assert_eq!(steps[0].outcome, HintOutcome::Text("hint b-rule 1".to_string()));
+    }
+
+    #[test]
+    fn the_finding_count_ignores_suppressed_findings() {
+        let fx = fixture(&[], INSTALL_ONE_CONFIGMAP, Some(HINT_ECHO));
+        let mut h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        let mut suppressed = finding("b-rule", "z");
+        suppressed.suppressed = true;
+        h.findings = vec![finding("a-rule", "x"), finding("a-rule", "y"), suppressed];
+        assert_eq!(h.finding_count(), 2);
+
+        let bare_fx = fixture(&[], INSTALL_ONE_CONFIGMAP, None);
+        assert_eq!(handler(&bare_fx).finding_count(), 0);
     }
 }
