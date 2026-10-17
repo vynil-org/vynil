@@ -234,9 +234,11 @@ pub fn yaml_ordered_rhai_register(engine: &mut Engine) {
         .register_indexer_set(YamlDoc::idx_set)
         .register_fn("keys", YamlDoc::keys)
         .register_fn("values", YamlDoc::values)
-        .register_fn("len", YamlDoc::len)
-        .register_fn("is_empty", YamlDoc::is_empty)
-        .register_fn("contains", YamlDoc::contains_key)
+        .register_fn("len", |yd: &mut YamlDoc| -> i64 { yd.len() })
+        .register_fn("is_empty", |yd: &mut YamlDoc| -> bool { yd.is_empty() })
+        .register_fn("contains", |yd: &mut YamlDoc, key: ImmutableString| -> bool {
+            yd.contains_key(key)
+        })
         .register_fn("remove", YamlDoc::remove)
         .register_fn("to_string", |yd: &mut YamlDoc| -> String {
             yd.to_yaml_string().unwrap_or_default()

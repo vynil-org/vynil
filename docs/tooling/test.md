@@ -162,7 +162,8 @@ agent package test -p ./my-package --all \
   status (every object then counts as unsectioned) is a failed `lint:sections` row.
 - **Without `--lint-dir`**: nothing changes. No lint row and no suppression is produced.
 - **With `--fix`**: after the summary, each rule that produced findings is given to the `fix` function of the
-  script, and `package.yaml` is rewritten if a fix applied. The report goes to stderr, so a `--format json`
+  script, and `package.yaml` is rewritten if a fix applied. The key order is kept; the comments and the quoting
+  of the file are not (a file where no fix applied is never rewritten). The report goes to stderr, so a `--format json`
   on stdout stays parsable. With the default of one run, the exit code is the one of the run *before* the
   fix: run the command again to check that the findings are gone.
 - **With `--fix-rounds N`**: after a fix applied, the suite runs again on the rewritten `package.yaml`, up to

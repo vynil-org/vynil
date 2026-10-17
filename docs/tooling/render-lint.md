@@ -430,9 +430,9 @@ The script stays pure: it receives the document and returns the new one, only th
 `package.yaml`. The key order is kept at every level. Comments and quoting are not (the same limit as
 `agent package update`), so `package.yaml` is only rewritten when a fix applied.
 
-Two traps of the document type: reading a nested key returns a copy, so to change it, read the parent,
-modify the copy and assign it back; and test the presence of a key with `keys().contains(...)`, because
-`contains`, `len` and `is_empty` do not resolve on the document itself.
+One trap of the document type: reading a nested key returns a copy, so to change it, read the parent,
+modify the copy and assign it back. `keys()`, `contains(key)`, `len()`, `is_empty()` and `remove(key)` work
+on the document.
 
 A suppressed finding is passed to `fix` on purpose. A fix that edits the whole package should not
 override an author's explicit decision: the example below declines when any finding is suppressed.
