@@ -87,8 +87,10 @@ section is empty and every object is in `unsectioned`; the test is not failed fo
 
 Each call runs in a fresh Rhai engine, with no state shared between tests. The script receives copies:
 it cannot modify the objects of the test. The available functions are the data-manipulation functions
-of the base engine and the `schema_*` functions. No Kubernetes, HTTP, S3, shell or file function is
-registered: a script that calls one fails with an unknown-function error.
+of the base engine, the `schema_*` functions and the Handlebars [templates](#templates). No Kubernetes,
+HTTP, S3 or shell function is registered, nothing can be written, and the only files a script can read are
+the `.hbs` files of the lint directory: a script that calls anything else fails with an unknown-function
+error.
 
 Execution is bounded by an operation limit so that a looping script cannot block the run. The limit
 value is not fixed by the contract yet.
@@ -541,10 +543,55 @@ hint no-cpu-limits:
 
 The template literal is the template: the hint is built from the same data as the fix, so it can quote
 the findings and any part of `pkg`. The output is plain text on stderr, meant to be handed as is to
-whoever corrects the package.
+whoever corrects the package. For a longer text, keep it in a file: see [Templates](#templates).
+
+## Templates
+
+A script can build its texts with Handlebars and keep its templates as files in the lint directory, which
+lets a distribution organise them as it likes. It is the only thing a script reads from the disk.
+
+| Function | Role |
+|---|---|
+| `new_hbs()` | A new Handlebars engine. |
+| `register_template(h, name, template)` | Registers a template given as a string. |
+| `register_partial_dir(h, dir)` | Registers every `*.hbs` file directly in `dir`, under its name without the suffix, as a template and a partial. `dir` is relative to the lint directory (`"."` for the directory itself). |
+| `render_from(h, template, data)` | Renders a template string with the map `data`. |
+| `render_named(h, name, template, data)` | The same, registering the template under `name`. |
+
+With `hints/cpu_limits.hbs` in the lint directory:
+
+```handlebars
+Remove the CPU limit of the containers of {{#each names}}{{this}} {{/each}}and keep the memory limit.
+```
+
+```rhai
+fn hint(rule, findings, pkg) {
+    if rule != "no-cpu-limits" { return ""; }
+    let names = [];
+    for f in findings { if !f.suppressed { names.push(f.object.name); } }
+    let h = new_hbs();
+    h.register_partial_dir("hints");
+    h.render_from("{{> cpu_limits}}", #{ names: names })
+}
+```
+
+The reading is bounded, and the engine is restricted:
+
+- `dir` must be a relative path that stays inside the lint directory: an absolute path, a `..`
+  component, or a directory that resolves outside (a symbolic link, for instance) is a script error that
+  names the path. So is a missing directory: a typo must not give an empty hint without a word.
+- The Handlebars helpers that reach the host are not available: `read_to_str`, `env_var`, `canonicalize`,
+  `parent`, `file_name`, `extension`, `render_file` and `jsonnet` (whose `importstr` reads any file). This
+  also holds inside a template nested with `render_template`.
+- There is no `register_helper_dir`: a helper is Rhai code, and it would run outside the limits of the lint
+  engine.
 
 ## Limits
 
+- A template or a partial that includes itself is not bounded: the stack overflows and the process dies
+  without a message. Handlebars has no recursion guard.
+- A `.hbs` file that is itself a symbolic link to the outside of the lint directory is followed; only the
+  directory is checked.
 - A fix only edits `package.yaml`. A value hard-coded in a template or a script is not reachable by
   `fix`; its finding remains on the next run.
 - `package.yaml` loses its comments when a fix applies it. `--dry-run` prints the resulting document,

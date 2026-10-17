@@ -53,8 +53,9 @@ Raises:
 Must:
   Construire chaque `HandleBars` du script par @HandleBars::new_restricted : aucun helper de
     gabarit ne lit un fichier, une variable d'environnement ou le système de fichiers, y compris
-    `render_file`, `read_to_str`, `env_var`, `canonicalize`, `parent`, `file_name` et
-    `extension`. Un gabarit qui les appelle échoue au rendu.
+    `render_file`, `read_to_str`, `env_var`, `canonicalize`, `parent`, `file_name`,
+    `extension` et `jsonnet` (dont `importstr` lit n'importe quel fichier). Un gabarit qui les
+    appelle échoue au rendu, y compris depuis un gabarit imbriqué par `render_template`.
   N'enregistrer NI `register_helper_dir` NI aucune autre voie qui charge du code : un helper
     est du Rhai exécuté hors des bornes du moteur de lint.
   Ne lire que des fichiers `.hbs` situés directement dans le répertoire demandé, sans
@@ -104,9 +105,10 @@ Scenario: the directory is bounded to the lint directory
 
 Scenario: host helpers are gone
   Given un `HandleBars` obtenu par `new_hbs()`
-  When un gabarit appelle `{{render_file "x" data}}`, `{{read_to_str "x"}}`, `{{env_var "PATH"}}`
-    ou `{{canonicalize "."}}`
+  When un gabarit appelle `{{render_file "x" data}}`, `{{read_to_str "x"}}`, `{{env_var "PATH"}}`,
+    `{{canonicalize "."}}` ou `{{#jsonnet}}importstr "/etc/hostname"{{/jsonnet}}`
   Then chaque rendu est une erreur de script, et aucun contenu de l'hôte n'est rendu
+  And `{{render_template "{{env_var \"PATH\"}}" data}}` ne rend pas le PATH
   And `{{concat "a" "b"}}` et `{{base64_encode "a"}}` rendent normalement
   Test @host-helpers-are-gone
 

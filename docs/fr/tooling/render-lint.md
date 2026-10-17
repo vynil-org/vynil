@@ -88,9 +88,10 @@ autant.
 
 Chaque appel s'exécute dans un moteur Rhai neuf, sans état partagé entre tests. Le script reçoit des
 copies : il ne peut pas modifier les objets du test. Les fonctions disponibles sont les fonctions de
-manipulation de données du moteur de base et les fonctions `schema_*`. Aucune fonction Kubernetes, HTTP,
-S3, shell ou fichier n'est enregistrée : un script qui en appelle une échoue avec une erreur de fonction
-inconnue.
+manipulation de données du moteur de base, les fonctions `schema_*` et les [templates](#templates)
+Handlebars. Aucune fonction Kubernetes, HTTP, S3 ou shell n'est enregistrée, rien ne peut être écrit, et
+les seuls fichiers qu'un script peut lire sont les fichiers `.hbs` du répertoire de lint : un script qui
+appelle autre chose échoue avec une erreur de fonction inconnue.
 
 L'exécution est bornée par une limite d'opérations pour qu'un script qui boucle ne bloque pas la suite.
 La valeur de cette limite n'est pas encore fixée par le contrat.
@@ -552,10 +553,58 @@ hint no-cpu-limits:
 
 Le littéral à backticks est le template : le hint se construit avec les mêmes données que le fix, il peut
 donc citer les constats et n'importe quelle partie de `pkg`. La sortie est du texte brut sur stderr, à
-remettre tel quel à qui corrige le paquet.
+remettre tel quel à qui corrige le paquet. Pour un texte plus long, le garder dans un fichier : voir
+[Templates](#templates).
+
+## Templates
+
+Un script peut composer ses textes avec Handlebars et garder ses gabarits en fichiers dans le répertoire
+de lint, ce qui laisse une distribution les organiser comme elle l'entend. C'est la seule chose qu'un
+script lit sur le disque.
+
+| Fonction | Rôle |
+|---|---|
+| `new_hbs()` | Un nouveau moteur Handlebars. |
+| `register_template(h, name, template)` | Enregistre un gabarit donné en chaîne. |
+| `register_partial_dir(h, dir)` | Enregistre chaque fichier `*.hbs` situé directement dans `dir`, sous son nom sans le suffixe, comme gabarit et comme partial. `dir` est relatif au répertoire de lint (`"."` pour le répertoire lui-même). |
+| `render_from(h, template, data)` | Rend une chaîne de gabarit avec la carte `data`. |
+| `render_named(h, name, template, data)` | Idem, en enregistrant le gabarit sous `name`. |
+
+Avec `hints/cpu_limits.hbs` dans le répertoire de lint :
+
+```handlebars
+Retirer la limite CPU des conteneurs de {{#each names}}{{this}} {{/each}}et garder la limite mémoire.
+```
+
+```rhai
+fn hint(rule, findings, pkg) {
+    if rule != "no-cpu-limits" { return ""; }
+    let names = [];
+    for f in findings { if !f.suppressed { names.push(f.object.name); } }
+    let h = new_hbs();
+    h.register_partial_dir("hints");
+    h.render_from("{{> cpu_limits}}", #{ names: names })
+}
+```
+
+La lecture est bornée, et le moteur est restreint :
+
+- `dir` doit être un chemin relatif qui reste dans le répertoire de lint : un chemin absolu, un composant
+  `..`, ou un répertoire qui se résout hors de lui (un lien symbolique, par exemple) est une erreur de
+  script qui nomme le chemin. Un répertoire absent aussi : une faute de frappe ne doit pas donner un hint
+  vide sans bruit.
+- Les helpers Handlebars qui touchent à l'hôte ne sont pas disponibles : `read_to_str`, `env_var`,
+  `canonicalize`, `parent`, `file_name`, `extension`, `render_file` et `jsonnet` (dont `importstr` lit
+  n'importe quel fichier). C'est vrai aussi dans un gabarit imbriqué par `render_template`.
+- Il n'y a pas de `register_helper_dir` : un helper est du code Rhai, et il s'exécuterait hors des bornes
+  du moteur de lint.
 
 ## Limites
 
+- Un gabarit ou un partial qui s'inclut lui-même n'est pas borné : la pile déborde et le processus meurt
+  sans message. Handlebars n'a pas de garde de récursion.
+- Un fichier `.hbs` qui est lui-même un lien symbolique vers l'extérieur du répertoire de lint est suivi ;
+  seul le répertoire est contrôlé.
 - Un fix n'édite que `package.yaml`. Une valeur écrite en dur dans un template ou un script n'est pas
   atteignable par `fix` ; son constat reste à l'exécution suivante.
 - `package.yaml` perd ses commentaires quand un fix s'applique. `--dry-run` affiche le document obtenu,

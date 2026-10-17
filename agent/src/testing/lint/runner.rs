@@ -5,6 +5,7 @@ use crate::testing::{
         finding::{Finding, findings_to_dynamic, parse_findings, to_rows, to_suppressions},
         multimap, patterns,
         sections::Sections,
+        templates,
     },
     result::Suppression,
     schema::{registry::SchemaRegistry, rhai::schema_rhai_register},
@@ -98,9 +99,10 @@ pub struct LintRunner {
 }
 
 /// Moteur neuf : bibliothèques de données de base, sans horloge, système de fichiers,
-/// réseau ni cluster ; fonctions `schema_*` et `regex_is_match` seulement. Les imports suivent `lint_dir` puis
-/// `{script_dir}/lib`. Les sorties (`print`, `debug`) sont avalées pour ne pas polluer le
-/// rapport du test.
+/// réseau ni cluster ; fonctions `schema_*` et `regex_is_match` seulement, plus les gabarits
+/// Handlebars de `templates` (seule lecture de fichiers, bornée à `lint_dir`). Les imports
+/// suivent `lint_dir` puis `{script_dir}/lib`. Les sorties (`print`, `debug`) sont avalées pour
+/// ne pas polluer le rapport du test.
 fn build_engine(lint_dir: &Path, script_dir: &Path, schemas: &SchemaRegistry, max_operations: u64) -> Engine {
     let mut engine = Engine::new_raw();
     engine.register_global_module(rhai::packages::CorePackage::new().as_shared_module());
@@ -128,6 +130,7 @@ fn build_engine(lint_dir: &Path, script_dir: &Path, schemas: &SchemaRegistry, ma
 
     schema_rhai_register(&mut engine, schemas.clone());
     patterns::register(&mut engine);
+    templates::register(&mut engine, lint_dir);
     multimap::register(&mut engine);
     engine
 }
@@ -971,6 +974,53 @@ mod tests {
         assert_eq!(
             empty.run_hint("no-cpu-limits", &[], &package()),
             HintOutcome::None
+        );
+    }
+
+    #[test]
+    fn a_hint_renders_a_template_file_from_the_lint_directory() {
+        let script = r#"
+            fn lint(objs, ctx) { [] }
+            fn hint(rule, findings, pkg) {
+                let h = new_hbs();
+                register_partial_dir(h, "templates");
+                render_from(h, "{{> hint}}", #{ count: findings.len(), rule: rule })
+            }
+        "#;
+        let fx = fixture(Some(script));
+        let templates = fx.lint_dir.join("templates");
+        fs::create_dir_all(&templates).expect("templates/");
+        fs::write(
+            templates.join("hint.hbs"),
+            "Retirer {{count}} limite(s) : {{rule}}",
+        )
+        .expect("hint.hbs");
+        let registry = SchemaRegistry::new(None, None).expect("registre natif");
+        let runner = LintRunner::new(&fx.lint_dir, &fx.script_dir, registry).expect("runner");
+        let findings = [finding("no-cpu-limits", false), finding("no-cpu-limits", false)];
+        assert_eq!(
+            runner.run_hint("no-cpu-limits", &findings, &package()),
+            HintOutcome::Text("Retirer 2 limite(s) : no-cpu-limits".to_string())
+        );
+
+        fs::write(
+            fx.lint_dir.join("lint.rhai"),
+            r#"
+            fn lint(objs, ctx) { [] }
+            fn hint(rule, findings, pkg) {
+                let h = new_hbs();
+                register_partial_dir(h, "..");
+                "non"
+            }
+            "#,
+        )
+        .expect("lint.rhai");
+        let registry = SchemaRegistry::new(None, None).expect("registre natif");
+        let runner = LintRunner::new(&fx.lint_dir, &fx.script_dir, registry).expect("runner");
+        let outcome = runner.run_hint("no-cpu-limits", &findings, &package());
+        assert!(
+            matches!(outcome, HintOutcome::Failed(ref m) if m.contains("..")),
+            "un répertoire hors lint doit échouer : {outcome:?}"
         );
     }
 
