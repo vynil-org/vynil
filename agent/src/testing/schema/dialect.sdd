@@ -1,0 +1,119 @@
+# Spec fichier de ./dialect.rs — la couche pure qui rend un schéma Kubernetes consommable par
+# un validateur JSON Schema 2020-12 et qui normalise l'instance avant validation.
+
+Spec: SchemaDialect
+
+Platform: Rust
+
+Purpose:
+  Absorber les écarts entre les schémas Kubernetes (types natifs `k8s-openapi` et
+    `openAPIV3Schema` de CRD) et le JSON Schema standard, partager cette absorption entre les
+    deux sources, et fournir les deux traitements qui rendent la validation utile à un auteur
+    de package : le mode strict (un champ inconnu est une erreur) et la sémantique `null` de
+    l'apiserver. Pur : aucune E/S, aucune horloge, aucun état.
+
+Owns:
+  ./dialect.rs
+
+Exposes:
+  @normalize — `(schema: &mut serde_json::Value)` : convertit les extensions Kubernetes en
+    JSON Schema, en place, sur un schéma complet (racine et `$defs`). Appliqué aux trois
+    sources de schéma, strict ou non (pipeline de ./registry.sdd).
+  @strictify — `(schema: &mut serde_json::Value)` : pose le mode strict, en place. Appelé
+    seulement en mode strict, jamais avant @normalize.
+  @strip_nulls — `(doc: &mut serde_json::Value)` : retire les membres `null` d'un document
+    instance, en place.
+  @crd_root — `(openapi_schema: serde_json::Value) -> serde_json::Value` : complète la racine
+    d'un `openAPIV3Schema` de CRD avec les champs que l'apiserver ajoute implicitement.
+    Appliqué à la seule source CRD, en premier dans le pipeline de ./registry.sdd.
+
+Accepts:
+  Des @serde_json::Value arbitraires : un schéma malformé n'est pas une erreur ici, il est
+    traversé au mieux et sa validité est jugée à la compilation par le registre
+    (./registry.sdd).
+
+Must:
+  @normalize traduit `nullable: true` accompagné d'un `type: T` en `type: [T, "null"]` et
+    retire `nullable` ; un `nullable: true` sans `type` est retiré sans autre effet.
+  @normalize traduit `x-kubernetes-int-or-string: true` en `anyOf` d'un `integer` et d'un
+    `string`, retire le marqueur et retire tout `type` frère — c'est ce qui rend `IntOrString`
+    et `Quantity` stricts : sans `type`, le validateur accepterait n'importe quelle valeur.
+  @normalize ignore les mots-clés d'extension qu'il ne connaît pas (`x-kubernetes-validations`,
+    `x-kubernetes-list-type`, …) : ils restent dans le schéma et n'ont aucun effet.
+  @normalize et @strictify parcourent un schéma par position de schéma, jamais comme un arbre
+    JSON quelconque : les valeurs de `properties`, `$defs`, `definitions` et
+    `patternProperties` sont des schémas indexés par nom ; `items`, `additionalProperties`,
+    `not`, `if`, `then`, `else` sont des schémas ; `allOf`, `anyOf`, `oneOf`, `prefixItems`
+    sont des tableaux de schémas. Les valeurs de `default`, `example`, `enum`, `const` et
+    `required` sont des données et ne sont jamais traversées — une propriété nommée
+    `properties` ou `items` ne doit pas être prise pour un mot-clé.
+  @strictify pose `additionalProperties: false` sur tout schéma qui déclare `properties`, ne
+    déclare pas déjà `additionalProperties` et ne porte pas
+    `x-kubernetes-preserve-unknown-fields: true`.
+  @strip_nulls retire les membres d'objet `null` à toute profondeur et laisse intacts les
+    éléments `null` d'un tableau : c'est la sémantique de l'apiserver (un `null` sur un champ
+    optionnel vaut absent), nécessaire car le rendu de templates produit couramment
+    `creationTimestamp: null`.
+  @crd_root ajoute à la racine les propriétés `apiVersion` (`string`), `kind` (`string`) et
+    `metadata` (`object`) lorsqu'elles sont absentes, sans écraser une définition existante :
+    l'apiserver les ajoute à toute CRD et le mode strict les rejetterait sinon.
+
+Handles:
+  Schéma sans `properties` (objet libre, scalaire) — inchangé par @strictify.
+  Propriété d'un objet nommée `properties` — traitée comme un champ de données, pas comme un
+    mot-clé de schéma.
+  Document instance scalaire ou tableau — @strip_nulls le traverse sans erreur.
+
+Tasks:
+  [x] Couvrir chaque scénario par un test de même nom.
+  [?] `x-kubernetes-embedded-resource` n'est pas interprété (traité comme mot-clé inconnu).
+      Décider, sur un échantillon de CRD réelles de la distribution, si un objet embarqué doit
+      être exempté du mode strict ou validé contre `apiVersion`/`kind`.
+  [?] Les `format` (`date-time`, `int32`, …) ne sont pas validés (comportement par défaut du
+      moteur). Décider si un `date-time` invalide doit devenir une erreur.
+
+Done when:
+  Chaque scénario a un test passant et `cargo test -p agent`, clippy et fmt sont verts.
+
+Scenario: nullable becomes a type union
+  Given un schéma `{type: string, nullable: true}`
+  When @normalize s'exécute
+  Then le schéma vaut `{type: [string, null]}` sans clé `nullable`
+  Test @nullable-becomes-a-type-union
+
+Scenario: int-or-string accepts exactly an integer or a string
+  Given un schéma `{x-kubernetes-int-or-string: true}` ou le même avec un `type: string` frère
+  When @normalize s'exécute
+  Then le schéma accepte `8080` et `"http"` et rejette `[1]` et `true`
+  Test @int-or-string-accepts-exactly-an-integer-or-a-string
+
+Scenario: strict mode rejects an invented field
+  Given un schéma d'objet avec les `properties` `a` et `b` et sans `additionalProperties`
+  When @strictify s'exécute puis qu'un document `{a: 1, c: 2}` est validé
+  Then l'erreur est « additional properties » au chemin racine, nommant `c`
+  Test @strict-mode-rejects-an-invented-field
+
+Scenario: preserve-unknown-fields stays open
+  Given un objet portant `x-kubernetes-preserve-unknown-fields: true` et des `properties`
+  When @strictify s'exécute
+  Then aucun `additionalProperties` n'est posé
+  Test @preserve-unknown-fields-stays-open
+
+Scenario: a field named properties is data
+  Given un schéma dont une propriété s'appelle `properties`
+  When @strictify s'exécute
+  Then la définition de cette propriété est traitée comme un schéma et le conteneur
+    `properties` ne reçoit pas de `additionalProperties`
+  Test @a-field-named-properties-is-data
+
+Scenario: null on an optional field means absent
+  Given un document `{metadata: {name: x, creationTimestamp: null}, spec: {args: [null]}}`
+  When @strip_nulls s'exécute
+  Then `creationTimestamp` a disparu et le `null` dans le tableau `args` est conservé
+  Test @null-on-an-optional-field-means-absent
+
+Scenario: a CRD root gains the implicit fields
+  Given un `openAPIV3Schema` ne déclarant que `spec` et `status`
+  When @crd_root, @normalize puis @strictify s'exécutent
+  Then un document portant `apiVersion`, `kind` et `metadata` en plus de `spec` est valide
+  Test @a-crd-root-gains-the-implicit-fields

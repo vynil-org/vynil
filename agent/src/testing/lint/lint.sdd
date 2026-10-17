@@ -1,0 +1,73 @@
+# Spec de répertoire du lint du rendu : la vérification, à la fin de chaque test de package,
+# des objets Kubernetes que le package produit. Vynil fournit le moteur et les types de
+# données ; la distribution fournit le script qui dit quoi vérifier.
+
+Spec: RenderLint
+
+Platform: Rust
+
+Purpose:
+  Exécuter, à la fin de chaque test de `agent package test`, le script de lint de la
+    distribution sur les objets que le test a produits, par section du paquet et en liste
+    complète, et replier ses constats
+    dans le verdict ordinaire du test. C'est le point où une distribution fait appliquer ses
+    règles métier à un package sans que vynil en connaisse aucune : le moteur est neutre, le
+    script est la politique.
+
+Structure:
+  ./finding.rs: le type d'un constat, son analyse depuis Rhai, sa conversion en lignes de
+    résultat et en inventaire de suppressions (./finding.sdd)
+  ./context.rs: construction du contexte en lecture seule passé au script (./context.sdd)
+  ./sections.rs: classement des objets du test par section du paquet, d'après les
+    `set_status_<section>` que le paquet a appelés (./sections.sdd)
+  ./runner.rs: chargement du script de la distribution, appel des points d'entrée, repli des
+    erreurs (./runner.sdd)
+  ./mod.rs: déclaration des modules et ré-exports — shim sans spec de fichier
+
+Can modify:
+  ../mod.rs: déclaration `pub mod lint;`
+  /docs/tooling/test.md: section lint du rendu
+  /docs/tooling/render-lint.md: page de référence du contrat (création)
+  /docs/fr/tooling/test.md: miroir français
+  /docs/fr/tooling/render-lint.md: miroir français (création)
+  /docs/cli.md: flags `--lint-dir` et `--schemas-dir`
+  /docs/fr/cli.md: miroir français
+  /mkdocs.yml: entrée de navigation de la nouvelle page
+
+References:
+  ./../schema/schema.sdd — le mécanisme de validation de schéma, exposé au script par des
+    fonctions natives.
+  ./../handler.sdd — l'appelant : il possède le moment d'exécution (après l'installation,
+    avant le décompte du verdict) et le recueil des objets.
+  ./../result.sdd — l'accumulateur qui reçoit les lignes et l'inventaire de suppressions.
+
+Must:
+  Rester sans politique : aucune règle, aucune liste d'exclusions, aucune sévérité par défaut
+    pour un objet ou une règle n'existe dans ce répertoire. Sans script de distribution, le
+    lint du rendu ne tourne pas et le comportement de `agent package test` est inchangé octet
+    pour octet.
+  Faire d'un constat de sévérité `error` une ligne de résultat en échec, de sorte que le
+    code de sortie 3 existant, le résumé et le JUnit les portent sans nouveau chemin de
+    verdict.
+  Rendre toute suppression visible : un constat supprimé ne fait jamais échouer le test,
+    mais figure dans l'inventaire des suppressions avec sa règle, son objet et sa raison.
+  Écrire en anglais tout message que le moteur de lint produit à destination de l'utilisateur
+    — messages et descriptions des lignes `lint:execution`, `lint:invalid-finding` et
+    `lint:sections`, erreurs de construction du runner, erreurs de script du moteur — comme les
+    messages déjà en anglais du reste de la CLI (`Missing tests directory`, `Tests failed:`). Les
+    noms de ligne, les clés et les noms de règle ne se traduisent pas ; les specs, les commentaires
+    et la documentation gardent leur langue.
+  Garder le script pur : il reçoit des données, retourne des constats, et n'a accès ni au
+    cluster, ni au réseau, ni au système de fichiers, ni à une horloge.
+
+Forbids:
+  @common::context::init_k8s
+  ./../handler.rs
+
+Done when:
+  Chaque spec fichier du répertoire a ses scénarios couverts par des tests du même nom et
+    `cargo test -p agent`, clippy et `cargo +nightly fmt --check` sont verts.
+
+Tasks:
+  [x] Publier la page de référence `render-lint.md` (contrat `lint`/`lint_suite`, forme de
+      `ctx`, forme d'un constat, suppressions) avec son miroir français.

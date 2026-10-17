@@ -21,6 +21,7 @@ junit-report = "0.9.0"
 clap = { version = "4.5.53", features = ["derive", "env"] }
 env_logger = "0.11.5"
 wildmatch = "2.6.1"
+jsonschema.workspace = true
 
 
 [dev-dependencies]

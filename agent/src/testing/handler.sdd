@@ -17,7 +17,9 @@ Purpose:
     l'interpréteur mocké de @Script::new_mock (kubernetes-mock et http-mock uniquement,
     jamais un cluster), évalue @VynilTest::run_asserts sur les objets que la couche de mock
     a enregistrés dans le sink d'objets créés de l'appelant, et ajoute une ligne @TestResult
-    par test à @TestHandler::results — toute panne interne devient un assert échoué, pas un @Err.
+    par test à @TestHandler::results — toute panne interne devient un assert échoué, pas un @Err. Optionnellement, quand un moteur
+    de lint est configuré, exécute à la fin de chaque test le script de lint de la distribution
+    sur les objets créés et replie ses constats dans les mêmes lignes de verdict.
 
 Owns:
   ./handler.rs
@@ -34,6 +36,8 @@ References:
     avec une @std::time::Duration de @Instant::elapsed, jamais deux adds pour un appel.
   ./vyniltest.sdd — en attente ; @appslug, @VynilTestInstance et @VynilTest::run_asserts sont
     utilisés ici exactement comme ce fichier les définit.
+  ./lint/lint.sdd, ./schema/schema.sdd — le lint du rendu et la validation de schéma que la
+    voie lint de ce fichier pilote ; leur contrat est possédé là-bas.
   /common/src/vynilpackage.sdd — @read_package_yaml et les champs @VynilPackageSource /
     @VynilPackageType (@metadata.usage, @metadata.category, @metadata.name, @value_script)
     consultés à chaque exécution.
@@ -44,6 +48,8 @@ Depends on:
   ./result.rs — @TestResultCollector (champ @results, @TestResultCollector::new, @add).
   ./vyniltest.rs — @VynilTest, @VynilTestSetRef, @VynilTestInstance, @appslug,
     @VynilTest::run_asserts.
+  ./lint/runner.rs — @LintRunner et @LintOutcome ; ./lint/context.rs — les deux constructeurs
+    de contexte ; ./schema/registry.rs — @SchemaRegistry.
   ./vyniltestset.rs — @VynilTestSet, @VynilAssert, @VynilAssertSelector, @VynilAssertResult,
     @VynilTestSetMocks.
   /common/src/vynilpackage.sdd — @read_package_yaml, @VynilPackageSource, @VynilPackageType.
@@ -173,6 +179,32 @@ Must:
     de récupération sont le `as_object().unwrap_or_default()` du JSON d'instance (inatteignable
     pour une struct), `@to_dynamic(...).unwrap_or_default()` plus `unwrap_or_else(|_| "{}")` sur
     la jambe controller-values, et le verrou du sink qui récupère le poison.
+  # voie lint — @TestHandler::with_lint, la phase lint de @run_test_inner, @run_suite_lint
+  N'activer le lint que par @TestHandler::with_lint : il construit @SchemaRegistry::new avec
+    `<package_dir>/crds` et le répertoire de schémas donné, puis @LintRunner::new ; sans cet
+    appel, aucune ligne de lint, aucune suppression et aucun moteur de lint n'existent et la
+    voie d'exécution est inchangée.
+  Exécuter le lint de test à l'intérieur de @run_test_inner — donc dans la voie all comme dans
+    la voie test unique, avant que le sink soit lâché — après le snippet d'install et après
+    @VynilTest::run_asserts : copie sous verrou (poison récupéré) des objets du sink, lecture du
+    `status` de l'instance mockée (que les `set_status_<section>` du paquet ont rempli et persisté),
+    classement par @Sections::from_status, contexte
+    par @build_test_context depuis le test résolu et les références `testSets` chargées du
+    test, appel @LintRunner::run_test ; les lignes obtenues sont ajoutées en fin du vecteur
+    d'asserts (ordre final : ligne `value_script` éventuelle, asserts, lignes de lint) et les
+    suppressions sont enregistrées auprès du collecteur sous le nom du test.
+  Ne rien faire de la voie lint de test — ni lecture du `status`, ni classement, ni ligne
+    `lint:sections` — quand la distribution ne définit pas `lint` (@LintRunner::has_test_hook) :
+    un statut illisible ne doit pas faire rougir un test pour un point d'entrée qui n'existe pas.
+    Le hook de suite, lui, ne lit aucun statut.
+  Ne pas exécuter le lint quand la voie value_script ou la voie install a échoué : un rendu
+    incomplet donnerait des constats trompeurs, et la ligne `value_script` ou `execution`
+    existante porte déjà le diagnostic.
+  Exécuter le hook de suite par @TestHandler::run_suite_lint, une seule fois par invocation :
+    contexte par @build_suite_context (tests chargés, testSets chargés, noms exécutés),
+    appel @LintRunner::run_suite ; si le script définit `lint_suite`, ajouter un
+    enregistrement de test nommé `(suite)` portant ses lignes et ses suppressions, sinon ne
+    rien ajouter.
   # surfaces mortes et crochets
   Garde la surface verdict/artéfacts hors de ce fichier : il n'affiche rien, ne logge rien,
     n'écrit aucun fichier et ne rend jamais de junit — @TestHandler::results est lu par
@@ -194,6 +226,10 @@ Exposes:
     `client::testing::TestHandler`.
   @TestHandler::new(@package_dir, @script_dir, @config_dir, @template_dir,
     @testset_dirs: @Option<Vec<@PathBuf>>) -> @common::Result<@Self> — la voie de chargement.
+  @TestHandler::with_lint(self, lint_dir: &@Path, schemas_dir: @Option<&@Path>) ->
+    @common::Result<@Self> — active la voie lint ; consomme et rend le handler.
+  @TestHandler::run_suite_lint(&mut self) -> `()` — le hook de suite ; ne fait rien sans
+    @with_lint.
   @TestHandler::get_test(@name) et @TestHandler::get_test_set(@name) -> @Option, `#[must_use]`
     avec aucun appelant nulle part dans le workspace (Tasks).
   @TestHandler::list_tests -> @Vec<@String> — `#[must_use]`, noms ascendants.
@@ -256,6 +292,7 @@ Handles:
     @PoisonError::into_inner, les objets restent évalués.
 
 Tasks:
+  [x] Couvrir la voie lint par des tests de même nom que les scénarios lint ci-dessous.
   [ ] Couvrir ce fichier par des tests — pas de module #[cfg(test)] ici et les seuls tests
       côté agent siègent aujourd'hui dans ./result.rs ; mapper chaque scénario vers un test du même nom :
       scan-apiVersion-gate-skips-correct-spelling, duplicate-names-abort-load-later-file-named,
@@ -361,3 +398,68 @@ Scenario: assert scoring reuses the poisoned-lock-safe sink view
   Then @PoisonError::into_inner récupère les données et @VynilTest::run_asserts note sur les
     objets récupérés, sans jamais interrompre le processus
   Test @template-dump-sink-poison-recovered
+
+Scenario: lint rows follow the asserts
+  Given un handler configuré par @with_lint et un test dont les asserts passent, dont le
+    script de lint signale un constat `error`
+  When @run_test exécute le test
+  Then les lignes enregistrées sont les asserts du test puis une ligne `lint:{règle}` en échec
+  Test @lint-rows-follow-asserts
+
+Scenario: lint is skipped when installation fails
+  Given un handler configuré par @with_lint et un snippet d'install qui échoue
+  When @run_test exécute le test
+  Then le résultat est l'unique ligne `execution` en échec et le script de lint n'a pas été appelé
+  Test @lint-skipped-when-install-fails
+
+Scenario: lint runs inside the all lane before the sink is dropped
+  Given une suite de deux tests exécutée par @run_all_tests avec @with_lint
+  When le script de lint compte les objets reçus
+  Then chaque test voit exactement ses propres objets créés
+  Test @lint-sees-own-objects-in-all-lane
+
+Scenario: a suppressed finding fails nothing and is inventoried
+  Given un constat `error` retourné avec `suppressed: true`
+  When @run_test exécute le test
+  Then aucune ligne de lint n'est ajoutée et le collecteur porte une suppression au nom du test
+  Test @suppressed-finding-is-inventoried
+
+Scenario: handler without with_lint is unchanged
+  Given un handler construit par @new seul
+  When @run_test exécute un test
+  Then aucune ligne de lint ni suppression n'existe et le comportement est celui d'avant
+  Test @no-with-lint-leaves-behaviour-unchanged
+
+Scenario: suite hook adds one suite record
+  Given un script définissant `lint_suite` qui signale une erreur
+  When @run_suite_lint s'exécute après la suite
+  Then @results porte un enregistrement `(suite)` avec une ligne `lint:{règle}` en échec
+  Test @suite-hook-adds-one-suite-record
+
+Scenario: lint sections follow what the package declared
+  Given un handler configuré par @with_lint, un paquet dont l'installation applique un
+    Deployment par `set_status_scalables` et un ConfigMap par `set_status_befores`, et un script
+    de lint qui constate chaque objet de `objs.scalables`
+  When le test s'exécute
+  Then le constat porte sur le Deployment et pas sur le ConfigMap, et un objet créé hors de
+    toute section ne figure que dans `objs.all` et `objs.unsectioned`
+  Test @lint-sections-follow-what-the-package-declared
+
+Scenario: an unreadable status fails a lint sections row
+  Given un handler configuré par @with_lint et une lecture du `status` de l'instance qui échoue
+  When les sections du lint sont construites
+  Then toutes les sections sont vides, tous les objets sont dans `objs.unsectioned`, et une
+    ligne `lint:sections` en échec porte l'erreur de lecture, en plus des lignes du script
+  And un `status` lu avec succès sans aucune section déclarée ne produit aucune ligne
+  Test @an-unreadable-status-fails-a-lint-sections-row
+
+Scenario: a suite only distribution reads no status
+  Given la fonction de la voie lint de test, appelée avec une lecture du `status` injectée sous
+    la forme d'une fermeture qui enregistre son appel et échoue, sur un @LintRunner dont le
+    script ne définit que `lint_suite`
+  When la voie lint s'exécute
+  Then la lecture du `status` n'est pas appelée, aucune ligne `lint:sections` n'est produite et
+    le script n'est pas appelé
+  And avec un script qui définit `lint`, la même lecture est appelée et son échec produit la
+    ligne `lint:sections`
+  Test @a-suite-only-distribution-reads-no-status

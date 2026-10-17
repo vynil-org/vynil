@@ -1,0 +1,116 @@
+# Spec fichier de ./sections.rs — le découpage des objets d'un test par section du paquet.
+
+Spec: LintSections
+
+Platform: Rust
+
+Purpose:
+  Donner au script de lint de la distribution les objets d'un test classés par section du
+    paquet (`befores`, `vitals`, `scalables`, `others`, `posts`, `systems`, `crds`) en plus de
+    la liste complète. La section d'un objet est celle que le paquet a lui-même déclarée en
+    appelant `instance.set_status_<section>` pendant l'installation : le classement reflète ce
+    que le paquet fait, jamais une déduction à partir du `kind`.
+
+Owns:
+  ./sections.rs
+
+References:
+  ./runner.sdd — le consommateur : il passe @Sections au script sous la forme d'une carte.
+  ./../handler.sdd — l'appelant : il lit le `status` de l'instance mockée après l'installation.
+  /common/src/k8smock.rs — @K8sInstanceMock::set_status_<section> écrit `status.<section>` et le
+    persiste dans la base de mocks ; c'est la source des sections.
+
+Exposes:
+  @Sections — `{ all, crds, systems, befores, vitals, scalables, others, posts, unsectioned }`,
+    chacun un `Vec<Dynamic>` d'objets complets.
+  @Sections::from_status — `(created: &[Dynamic], status: &Dynamic) -> Sections`.
+  @Sections::to_dynamic — `(&self) -> Dynamic` : une carte Rhai aux neuf mêmes clés.
+
+Accepts:
+  @created : les objets du sink du test, en ordre de création.
+  @status : la valeur `status` de l'instance mockée (`()` ou une carte). Chaque clé de section
+    absente, `()` ou qui n'est pas un tableau vaut une section vide.
+
+Returns:
+  @all : @created, sans tri ni déduplication. Chaque autre champ de section, dans l'ordre du
+    `status`, les objets de @created que ses entrées désignent. Une entrée du `status` est une
+    carte `{ apiVersion | api_version, kind, name, namespace? }` ; un objet est désigné quand
+    `kind`, `name` et `namespace` (absent des deux côtés ou égal) coïncident, l'`apiVersion`
+    étant ignoré quand l'entrée n'en porte pas. La section `crds` fait exception : le `status`
+    n'y porte que des noms, rapprochés des objets de `kind` `CustomResourceDefinition`.
+  @unsectioned : les objets de @all qu'aucune section ne désigne, dans l'ordre de @all.
+
+Must:
+  Ne jamais perdre un objet : tout objet de @all figure dans au moins une section ou dans
+    @unsectioned.
+  Garder toutes les clés de la carte toujours présentes, même vides : un script n'a pas à tester
+    leur absence.
+  Placer un objet désigné par plusieurs sections dans chacune d'elles.
+  Ne jamais paniquer : un `status` mal formé donne des sections vides et laisse tout dans
+    @unsectioned.
+  Ne pas lire les objets au-delà de leur identité : aucune règle, aucune sévérité.
+  Rester linéaire en nombre d'objets plus nombre d'entrées de `status` : calculer une seule fois,
+    par objet, son identité (`kind`, `name`, `namespace`, `apiVersion`), indexer les entrées de
+    chaque section, et classer par recherche dans l'index. Aucune copie d'un objet entier dans
+    la boucle de classement. Le résultat — sections, contenu et ordre — est celui qu'un
+    parcours exhaustif de chaque couple (entrée, objet) donnerait.
+
+Handles:
+  Entrée du `status` qui ne désigne aucun objet créé — ignorée sans erreur (objet appliqué puis
+    supprimé, ou propre à un autre mock).
+  `status` absent — toutes les sections vides, @unsectioned égale @all.
+
+Tasks:
+  [x] Couvrir chaque scénario par un test de même nom.
+
+Done when:
+  Chaque scénario a un test passant et le harnais statique est vert.
+
+Scenario: objects are classified by what the package declared
+  Given un Deployment et un ConfigMap créés, et un `status` dont `scalables` désigne le
+    Deployment et `befores` le ConfigMap
+  When @from_status s'exécute
+  Then `scalables` contient le Deployment, `befores` le ConfigMap, et `all` les deux dans
+    l'ordre de création
+  Test @objects-are-classified-by-what-the-package-declared
+
+Scenario: kind alone never classifies
+  Given un Deployment créé et un `status` sans aucune section
+  When @from_status s'exécute
+  Then le Deployment n'est dans aucune section nommée et figure dans `unsectioned`
+  Test @kind-alone-never-classifies
+
+Scenario: crds are matched by name
+  Given une CustomResourceDefinition `widgets.example.test` créée et un `status` dont `crds`
+    vaut `["widgets.example.test"]`
+  When @from_status s'exécute
+  Then `crds` contient cette CustomResourceDefinition
+  Test @crds-are-matched-by-name
+
+Scenario: namespace participates in identity
+  Given deux ConfigMap `cfg`, dans les namespaces `a` et `b`, et un `status` dont `others`
+    désigne `b/cfg`
+  When @from_status s'exécute
+  Then `others` ne contient que celui du namespace `b`
+  Test @namespace-participates-in-identity
+
+Scenario: a malformed status is harmless
+  Given un `status` qui est une chaîne, puis un `status` dont `befores` est un entier
+  When @from_status s'exécute
+  Then aucune section n'est remplie, aucun objet n'est perdu et rien ne panique
+  Test @a-malformed-status-is-harmless
+
+Scenario: every key is always present
+  Given un test sans aucun objet
+  When @to_dynamic s'exécute
+  Then la carte porte les neuf clés, chacune un tableau vide
+  Test @every-key-is-always-present
+
+Scenario: classification stays linear
+  Given trois mille Deployments créés et un `status` dont `scalables` porte les trois mille
+    entrées qui les désignent
+  When @from_status s'exécute
+  Then `scalables` contient les trois mille objets dans l'ordre de création, `unsectioned` est
+    vide, et l'appel s'achève en moins de dix secondes (un parcours de chaque couple, avec la
+    copie d'un objet entier à chaque comparaison, en prend des centaines)
+  Test @classification-stays-linear

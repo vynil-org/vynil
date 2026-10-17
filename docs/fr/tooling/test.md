@@ -31,6 +31,8 @@ agent package test -p ./my-package --all --format json \
 | `--format text\|json` | Format de sortie. |
 | `--junit-output-filename <file>` | Rapport JUnit XML. |
 | `--template-output-filename <file>` | Dump du rendu (test unique uniquement). |
+| `--lint-dir <dir>` | Répertoire du script de lint de la distribution (`lint.rhai`). Active le lint du rendu. |
+| `--schemas-dir <dir>` | Répertoire de schémas de la distribution. Exige `--lint-dir`. |
 
 Le répertoire `tests/` doit exister, sinon l'agent renvoie `MissingTestDirectory`.
 
@@ -57,6 +59,39 @@ Le répertoire `tests/` doit exister, sinon l'agent renvoie `MissingTestDirector
 - **Utiliser les placeholders de contexte** (`{{instance.appslug}}`,
   `{{instance.namespace}}`) dans les valeurs attendues, pour que les tests restent valides
   quel que soit le nom de l'instance.
+
+## Lint du rendu
+
+Quand `--lint-dir` est donné, le script de lint de la distribution s'exécute à la fin de chaque test,
+sur les objets créés par ce test. C'est là qu'une distribution fait appliquer ses propres règles à un
+paquet ; Vynil n'en embarque aucune. Le contrat complet du script (points d'entrée, contexte, forme
+d'un constat, suppressions, fonctions `schema_*`) est décrit dans
+[Lint du rendu](render-lint.md).
+
+```bash
+agent package test -p ./my-package --all \
+  --lint-dir ./distribution/lint --schemas-dir ./distribution/schemas
+```
+
+- **Quand il s'exécute** : après l'install et les asserts d'un test, et seulement si ni l'étape
+  `value_script` ni l'étape d'install n'ont échoué. Le hook de suite `lint_suite` s'exécute une fois
+  par invocation, dans les modes `--all` et `--test-name`.
+- **Effet sur le verdict** : chaque constat `error` est un assert en échec nommé `lint:{rule}` ; le
+  test échoue avec le code de sortie 3, comme tout assert en échec. Un constat `warn` est une ligne
+  réussie préfixée de `warning: ` et ne fait jamais échouer l'exécution. Une erreur du script donne une
+  ligne en échec `lint:execution`, et un constat invalide une ligne en échec `lint:invalid-finding`.
+- **Sans `--lint-dir`** : rien ne change. Aucune ligne de lint ni aucune suppression n'est produite.
+
+### Suppressions
+
+Un constat marqué comme supprimé ne fait jamais échouer un test. Il est porté par un inventaire, rendu
+seulement quand il n'est pas vide :
+
+- **text** : une ligne `Suppressed: {n}` après la ligne `Results:`, puis une ligne `[SKIP]` par
+  suppression, avec son test, sa règle, son objet et sa raison ;
+- **json** : un tableau `suppressions` après `summary`, un objet par suppression avec `test`, `rule`,
+  `kind`, `namespace`, `name`, `path`, `reason` et `origin` (les champs absents valent `null`) ;
+- **JUnit** : un élément `<system-out>` sur le `<testsuite>` du test concerné, une suppression par ligne.
 
 ## Tests de régression internes (`agent/tests/rhai_*.rs`)
 

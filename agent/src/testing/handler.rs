@@ -1,5 +1,11 @@
 use super::{
-    result::TestResultCollector,
+    lint::{
+        context::{build_suite_context, build_test_context},
+        runner::LintRunner,
+        sections::Sections,
+    },
+    result::{Suppression, TestResultCollector},
+    schema::registry::SchemaRegistry,
     vyniltest::{VynilTest, VynilTestSetRef, appslug},
     vyniltestset::{VynilAssert, VynilAssertResult, VynilAssertSelector, VynilTestSet, VynilTestSetMocks},
 };
@@ -194,6 +200,55 @@ fn instance_already_mocked(
     })
 }
 
+/// Lit le `status` de l'instance mockée du test, tel que l'installation l'a persisté dans la
+/// base de mocks (`fun_name` : `get_<usage>_instance`). L'échec de lecture est rendu à
+/// l'appelant : `lint_sections` en fait une ligne `lint:sections`.
+fn instance_status(rhai: &mut Script, fun_name: &str) -> Result<Dynamic, String> {
+    rhai.eval(&format!("{fun_name}(args.namespace, args.instance).status"))
+        .map_err(|e| e.to_string())
+}
+
+/// Voie lint de test : rend les lignes et les suppressions du script `lint` sur les objets
+/// créés. Sans le hook `lint` (distribution qui ne définit que `lint_suite`), rien n'est lu ni
+/// appelé : `read_status` n'est pas invoquée.
+fn lint_test_lane(
+    lint: &LintRunner,
+    created: &[Dynamic],
+    ctx: &serde_json::Value,
+    read_status: impl FnOnce() -> Result<Dynamic, String>,
+) -> (Vec<VynilAssertResult>, Vec<Suppression>) {
+    if !lint.has_test_hook() {
+        return (Vec::new(), Vec::new());
+    }
+    let (sections, unreadable) = lint_sections(created, read_status());
+    let outcome = lint.run_test(ctx, &sections);
+    let mut rows: Vec<VynilAssertResult> = unreadable.into_iter().collect();
+    rows.extend(outcome.rows);
+    (rows, outcome.suppressions)
+}
+
+/// Sections des objets créés d'après le `status` lu. Un statut illisible laisse toutes les
+/// sections vides et rend en plus une ligne `lint:sections` en échec : une règle « pour chaque
+/// objet de `objs.scalables` » ne passerait sinon vert sans rien avoir vérifié. Un statut lu
+/// sans aucune section déclarée reste un cas légitime et ne produit aucune ligne.
+fn lint_sections(
+    created: &[Dynamic],
+    status: Result<Dynamic, String>,
+) -> (Sections, Option<VynilAssertResult>) {
+    match status {
+        Ok(status) => (Sections::from_status(created, &status), None),
+        Err(error) => (
+            Sections::from_status(created, &Dynamic::UNIT),
+            Some(VynilAssertResult {
+                name: "lint:sections".to_string(),
+                description: Some("Lint sections".to_string()),
+                passed: false,
+                message: format!("status of the instance not readable, every object is unsectioned: {error}"),
+            }),
+        ),
+    }
+}
+
 /// Builds the virtual instance mock (`Dynamic`) for the tested instance.
 ///
 /// # Errors
@@ -249,6 +304,10 @@ pub struct TestHandler {
     pub results: TestResultCollector,
     tests: BTreeMap<String, VynilTest>,
     test_sets: BTreeMap<String, VynilTestSet>,
+    /// Moteur de lint, présent seulement après `with_lint`.
+    lint: Option<LintRunner>,
+    /// Noms des tests exécutés par cette invocation (contexte de suite).
+    executed: Vec<String>,
 }
 
 impl TestHandler {
@@ -273,6 +332,8 @@ impl TestHandler {
             results: TestResultCollector::new(),
             tests: BTreeMap::new(),
             test_sets: BTreeMap::new(),
+            lint: None,
+            executed: Vec::new(),
         };
         if let Some(ts_dirs) = testset_dirs {
             for dir in &ts_dirs {
@@ -281,6 +342,38 @@ impl TestHandler {
         }
         handler.load_tests_from_dir(&handler.package_dir.join("tests"))?;
         Ok(handler)
+    }
+
+    /// Active la voie lint : registre de schémas (CRD `<package_dir>/crds` et répertoire de
+    /// schémas donné), puis `LintRunner` sur `lint_dir`. Une erreur de construction remonte
+    /// telle quelle.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`common::Error`] when the schema registry or the lint script cannot be built.
+    pub fn with_lint(mut self, lint_dir: &Path, schemas_dir: Option<&Path>) -> common::Result<Self> {
+        let crds = self.package_dir.join("crds");
+        let registry = SchemaRegistry::new(Some(crds.as_path()), schemas_dir)?;
+        self.lint = Some(LintRunner::new(lint_dir, &self.script_dir, registry)?);
+        Ok(self)
+    }
+
+    /// Hook de suite du lint : une seule fois par invocation, après la suite. Ajoute un
+    /// enregistrement `(suite)` seulement si la distribution définit `lint_suite`.
+    pub fn run_suite_lint(&mut self) {
+        let outcome = {
+            let Some(lint) = self.lint.as_ref() else {
+                return;
+            };
+            if !lint.has_suite_hook() {
+                return;
+            }
+            let ctx = build_suite_context(&self.package, &self.tests, &self.test_sets, &self.executed);
+            lint.run_suite(&ctx)
+        };
+        self.results
+            .add("(suite)".to_string(), outcome.rows, std::time::Duration::ZERO);
+        self.results.add_suppressions(outcome.suppressions);
     }
 
     /// Scans a directory for .yml/.yaml files (potentially multi-document)
@@ -489,8 +582,11 @@ impl TestHandler {
 
     pub fn run_test(&mut self, name: &str, created_objects: &Arc<Mutex<Vec<Dynamic>>>) {
         let start = std::time::Instant::now();
-        let result = self.run_test_inner(name, created_objects);
+        let mut suppressions: Vec<Suppression> = Vec::new();
+        let result = self.run_test_inner(name, created_objects, &mut suppressions);
         let duration = start.elapsed();
+        self.executed.push(name.to_string());
+        self.results.add_suppressions(suppressions);
 
         match result {
             Ok(asserts) => {
@@ -508,10 +604,12 @@ impl TestHandler {
         }
     }
 
+    /// Exécute un test. Les suppressions du lint, s'il tourne, sont ajoutées à `suppressions`.
     fn run_test_inner(
         &self,
         name: &str,
         created_objects: &Arc<Mutex<Vec<Dynamic>>>,
+        suppressions: &mut Vec<Suppression>,
     ) -> common::Result<Vec<VynilAssertResult>> {
         // Resolve test: merge testSets, template mocks/asserts
         let test = self.get_templated_test(name)?;
@@ -596,11 +694,27 @@ impl TestHandler {
             .as_str(),
         )?;
 
-        // Validate asserts against created objects
+        // Validate asserts against created objects, then copy them for the lint lane
         let objects = created_objects
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         asserts.extend(test.run_asserts(&objects));
+        let created: Vec<Dynamic> = objects.to_vec();
+        drop(objects);
+
+        // Lint the created objects with the distribution script, when a lint lane is configured
+        if let Some(lint) = &self.lint {
+            let refs = self
+                .tests
+                .get(name)
+                .and_then(|loaded| loaded.testSets.clone())
+                .unwrap_or_default();
+            let ctx = build_test_context(&self.package, &test, &refs);
+            let (rows, lane_suppressions) =
+                lint_test_lane(lint, &created, &ctx, || instance_status(&mut rhai, fun_name));
+            asserts.extend(rows);
+            suppressions.extend(lane_suppressions);
+        }
 
         Ok(asserts)
     }
@@ -678,5 +792,352 @@ impl TestHandler {
             }
         }
         Ok(results)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{Value, json};
+    use std::{cell::Cell, fs};
+
+    const PACKAGE_YAML: &str = "apiVersion: vinyl.solidite.fr/v1beta1\nkind: Package\nmetadata:\n  name: demo\n  category: core\n  description: demo package\n  type: tenant\n  features: []\nrequirements: []\n";
+
+    /// Installation qui crée un unique `ConfigMap` `app/web`.
+    const INSTALL_ONE_CONFIGMAP: &str = r#"fn run(instance, context) {
+    let h = k8s_resource("configmaps", "app");
+    h.create(#{ apiVersion: "v1", kind: "ConfigMap", metadata: #{ name: "web", namespace: "app" } });
+}
+"#;
+
+    /// Test sans asserts : l'installation et le lint sont les seules sources de lignes.
+    fn plain_test(name: &str) -> String {
+        format!(
+            "apiVersion: vinyl.solidite.fr/v1beta1\nkind: Test\nmetadata:\n  name: {name}\ninstance:\n  name: demo\n  namespace: app\n"
+        )
+    }
+
+    /// Test dont l'unique assert vérifie que `app/web` existe.
+    fn test_with_web_assert() -> String {
+        format!(
+            "{}asserts:\n  - name: has-web\n    matcher: all\n    selector:\n      kind: ConfigMap\n      name: web\n      namespace: app\n",
+            plain_test("default")
+        )
+    }
+
+    /// Lint qui signale une erreur par objet reçu.
+    const LINT_ERROR_PER_OBJECT: &str = r#"fn lint(objs, ctx) {
+    let out = [];
+    for obj in objs.all {
+        out.push(#{
+            rule: "no-web", severity: "error",
+            object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
+            message: "web is forbidden"
+        });
+    }
+    out
+}
+"#;
+
+    struct Fixture {
+        _root: tempfile::TempDir,
+        package: PathBuf,
+        scripts: PathBuf,
+        lint: PathBuf,
+    }
+
+    /// Package de test : `package.yaml`, `scripts/` (context et install), `tests/`, et une
+    /// distribution de lint optionnelle. Le répertoire de scripts de la distribution est vide.
+    fn fixture(tests: &[(&str, String)], install: &str, lint: Option<&str>) -> Fixture {
+        let root = tempfile::tempdir().expect("répertoire temporaire");
+        let package = root.path().join("package");
+        let scripts = package.join("scripts");
+        let tests_dir = package.join("tests");
+        let agent_scripts = root.path().join("agent-scripts");
+        let lint_dir = root.path().join("distro");
+        for dir in [&scripts, &tests_dir, &agent_scripts.join("lib"), &lint_dir] {
+            fs::create_dir_all(dir).expect("création de répertoire");
+        }
+        fs::write(package.join("package.yaml"), PACKAGE_YAML).expect("package.yaml");
+        fs::write(scripts.join("context.rhai"), "fn run(instance, args) { #{} }").expect("context.rhai");
+        fs::write(scripts.join("install.rhai"), install).expect("install.rhai");
+        for (file, body) in tests {
+            fs::write(tests_dir.join(file), body).expect("fichier de test");
+        }
+        if let Some(src) = lint {
+            fs::write(lint_dir.join("lint.rhai"), src).expect("lint.rhai");
+        }
+        Fixture {
+            _root: root,
+            package,
+            scripts: agent_scripts,
+            lint: lint_dir,
+        }
+    }
+
+    fn handler(fx: &Fixture) -> TestHandler {
+        TestHandler::new(
+            fx.package.clone(),
+            fx.scripts.clone(),
+            fx.package.clone(),
+            fx.scripts.clone(),
+            None,
+        )
+        .expect("chargement du handler")
+    }
+
+    fn sink() -> Arc<Mutex<Vec<Dynamic>>> {
+        Arc::default()
+    }
+
+    /// Document JSON du collecteur : `tests` (noms et asserts) et `suppressions`.
+    fn report(h: &TestHandler) -> Value {
+        serde_json::from_str(&h.results.to_json()).expect("JSON du collecteur")
+    }
+
+    fn assert_names(test: &Value) -> Vec<String> {
+        test["asserts"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x["name"].as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn lint_rows_follow_asserts() {
+        let fx = fixture(
+            &[("default.yaml", test_with_web_assert())],
+            INSTALL_ONE_CONFIGMAP,
+            Some(LINT_ERROR_PER_OBJECT),
+        );
+        let mut h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        h.run_test("default", &sink());
+        let doc = report(&h);
+        let test = &doc["tests"][0];
+        assert_eq!(assert_names(test), ["has-web", "lint:no-web"]);
+        assert_eq!(test["asserts"][0]["passed"], true);
+        assert_eq!(test["asserts"][1]["passed"], false);
+    }
+
+    #[test]
+    fn lint_skipped_when_install_fails() {
+        let fx = fixture(
+            &[("default.yaml", plain_test("default"))],
+            "fn run(instance, context) { throw \"install broke\"; }\n",
+            Some(LINT_ERROR_PER_OBJECT),
+        );
+        let mut h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        h.run_test("default", &sink());
+        let doc = report(&h);
+        let asserts = &doc["tests"][0]["asserts"];
+        assert_eq!(asserts.as_array().map(Vec::len), Some(1));
+        assert_eq!(asserts[0]["name"], "execution");
+        assert_eq!(asserts[0]["passed"], false);
+    }
+
+    #[test]
+    fn lint_sees_own_objects_in_all_lane() {
+        let fx = fixture(
+            &[
+                ("first.yaml", plain_test("first")),
+                ("second.yaml", plain_test("second")),
+            ],
+            INSTALL_ONE_CONFIGMAP,
+            Some(
+                r#"fn lint(objs, ctx) {
+    [#{
+        rule: "count", severity: "warn",
+        object: #{ apiVersion: "v1", kind: "Count", name: "all" },
+        message: "objects=" + objs.all.len()
+    }]
+}
+"#,
+            ),
+        );
+        let mut h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        h.run_all_tests();
+        let doc = report(&h);
+        for test in doc["tests"].as_array().into_iter().flatten() {
+            let message = test["asserts"][0]["message"].as_str().unwrap_or_default();
+            assert!(message.ends_with("objects=1"), "{message}");
+        }
+    }
+
+    #[test]
+    fn suppressed_finding_is_inventoried() {
+        let fx = fixture(
+            &[("default.yaml", plain_test("default"))],
+            INSTALL_ONE_CONFIGMAP,
+            Some(
+                r#"fn lint(objs, ctx) {
+    [#{
+        rule: "no-web", severity: "error",
+        object: #{ apiVersion: "v1", kind: "ConfigMap", namespace: "app", name: "web" },
+        message: "web is forbidden",
+        suppressed: true, reason: "legacy"
+    }]
+}
+"#,
+            ),
+        );
+        let mut h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        h.run_test("default", &sink());
+        assert_eq!(assert_names(&report(&h)["tests"][0]), Vec::<String>::new());
+        let suppressions = h.results.suppressions();
+        assert_eq!(suppressions.len(), 1);
+        assert_eq!(suppressions[0].test, "default");
+        assert_eq!(suppressions[0].rule, "no-web");
+        assert_eq!(suppressions[0].reason.as_deref(), Some("legacy"));
+    }
+
+    #[test]
+    fn no_with_lint_leaves_behaviour_unchanged() {
+        let fx = fixture(
+            &[("default.yaml", plain_test("default"))],
+            INSTALL_ONE_CONFIGMAP,
+            Some(LINT_ERROR_PER_OBJECT),
+        );
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        h.run_suite_lint();
+        let doc = report(&h);
+        assert_eq!(assert_names(&doc["tests"][0]), Vec::<String>::new());
+        assert_eq!(doc["tests"].as_array().map(Vec::len), Some(1));
+        assert!(doc.get("suppressions").is_none());
+    }
+
+    #[test]
+    fn suite_hook_adds_one_suite_record() {
+        let fx = fixture(
+            &[("default.yaml", plain_test("default"))],
+            INSTALL_ONE_CONFIGMAP,
+            Some(
+                r#"fn lint_suite(ctx) {
+    [#{
+        rule: "suite-size", severity: "error",
+        object: #{ apiVersion: "v1", kind: "Suite", name: "all" },
+        message: "suite checked"
+    }]
+}
+"#,
+            ),
+        );
+        let mut h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        h.run_all_tests();
+        h.run_suite_lint();
+        let doc = report(&h);
+        let suite = &doc["tests"][1];
+        assert_eq!(suite["test_name"], "(suite)");
+        assert_eq!(assert_names(suite), ["lint:suite-size"]);
+        assert_eq!(suite["asserts"][0]["passed"], false);
+    }
+
+    #[test]
+    fn suite_hook_without_lint_adds_nothing() {
+        // Sans `with_lint`, `run_suite_lint` ne produit aucun enregistrement.
+        let fx = fixture(&[], INSTALL_ONE_CONFIGMAP, None);
+        let mut h = handler(&fx);
+        h.run_suite_lint();
+        assert_eq!(report(&h)["tests"].as_array().map(Vec::len), Some(0));
+    }
+    /// Installation qui crée un `Deployment`, un `ConfigMap` et un `Secret` ; seuls les deux
+    /// premiers sont déclarés par `set_status_scalables` et `set_status_befores`.
+    const INSTALL_SECTIONED: &str = r#"fn run(instance, context) {
+    let deploys = k8s_resource("deployments", "app");
+    deploys.create(#{ apiVersion: "apps/v1", kind: "Deployment", metadata: #{ name: "web", namespace: "app" } });
+    let cms = k8s_resource("configmaps", "app");
+    cms.create(#{ apiVersion: "v1", kind: "ConfigMap", metadata: #{ name: "cfg", namespace: "app" } });
+    let secrets = k8s_resource("secrets", "app");
+    secrets.create(#{ apiVersion: "v1", kind: "Secret", metadata: #{ name: "loose", namespace: "app" } });
+    instance.set_status_scalables([#{ apiVersion: "apps/v1", kind: "Deployment", name: "web", namespace: "app" }]);
+    instance.set_status_befores([#{ apiVersion: "v1", kind: "ConfigMap", name: "cfg", namespace: "app" }]);
+}
+"#;
+
+    /// Lint qui constate chaque objet de `objs.scalables` puis chaque objet de `objs.unsectioned`.
+    const LINT_SCALABLES_AND_UNSECTIONED: &str = r#"fn lint(objs, ctx) {
+    let out = [];
+    for obj in objs.scalables {
+        out.push(#{
+            rule: "scalable", severity: "error",
+            object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
+            message: "scalable seen"
+        });
+    }
+    for obj in objs.unsectioned {
+        out.push(#{
+            rule: "unsectioned", severity: "error",
+            object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
+            message: "unsectioned seen"
+        });
+    }
+    out
+}
+"#;
+
+    #[test]
+    fn lint_sections_follow_what_the_package_declared() {
+        let fx = fixture(
+            &[("default.yaml", plain_test("default"))],
+            INSTALL_SECTIONED,
+            Some(LINT_SCALABLES_AND_UNSECTIONED),
+        );
+        let mut h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        h.run_test("default", &sink());
+        let doc = report(&h);
+        let test = &doc["tests"][0];
+        assert_eq!(assert_names(test), ["lint:scalable", "lint:unsectioned"]);
+        assert_eq!(test["asserts"][0]["description"], "Deployment app/web");
+        assert_eq!(test["asserts"][1]["description"], "Secret app/loose");
+    }
+
+    #[test]
+    fn an_unreadable_status_fails_a_lint_sections_row() {
+        let created =
+            vec![rhai::serde::to_dynamic(serde_json::json!({
+            "apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"name": "web", "namespace": "app"}
+        }))
+        .expect("objet convertible")];
+        let (sections, row) = lint_sections(&created, Err("unknown function".to_string()));
+        let row = row.expect("une ligne lint:sections");
+        assert_eq!(row.name, "lint:sections");
+        assert!(!row.passed);
+        assert!(row.message.contains("unknown function"));
+        assert!(sections.scalables.is_empty());
+        assert_eq!(sections.unsectioned.len(), 1);
+        let (_, none) = lint_sections(&created, Ok(Dynamic::from(rhai::Map::new())));
+        assert!(none.is_none(), "un statut lu sans section n'est pas une erreur");
+    }
+
+    #[test]
+    fn a_suite_only_distribution_reads_no_status() {
+        let ctx = json!({"package": {"name": "demo"}, "test": {"name": "default"}});
+        let fx = fixture(&[], INSTALL_ONE_CONFIGMAP, Some("fn lint_suite(ctx) { [] }\n"));
+        let h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        let lint = h.lint.as_ref().expect("voie lint");
+        let read = Cell::new(false);
+        let (rows, suppressions) = lint_test_lane(lint, &[], &ctx, || {
+            read.set(true);
+            Err("statut illisible".to_string())
+        });
+        assert!(!read.get(), "le statut ne doit pas être lu sans hook `lint`");
+        assert!(rows.is_empty(), "{rows:?}");
+        assert!(suppressions.is_empty());
+
+        let fx = fixture(&[], INSTALL_ONE_CONFIGMAP, Some("fn lint(objs, ctx) { [] }\n"));
+        let h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        let lint = h.lint.as_ref().expect("voie lint");
+        let read = Cell::new(false);
+        let (rows, _) = lint_test_lane(lint, &[], &ctx, || {
+            read.set(true);
+            Err("statut illisible".to_string())
+        });
+        assert!(read.get(), "le statut doit être lu avec un hook `lint`");
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0].name, "lint:sections");
+        assert!(!rows[0].passed);
     }
 }

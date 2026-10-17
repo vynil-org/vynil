@@ -1,0 +1,78 @@
+# Spec fichier de ./native.rs — la table des types Kubernetes natifs connus du binaire.
+
+Spec: SchemaNative
+
+Platform: Rust
+
+Purpose:
+  Associer un couple `apiVersion`/`kind` au schéma JSON du type natif correspondant de
+    `k8s-openapi`, sans document OpenAPI embarqué : les schémas sont ceux que les types
+    exposent déjà par `schemars`. Ce fichier est l'unique endroit qui énumère les types
+    natifs vérifiables ; `k8s-openapi` ne fournit pas de registre global.
+
+Owns:
+  ./native.rs
+
+Exposes:
+  @native_schema — `(api_version: &str, kind: &str) -> Option<serde_json::Value>` : le
+    schéma racine autonome (ses `$defs` inclus), sortie brute de `schemars` avant le pipeline
+    de ./registry.sdd (qui applique @normalize puis, en mode strict, @strictify), ou `None`
+    pour un couple absent de la table.
+  @native_k8s_version — `() -> &'static str` : la version mineure de Kubernetes dont
+    proviennent les schémas (celle de la feature `k8s-openapi` active), pour les messages.
+
+Must:
+  Couvrir au minimum les ressources suivantes : `v1` — `Namespace`, `ConfigMap`, `Secret`,
+    `Service`, `ServiceAccount`, `PersistentVolumeClaim`, `PersistentVolume`, `Pod`,
+    `Endpoints`, `ResourceQuota`, `LimitRange` ; `apps/v1` — `Deployment`, `StatefulSet`,
+    `DaemonSet`, `ReplicaSet` ; `batch/v1` — `Job`, `CronJob` ; `networking.k8s.io/v1` —
+    `Ingress`, `IngressClass`, `NetworkPolicy` ; `rbac.authorization.k8s.io/v1` — `Role`,
+    `ClusterRole`, `RoleBinding`, `ClusterRoleBinding` ; `autoscaling/v2` —
+    `HorizontalPodAutoscaler` ; `policy/v1` — `PodDisruptionBudget` ; `storage.k8s.io/v1` —
+    `StorageClass` ; `scheduling.k8s.io/v1` — `PriorityClass` ;
+    `apiextensions.k8s.io/v1` — `CustomResourceDefinition` ;
+    `admissionregistration.k8s.io/v1` — `ValidatingWebhookConfiguration`,
+    `MutatingWebhookConfiguration` ; `coordination.k8s.io/v1` — `Lease` ;
+    `discovery.k8s.io/v1` — `EndpointSlice`.
+  Produire le schéma avec les paramètres JSON Schema 2020-12 de `schemars`, racine et
+    définitions réunies dans un seul document sans `$ref` externe.
+  Faire accepter à `Quantity` un entier ou une chaîne, comme l'apiserver : la définition
+    native n'a pas de `type` utile, elle reçoit le marqueur `x-kubernetes-int-or-string`
+    pour que ./dialect.sdd la normalise.
+  Résoudre `apiVersion` tel qu'écrit dans un manifeste : `v1` pour le groupe core,
+    `<groupe>/<version>` pour les autres ; la casse est exacte.
+
+Handles:
+  Couple absent de la table, kind de type `*List` ou sous-ressource (`Eviction`, `Binding`,
+    `TokenRequest`, …) — `None`, jamais une erreur.
+  Version d'API plus ancienne que celle de la feature active (`extensions/v1beta1`) — `None` :
+    le schéma n'existe plus dans la version Kubernetes ciblée.
+
+Tasks:
+  [x] Couvrir chaque scénario par un test de même nom.
+  [?] Étendre la table aux autres ressources de `k8s-openapi` (`resource.k8s.io`,
+      `flowcontrol.apiserver.k8s.io`, `certificates.k8s.io`, …) ou la générer par macro à
+      partir des modules ; décider selon l'usage réel des packages de la distribution.
+
+Done when:
+  Chaque scénario a un test passant et le harnais statique est vert.
+
+Scenario: every minimum resource resolves
+  Given chacun des couples de l'ensemble minimal ci-dessus
+  When @native_schema est appelé
+  Then un schéma est retourné et sa racine décrit un objet portant `apiVersion`, `kind`,
+    `metadata`
+  Test @every-minimum-resource-resolves
+
+Scenario: unknown pair is not an error
+  Given `cert-manager.io/v1` `Certificate`
+  When @native_schema est appelé
+  Then @None est retourné
+  Test @unknown-pair-is-not-an-error
+
+Scenario: quantity accepts integer and string
+  Given le schéma de `Deployment` tel que le registre le compile, strict ou non
+  When `resources.limits.cpu` vaut `1`, `"0.5"` et `"500m"`
+  Then les trois valeurs sont valides
+  But `[1]` et `true` sont rejetés
+  Test @quantity-accepts-integer-and-string

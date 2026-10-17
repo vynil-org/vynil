@@ -1,0 +1,147 @@
+# Spec fichier de ./finding.rs — le constat de lint et ses conversions.
+
+Spec: LintFinding
+
+Platform: Rust
+
+Purpose:
+  Définir la forme d'un constat tel que le script de la distribution le retourne, l'analyser
+    depuis des valeurs Rhai sans jamais en perdre un silencieusement, et le convertir en ce
+    que le reste du moteur sait traiter : des lignes @VynilAssertResult pour le verdict et
+    des @Suppression pour l'inventaire.
+
+Owns:
+  ./finding.rs
+
+References:
+  ./../result.sdd — @Suppression y est possédé ; ce fichier le produit.
+  ./../vyniltestset.sdd — @VynilAssertResult, la forme d'une ligne de verdict.
+
+Exposes:
+  @Severity — `Error` ou `Warn`, forme texte `error` et `warn`.
+  @ObjectRef — `{ api_version, kind, namespace: Option, name }`.
+  @Finding — `{ rule: String, severity: Severity, object: ObjectRef, path: Option<String>,
+    message: String, source: Option<String>, suppressed: bool, reason: Option<String>,
+    origin: Option<String> }`.
+  @parse_findings — `(value: &Dynamic) -> ParsedFindings` ; @ParsedFindings porte
+    `findings: Vec<Finding>` et `invalid: Vec<String>`.
+  @to_rows — `(findings: &[Finding], invalid: &[String]) -> Vec<VynilAssertResult>`.
+  @to_suppressions — `(test: &str, findings: &[Finding]) -> Vec<Suppression>`.
+
+Accepts:
+  Pour @parse_findings, un tableau Rhai de cartes. Champs de la carte d'un constat :
+    `rule` (chaîne non vide), `severity` (`error` ou `warn`), `object` (carte avec
+    `apiVersion`, `kind`, `name` chaînes non vides et `namespace` chaîne optionnelle ; un
+    `namespace` vide vaut un namespace absent),
+    `message` (chaîne non vide) ; optionnels : `path` (chaîne), `source` (chaîne),
+    `suppressed` (booléen, défaut `false`), `reason` (chaîne, non vide dès que `suppressed`
+    est vrai), `origin` (chaîne). Les clés inconnues sont ignorées.
+  Une valeur qui n'est pas un tableau est invalide en bloc.
+
+Returns:
+  @parse_findings : les constats valides dans l'ordre du tableau, et une description par
+    élément invalide, de la forme `finding #{index}: {raison}`.
+  @to_rows : une ligne par constat non supprimé, dans l'ordre, puis une ligne par élément
+    invalide :
+      constat `error` — `name` = `lint:{rule}`, `description` = `Some("{kind} {namespace}/{name}")`
+        (`{kind} {name}` sans namespace), `passed` = false, `message` = le message suivi de
+        ` [{path}]` quand `path` est présent.
+      constat `warn` — mêmes champs, `passed` = true et `message` préfixé de `warning: `.
+      élément invalide — `name` = `lint:invalid-finding`, `description` = `None`,
+        `passed` = false, `message` = la description de l'invalidité.
+  @to_suppressions : une @Suppression par constat dont `suppressed` est vrai.
+
+Must:
+  Ne jamais écarter un constat : tout élément du tableau devient soit un @Finding, soit une
+    ligne `lint:invalid-finding`. Un script de règles mal écrit doit rendre le test rouge,
+    pas silencieux.
+  Conserver l'ordre de retour du script ; ne trier ni dédoublonner.
+  Ne rendre aucune ligne pour un constat supprimé : la suppression est un fait d'inventaire,
+    pas un résultat.
+  Ne jamais paniquer : aucune indexation ni `unwrap` ; une valeur Rhai de mauvais type est un
+    élément invalide.
+  Donner au nom de ligne de verdict exactement la forme `lint:{règle}`, sans transformation ni
+    troncature : une règle peut contenir `/` (`lint:schema/invalid`) et ce `/` est conservé
+    tel quel dans le verdict.
+
+Handles:
+  Constat `warn` supprimé — inventorié, aucune ligne.
+  `suppressed` vrai sans `reason`, ou avec une `reason` vide — élément invalide
+    (`lint:invalid-finding`) : une exception se justifie, sinon une erreur deviendrait muette
+    sans trace de sa raison. Une `reason` est tolérée sur un constat non supprimé.
+  `rule` égale à `execution`, `invalid-finding` ou `sections` — élément invalide
+    (`lint:invalid-finding`) : ces trois noms sont ceux des lignes que le moteur produit lui-même
+    (`lint:execution`, `lint:invalid-finding`, `lint:sections`), et une règle de distribution
+    portant l'un d'eux serait indiscernable d'une panne du script.
+  Tableau vide — aucune ligne, aucune suppression.
+
+Tasks:
+  [x] Couvrir chaque scénario par un test de même nom.
+  [x] Une ligne `warn` est `passed: true` avec un préfixe de message `warning: ` : décision —
+      pas de champ de sévérité dans @VynilAssertResult ; le JUnit liste ces lignes en `[WARN]`
+      dans le `<system-out>` de la suite (voir ./../result.sdd), le texte les montre déjà par
+      leur préfixe.
+
+Done when:
+  Chaque scénario a un test passant et le harnais statique est vert.
+
+Scenario: an error finding becomes a failed row
+  Given un constat `error` de règle `latest-tag` sur le Deployment `web` du namespace `app`,
+    de chemin `spec.template.spec.containers[0].image`
+  When @to_rows s'exécute
+  Then une ligne `lint:latest-tag` est en échec, de description `Deployment app/web`, dont le
+    message se termine par ` [spec.template.spec.containers[0].image]`
+  Test @an-error-finding-becomes-a-failed-row
+
+Scenario: a warning passes with a prefix
+  Given un constat `warn`
+  When @to_rows s'exécute
+  Then la ligne est passante et son message commence par `warning: `
+  Test @a-warning-passes-with-a-prefix
+
+Scenario: a suppressed finding is inventoried and silent
+  Given un constat `error` avec `suppressed: true` et `reason: "legacy image"`
+  When @to_rows puis @to_suppressions s'exécutent
+  Then aucune ligne n'est produite et une @Suppression porte règle, objet et raison
+  Test @a-suppressed-finding-is-inventoried-and-silent
+
+Scenario: a suppression without a reason is invalid
+  Given un constat `error` avec `suppressed: true` et sans `reason`, puis le même avec
+    `reason: ""`
+  When @parse_findings puis @to_rows s'exécutent
+  Then les deux éléments sont invalides : deux lignes `lint:invalid-finding` en échec dont le
+    message nomme `reason`, et aucune @Suppression
+  Test @a-suppression-without-a-reason-is-invalid
+
+Scenario: a malformed finding is never dropped
+  Given un tableau `[#{rule: "x"}, 42]`
+  When @parse_findings puis @to_rows s'exécutent
+  Then deux lignes `lint:invalid-finding` en échec sont produites, nommant `finding #0` et
+    `finding #1`
+  Test @a-malformed-finding-is-never-dropped
+
+Scenario: cluster scoped object has no namespace in its description
+  Given un constat sur un `ClusterRole` sans namespace
+  When @to_rows s'exécute
+  Then la description est `ClusterRole {name}`
+  Test @cluster-scoped-object-has-no-namespace-in-its-description
+
+Scenario: reserved rule names are invalid findings
+  Given trois constats dont les règles valent `execution`, `invalid-finding` et `sections`, et
+    un constat de règle `latest-tag`
+  When @parse_findings s'exécute
+  Then seul le constat `latest-tag` est valide ; chacun des trois autres donne une description
+    `finding #{index}: ...` qui nomme la règle réservée
+  Test @reserved-rule-names-are-invalid-findings
+
+Scenario: an empty namespace is no namespace
+  Given un constat dont l'objet porte `namespace: ""`
+  When @parse_findings puis @to_rows s'exécutent
+  Then `namespace` vaut `None` et la description est `{kind} {name}`, sans espace ni barre oblique
+  Test @an-empty-namespace-is-no-namespace
+
+Scenario: invalid finding messages are in English
+  Given un constat de règle réservée `sections`, un sans `message`, et un dont `severity` est inconnue
+  When @parse_findings s'exécute
+  Then chaque description `finding #{index}: ...` est rédigée en anglais et nomme la cause
+  Test @invalid-finding-messages-are-in-english

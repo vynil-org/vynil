@@ -45,9 +45,17 @@ agent package test  -p <package-dir>
                    [--format text|json]
                    [--junit-output-filename <file>]
                    [--template-output-filename <file>]   # for a single test only => yamllint, kubelinter, ... usage
+                   [--lint-dir <dir> [--schemas-dir <dir>]]
 ```
 
 The `<package-dir>/tests` directory must exist (otherwise error `MissingTestDirectory`).
+
+| Flag | Environment variable | Role |
+|---|---|---|
+| `--lint-dir <dir>` | `LINT_DIRECTORY` | Directory of the distribution's render lint script (`lint.rhai`). When given, the script runs at the end of each test and its findings are added to the verdict. Without it, no render lint runs. |
+| `--schemas-dir <dir>` | `SCHEMAS_DIRECTORY` | Directory of JSON Schemas and CRDs used by the lint script's `schema_*` functions. Requires `--lint-dir` (usage error otherwise): `SCHEMAS_DIRECTORY` alone in the environment is that same usage error. |
+
+See [Package tests](tooling/test.md#render-lint) and [Render lint](tooling/render-lint.md).
 
 ## `agent box`
 
@@ -83,3 +91,4 @@ Generates CRD manifests from Rust types. Used to regenerate
 - `0`: success
 - `1`: execution error (or lint with errors)
 - `2`: lint with warnings only / CRD generation failure
+- `3`: `agent package test` failed (an assertion failed, or the render lint reported a finding of severity `error`)

@@ -33,6 +33,9 @@ References:
     ./../testing/vyniltest.sdd, ./../testing/vyniltestset.sdd — le moteur que cette
     feuille pilote ; chacun est en attente — références croisées seulement, leur
     comportement est possédé là-bas.
+  ./../testing/lint/lint.sdd, ./../testing/schema/schema.sdd — le lint du rendu et la
+    validation de schéma que cette feuille active par `--lint-dir` et `--schemas-dir` ;
+    leur comportement est possédé là-bas.
   /common/src/lib.sdd — le contrat @common::Error / @common::Result :
     @Error::MissingTestDirectory, @Error::TestFailure, @Error::Stdio,
     @Error::YamlError et @Error::Core avec son encapsulation transparente des erreurs
@@ -48,7 +51,8 @@ References:
     `MissingTestDirectory` que le parent /agent/agent.sdd gèle comme stable.
 
 Must:
-  Gèle exactement la surface clap à dix arguments : `-p`/`--package-dir`/env
+  Gèle exactement la surface clap à douze arguments — les dix décrits ici plus `--lint-dir`
+    et `--schemas-dir` de l'entrée suivante : `-p`/`--package-dir`/env
     `PACKAGE_DIRECTORY` défaut `/tmp/package` ; `-s`/`--script-dir`/env
     `SCRIPT_DIRECTORY` défaut `./agent/scripts` ; `-t`/`--template-dir`/env
     `TEMPLATE_DIRECTORY` défaut `./agent/templates` ; `-c`/`--config-dir`/env
@@ -64,6 +68,21 @@ Must:
     résolution est flag puis env puis défaut ; les défauts relatifs
     `./agent/scripts`, `./agent/templates` et `.` se résolvent contre le cwd du
     process au moment de l'usage.
+  Porte deux arguments dédiés au lint du rendu : `--lint-dir` (pas de court)/env
+    `LINT_DIRECTORY`, @PathBuf optionnel, champ Rust @lint_dir, le répertoire d'une
+    distribution qui contient `lint.rhai` ; `--schemas-dir` (pas de court)/env
+    `SCHEMAS_DIRECTORY`, @PathBuf optionnel, champ Rust @schemas_dir, déclaré `requires`
+    `lint-dir` — le poser seul est une erreur d'usage clap, pas un recours silencieux.
+    `--config-dir` garde son rôle (les scripts d'exécution qui simulent la ConfigMap du
+    cluster) et n'intervient jamais dans le lint ; sans `--lint-dir`, aucun lint du rendu
+    ne tourne et chaque comportement décrit ailleurs dans cette spec est inchangé.
+  Quand `--lint-dir` est posé, configure le moteur par @TestHandler::with_lint juste après
+    @TestHandler::new et propage son @Err avec `?` (script absent ou non compilable : même
+    piège exit-3, avant tout affichage, y compris en mode liste) ; une fois la suite
+    exécutée — couloir all ou mono-test — et avant l'affichage du résumé, appelle
+    @TestHandler::run_suite_lint. Les lignes de lint sont des asserts ordinaires : le
+    verdict agrégé, le résumé et le JUnit les comptent sans nouveau chemin, et l'inventaire
+    des suppressions figure dans le résumé selon ./../testing/result.sdd.
   Accepte sous @format exactement `text` et `json` (les noms @clap::ValueEnum, casse
     exacte ; l'enum ne dérive aucun @Default — la chaîne `default_value` de
     l'argument arme le défaut), et @format_results mappe @OutputFormat::Json vers
@@ -141,10 +160,10 @@ Must not:
     soit ce que dit `--format`.
 
 Exposes:
-  @Parameters — `#[derive(@clap::Args, @Debug, @Serialize, @Deserialize)]` avec dix
+  @Parameters — `#[derive(@clap::Args, @Debug, @Serialize, @Deserialize)]` avec douze
     champs privés (@package_dir, @script_dir, @template_dir, @config_dir,
     @testset_dir, @test_name, @start_all derrière `--all`, @format,
-    @junit_output_filename, @template_output_filename) ; hors de ce module on n'y
+    @junit_output_filename, @template_output_filename, @lint_dir, @schemas_dir) ; hors de ce module on n'y
     accède que via @Commands::Test dans ./mod.rs.
   @run — `pub fn @run(args: &@Parameters) -> @common::Result<@()>` ; synchrone,
     appelé en sync par la branche exit-3 de ./mod.sdd, attendu par personne.
@@ -178,6 +197,9 @@ Raises:
     documents non analysables et les noms Test/TestSet dupliqués en
     @Error::YamlError avec messages préfixés `{file}: `, plus la lecture de
     @package.yaml décrite dans /common/src/vynilpackage.sdd.
+  @Err de @TestHandler::with_lint propagés tels quels (possédés par
+    ./../testing/lint/runner.sdd) : `lint.rhai` absent ou non compilable, répertoire de
+    schémas illisible ou contenant un document malformé.
   @Error::Stdio(@std::io::Error) — échec de @std::fs::write de junit ou du template
     (répertoire parent manquant en tête de liste) ; sur le couloir mono-test, un
     échec junit saute l'écriture du template et la vérification du verdict
@@ -209,6 +231,9 @@ Handles:
     @Err la construction et tue la commande avant toute sortie.
 
 Tasks:
+  [x] Couvrir les scénarios de lint ci-dessous par des tests de même nom :
+      lint-dir-turns-findings-into-failed-asserts, schemas-dir-requires-lint-dir,
+      missing-lint-script-dies-before-output, no-lint-dir-leaves-behaviour-unchanged.
   [ ] Couvrir @run par des tests — aucun module #[cfg(test)] n'existe dans ce
       fichier, rien sous /agent/tests ne pilote `agent package test`, et les seuls
       tests dans l'arbre alentour siègent dans ./../testing/result.rs ; mapper
@@ -331,3 +356,31 @@ Scenario: junit write failure preempts the verdict
     verdict n'est pas atteinte — et exit 3 affiche `Testing the package failed
     with: Stdio error …`
   Aucun test mappé n'existe.
+
+Scenario: a lint script turns findings into failed asserts
+  Given `--all --lint-dir /distro` où `lint.rhai` signale une erreur sur un Deployment
+  When @run tourne
+  Then le résumé contient une ligne `[FAIL] lint:{règle}` pour ce test
+  And @Err @Error::TestFailure compte cette ligne parmi les assertions en échec et exit 3 suit
+  Test @lint-dir-turns-findings-into-failed-asserts
+
+Scenario: schemas dir without lint dir is a usage error
+  Given `--schemas-dir /schemas` sans `--lint-dir`
+  When clap analyse les arguments
+  Then l'invocation est refusée en erreur d'usage avant tout chargement
+  Test @schemas-dir-requires-lint-dir
+
+Scenario: missing lint script dies before any output
+  Given `--lint-dir /distro` où `/distro/lint.rhai` est absent
+  When @run tourne
+  Then @Err revient avant l'affichage de tout nom de test ou de résumé et exit 3 suit
+  And le message de l'erreur nomme `lint.rhai` ; une autre erreur ne satisfait pas le scénario
+  Test @missing-lint-script-dies-before-output
+
+Scenario: no lint dir leaves behaviour unchanged
+  Given une suite exécutée sans `--lint-dir`
+  When @run tourne
+  Then la sortie texte, JSON et JUnit est identique octet pour octet à celle d'avant le lint
+  And le test compare ces trois sorties à des instantanés littéraux écrits dans le test, pas
+    seulement à l'absence de lignes `lint:`
+  Test @no-lint-dir-leaves-behaviour-unchanged

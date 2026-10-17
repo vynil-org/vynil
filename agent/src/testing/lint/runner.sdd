@@ -1,0 +1,170 @@
+# Spec fichier de ./runner.rs — l'exécution du script de lint de la distribution.
+
+Spec: LintRunner
+
+Platform: Rust
+
+Purpose:
+  Charger le script de lint d'une distribution, l'appeler avec une liste d'objets et un
+    contexte, et rendre des lignes de résultat plus un inventaire de suppressions. Toute
+    défaillance du script devient une ligne en échec : le runner ne rend jamais d'erreur à
+    son appelant après sa construction.
+
+Owns:
+  ./runner.rs
+
+References:
+  ./finding.sdd — l'analyse et la conversion des constats.
+  ./context.sdd — les contextes passés au script.
+  ./../schema/rhai.sdd — les fonctions `schema_*` enregistrées dans le moteur du script.
+  /common/src/rhaihandler.sdd — @Script, @Dynamic, le moteur.
+
+Exposes:
+  @LintRunner — `new(lint_dir: &Path, script_dir: &Path, schemas: SchemaRegistry)
+    -> common::Result<Self>`,
+    `run_test(&self, ctx: &serde_json::Value, objects: &Sections) -> LintOutcome`,
+    `run_suite(&self, ctx: &serde_json::Value) -> LintOutcome`,
+    `has_test_hook(&self) -> bool` et `has_suite_hook(&self) -> bool` : vrai quand la
+    distribution définit `lint`, respectivement `lint_suite`.
+  @LintOutcome — `{ rows: Vec<VynilAssertResult>, suppressions: Vec<Suppression> }`.
+  @Sections — défini par ./sections.sdd, importé ici.
+
+Accepts:
+  @lint_dir : un répertoire contenant `lint.rhai`, point d'entrée fixe, plus les modules que
+    celui-ci importe. @script_dir : la racine des scripts de l'agent, dont `lib/` porte
+    les modules standard que le script peut importer.
+
+Raises:
+  @common::Error::Other — à la construction seulement : `lint.rhai` absent ou n'étant pas un
+    fichier, script qui ne compile pas, ou script qui ne définit ni `lint` ni `lint_suite`.
+
+Must:
+  Résoudre les imports du script dans l'ordre : @lint_dir, puis `{script_dir}/lib`. Un module
+    posé dans @lint_dir masque donc le module standard du même nom : la distribution peut
+    surcharger un fichier fourni, comme un paquet le fait.
+  Évaluer les instructions de premier niveau du script UNE fois par appel, pas deux : elles
+    s'exécutent dans l'appel du point d'entrée, sans exécution à blanc préalable. Le compteur
+    d'opérations est propre à chaque évaluation, donc la double exécution ne consommait pas deux
+    fois le budget : elle coûtait seulement du temps de calcul pour rien, et un premier niveau
+    coûteux se payait deux fois.
+  Évaluer chaque appel dans un moteur neuf, sans état partagé entre tests, avec les seules
+    fonctions de manipulation de données du moteur de base et les fonctions `schema_*` :
+    aucune fonction k8s, http, s3, shell ni fichier n'y est enregistrée, si bien qu'un script
+    qui les appelle échoue sur fonction inconnue.
+  Appeler `lint(objs, ctx)` avec `objs` la carte de @Sections::to_dynamic — `all` (copie, en
+    ordre de création, des objets du test) et une clé par section du paquet (`crds`, `systems`,
+    `befores`, `vitals`, `scalables`, `others`, `posts`) plus `unsectioned`, toutes toujours
+    présentes — et `ctx` le contexte de test ; appeler `lint_suite(ctx)` avec le contexte de suite. Une
+    fonction non définie par le script est sautée : un script peut ne fournir que l'une des
+    deux.
+  Replier toute erreur d'exécution Rhai, tout dépassement de la limite d'opérations et tout
+    retour qui n'est pas un tableau en une ligne `lint:execution` en échec dont le message est
+    l'erreur, et rendre aucune suppression pour cet appel.
+  Borner l'exécution par une limite d'opérations du moteur pour qu'un script qui boucle ne
+    bloque pas la suite. La limite est un budget proportionnel : une base plus une part par
+    objet reçu (@run_test ; la base seule pour @run_suite), de sorte qu'une charge honnête qui
+    grandit avec le rendu ne soit pas arrêtée par une limite fixe.
+  Borner aussi la mémoire du moteur (taille des chaînes, des tableaux et des cartes) : le
+    budget d'opérations ne protège pas d'une boucle `s += s` qui double à chaque tour.
+  Rester déterministe : mêmes objets et mêmes contextes donnent les mêmes lignes.
+
+Must not:
+  Modifier les objets du test : le script reçoit une copie.
+
+Handles:
+  `lint` retourne un tableau vide — aucune ligne, aucune suppression.
+  Test dont l'installation a échoué — le runner n'est pas appelé (décision de ../handler.sdd) :
+    pas de lint sur un rendu incomplet.
+
+Tasks:
+  [x] Couvrir chaque scénario par un test de même nom, avec des scripts `lint.rhai` de test
+      sous `/agent/tests/fixtures/`.
+  [?] Valeurs de la base et de la part par objet du budget d'opérations, et leur éventuelle
+      configuration. Décider après mesure sur le script de lint réel de la distribution.
+  [?] Une absence de `lint.rhai` est une @common::Error::Other : décider d'un variant dédié
+      avec identifiant stable dans /common/src/lib.sdd.
+
+Done when:
+  Chaque scénario a un test passant et le harnais statique est vert.
+
+Scenario: missing entry point fails construction
+  Given un répertoire de lint sans `lint.rhai`
+  When @LintRunner::new s'exécute
+  Then @Err nomme le chemin attendu
+  Test @missing-entry-point-fails-construction
+
+Scenario: script returning findings yields rows
+  Given un `lint.rhai` dont `lint` retourne un constat `error` par Deployment
+  When @run_test s'exécute sur deux Deployments
+  Then deux lignes en échec sont rendues dans l'ordre des objets
+  Test @script-returning-findings-yields-rows
+
+Scenario: a throwing script becomes one failed row
+  Given un `lint.rhai` dont `lint` lève
+  When @run_test s'exécute
+  Then une unique ligne `lint:execution` en échec porte l'erreur et @run_test ne panique pas
+  Test @a-throwing-script-becomes-one-failed-row
+
+Scenario: a script that touches the cluster fails
+  Given un `lint.rhai` appelant `k8s_resource`
+  When @run_test s'exécute
+  Then la ligne `lint:execution` signale une fonction inconnue
+  Test @a-script-that-touches-the-cluster-fails
+
+Scenario: a runaway string is bounded
+  Given un `lint.rhai` dont `lint` double une chaîne dans une boucle sans fin
+  When @run_test s'exécute
+  Then une unique ligne `lint:execution` en échec est rendue, sans épuiser la mémoire
+  Test @a-runaway-string-is-bounded
+
+Scenario: the operation budget grows with the object count
+  Given le budget d'un appel sans objet et celui d'un appel à mille objets
+  When on les compare
+  Then le second est strictement supérieur au premier, et le budget sans objet est la base
+  Test @the-operation-budget-grows-with-the-object-count
+
+Scenario: a non-array return is a failed row
+  Given un `lint.rhai` dont `lint` retourne une carte
+  When @run_test s'exécute
+  Then une ligne `lint:execution` en échec dit que le retour doit être un tableau
+  Test @a-non-array-return-is-a-failed-row
+
+Scenario: suite hook runs once
+  Given un script définissant `lint_suite`
+  When @run_suite s'exécute avec un contexte de suite
+  Then les constats retournés deviennent des lignes et `lint` n'est pas appelé
+  Test @suite-hook-runs-once
+
+Scenario: the script sees every section
+  Given un script `lint.rhai` qui retourne un constat par clé de `objs` dont le tableau n'est
+    pas vide, et des @Sections où `scalables` contient un Deployment et `befores` un ConfigMap
+  When @run_test s'exécute
+  Then le script voit `objs.all`, `objs.scalables` et `objs.befores` remplies et les autres
+    clés présentes mais vides
+  Test @the-script-sees-every-section
+
+Scenario: top level statements run once per call
+  Given un `lint.rhai` dont le premier niveau pose `let seuil = 7;`, fait une boucle qui coûte
+    plus de la moitié du budget d'opérations d'un appel sans objet, puis lève si `seuil` ne vaut
+    plus 7, et dont `lint` retourne `[]`
+  When @run_test s'exécute
+  Then aucune ligne `lint:execution` n'est produite : le premier niveau s'évalue sans erreur et
+    sans budget cumulé
+  And les liaisons de premier niveau ne sont pas visibles des fonctions du script (sémantique de
+    Rhai : une fonction ne capture pas la portée globale) ; seuls les `import` y ont leur usage
+  And le nombre d'évaluations du premier niveau n'est pas observable depuis le script : ce test
+    est une garde de non-régression, l'évaluation unique s'établit par la lecture du code
+  Test @top-level-statements-run-once-per-call
+
+Scenario: the test hook is exposed
+  Given un `lint.rhai` qui ne définit que `lint_suite`, puis un qui ne définit que `lint`
+  When @has_test_hook et @has_suite_hook sont lus
+  Then le premier répond faux puis vrai, le second vrai puis faux
+  Test @the-test-hook-is-exposed
+
+Scenario: engine messages are in English
+  Given un `lint.rhai` dont `lint` retourne une carte, et un répertoire de lint sans `lint.rhai`
+  When @run_test s'exécute, puis @LintRunner::new
+  Then le message de la ligne `lint:execution` contient `must be an array` et l'erreur de
+    construction contient `lint.rhai` et un texte anglais (`not found`)
+  Test @engine-messages-are-in-english

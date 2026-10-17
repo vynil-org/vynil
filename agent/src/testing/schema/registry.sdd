@@ -1,0 +1,120 @@
+# Spec fichier de ./registry.rs — la hiérarchie des sources de schémas et le cache de
+# validateurs compilés.
+
+Spec: SchemaRegistry
+
+Platform: Rust
+
+Purpose:
+  Résoudre un couple `apiVersion`/`kind` vers un validateur compilé en consultant, dans
+    l'ordre, les CRD du package, le répertoire de schémas de la distribution, puis la table
+    native ; exposer la validation d'un objet. Seule la couche qui possède des E/S du
+    sous-système : elle lit les sources au chargement, puis ne fait plus aucune E/S.
+
+Owns:
+  ./registry.rs
+
+Exposes:
+  @SchemaRegistry — `Clone` bon marché (état partagé derrière `Arc`) :
+    `new(package_crds: Option<&Path>, schemas_dir: Option<&Path>) -> common::Result<Self>`,
+    `known(&self, api_version: &str, kind: &str) -> bool`,
+    `validate(&self, obj: &serde_json::Value, strict: bool) -> common::Result<Vec<SchemaError>>`.
+  @SchemaError — `{ path: String, message: String }` : `path` est le chemin d'instance
+    pointé séparé par `/` (`/spec/template/spec/containers/0`, vide pour la racine).
+
+Accepts:
+  `package_crds` : un répertoire (typiquement `<package_dir>/crds`) lu sans récursion,
+    fichiers `.yml`/`.yaml` multi-documents ; absent ou inexistant vaut aucune source.
+  `schemas_dir` : un répertoire lu récursivement, contenant (a) des fichiers JSON Schema
+    disposés `<groupe>/<Kind>_<version>.json`, avec la casse exacte du Kind (`apps/Deployment_v1.json`)
+    et le dossier littéral `core` pour le groupe vide (`core/Pod_v1.json`) ; et (b) des fichiers
+    `.yml`/`.yaml` contenant des documents `CustomResourceDefinition`. Les autres fichiers sont
+    ignorés.
+  Dans `validate`, l'objet est un `Value` quelconque ; `strict` choisit le mode strict de
+    ./dialect.sdd.
+
+Returns:
+  `validate` : la liste des erreurs, vide quand l'objet est conforme, dans l'ordre stable du
+    validateur. Un objet sans `apiVersion` ou `kind` chaîne rend une unique erreur à la
+    racine disant que ces champs manquent ; ce n'est pas un `Err`.
+
+Raises:
+  @common::Error::Stdio — répertoire de schémas illisible.
+  @common::Error::YamlError ou @common::Error::JsonError nommant le fichier — document
+    malformé : un schéma cassé ignoré silencieusement donnerait une fausse confiance, le
+    chargement échoue donc entièrement.
+  @common::Error::Other — schéma qui ne compile pas, nommant le couple et sa source ; levé au
+    premier `validate`, pas au chargement.
+
+Must:
+  Résoudre dans l'ordre CRD du package, répertoire de schémas, table native
+    (./native.sdd) : la première source qui connaît le couple l'emporte, et une distribution
+    peut donc durcir un type natif.
+  Faire passer les trois sources de schéma — (a) fichier JSON du répertoire de schémas, (b)
+    schéma extrait d'une CRD, (c) schéma natif de ./native.sdd — par le même pipeline de
+    ./dialect.sdd : @crd_root (pour la source (b) seulement, qui complète la racine du
+    `openAPIV3Schema`), puis @normalize, puis @strictify en mode strict. Le paramètre `strict`
+    ne saute que @strictify, jamais @normalize : un schéma non strict reçoit la même
+    normalisation qu'un schéma strict.
+  Extraire d'une CRD, pour chaque entrée de `spec.versions` portant
+    `schema.openAPIV3Schema`, un schéma enregistré sous (`spec.group`, `spec.names.kind`,
+    nom de version), qu'elle soit servie ou non, puis le faire passer par le pipeline ci-dessus.
+  Compiler un validateur paresseusement par (couple, strict) et le mettre en cache : deux
+    objets du même kind ne compilent qu'une fois.
+  Retirer les `null` de l'objet par @strip_nulls sur une copie avant validation : l'appelant
+    ne voit jamais son objet modifié.
+  Désactiver toute résolution de `$ref` vers le réseau ou le disque.
+
+Handles:
+  Même couple défini par deux fichiers du même répertoire — l'ordre de lecture trié par chemin
+    décide, le premier gagne ; le résultat est stable d'une machine à l'autre.
+  Répertoire de schémas vide ou absent — aucune source, la table native reste active.
+  CRD sans `openAPIV3Schema` (version sans schéma) — non enregistrée, le couple reste inconnu.
+
+Tasks:
+  [x] Couvrir chaque scénario par un test de même nom, sur des fixtures de CRD.
+  [?] Les CRD des dépendances du package (`requirements`) ne sont pas dérivées
+      automatiquement : leurs schémas doivent figurer dans le répertoire de schémas.
+      Décider si vynil doit les chercher lui-même.
+  [?] `metadata` d'une CRD reste un objet libre. Décider de le valider contre `ObjectMeta`
+      natif.
+
+Done when:
+  Chaque scénario a un test passant et le harnais statique est vert.
+
+Scenario: package CRD wins over the distribution directory
+  Given une CRD `Foo` dans le répertoire des CRD du package et un schéma JSON `Foo` différent
+    dans le répertoire de la distribution
+  When un objet `Foo` est validé
+  Then le schéma de la CRD du package est celui appliqué
+  Test @package-crd-wins-over-the-distribution-directory
+
+Scenario: distribution directory hardens a native type
+  Given un schéma `apps/Deployment_v1.json` exigeant un champ supplémentaire
+  When un Deployment sans ce champ est validé
+  Then l'erreur du schéma de la distribution est rendue
+  Test @distribution-directory-hardens-a-native-type
+
+Scenario: broken schema file fails loading
+  Given un fichier `.json` non analysable dans le répertoire de schémas
+  When @SchemaRegistry::new s'exécute
+  Then @Err nomme ce fichier et aucune validation n'est possible
+  Test @broken-schema-file-fails-loading
+
+Scenario: unknown kind is a fact
+  Given un objet `Certificate` sans aucune CRD ni schéma fourni
+  When `known` est appelé puis `validate`
+  Then `known` vaut false et `validate` ne signale aucune erreur de schéma
+  Test @unknown-kind-is-a-fact
+
+Scenario: the caller's object is never modified
+  Given un objet portant `creationTimestamp: null`
+  When `validate` s'exécute
+  Then l'objet de l'appelant porte toujours le `null` et aucune erreur n'est levée pour lui
+  Test @the-caller-s-object-is-never-modified
+
+Scenario: validators are compiled once
+  Given deux Deployments successifs
+  When `validate` s'exécute deux fois
+  Then un seul validateur a été compilé pour (`apps/v1`, `Deployment`, strict)
+  Test @validators-are-compiled-once

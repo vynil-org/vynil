@@ -56,6 +56,7 @@ plugins:
             CLI reference: Référence CLI
             Lint: Lint
             Package tests: Tests de paquet
+            Render lint: Lint du rendu
             Operations: Exploitation
             Security & threat model: Sécurité & modèle de menace
             Troubleshooting: Dépannage
@@ -99,6 +100,7 @@ nav:
       - kubectl-vynil: tooling/kubectl-vynil.md
       - Lint: tooling/lint.md
       - Package tests: tooling/test.md
+      - Render lint: tooling/render-lint.md
   - Operations:
       - Security & threat model: operations/security.md
       - Troubleshooting: operations/troubleshooting.md

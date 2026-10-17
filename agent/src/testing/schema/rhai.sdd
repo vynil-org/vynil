@@ -1,0 +1,64 @@
+# Spec fichier de ./rhai.rs — la surface Rhai du sous-système de schémas.
+
+Spec: SchemaRhai
+
+Platform: Rust
+
+Purpose:
+  Rendre la validation de schéma appelable depuis le script de lint de la distribution et
+    depuis les modules Rhai qu'il importe, par trois fonctions natives. Pur câblage : la
+    conversion de valeurs et l'enregistrement ; aucune logique de validation ni de sévérité.
+
+Owns:
+  ./rhai.rs
+
+Exposes:
+  @schema_rhai_register — `(engine: &mut common::rhaihandler::Engine, registry: SchemaRegistry)` :
+    enregistre, dans le moteur, les fonctions suivantes (le registre est capturé par la
+    fermeture) :
+      `schema_known(obj) -> bool`.
+      `schema_validate(obj) -> array` : équivaut à `strict: true`.
+      `schema_validate(obj, opts) -> array` : `opts` est une carte, clé `strict` booléenne
+        (défaut `true`) ; une autre clé est ignorée. `strict: false` ne saute que @strictify ;
+        la normalisation reste appliquée (pipeline de ./registry.sdd).
+      `schema_native_version() -> string`.
+
+Returns:
+  `schema_validate` : un tableau de cartes `#{ path: string, message: string }`, vide pour un
+    objet conforme. `path` est le pointeur JSON de @SchemaError, transmis tel quel (vide à la
+    racine) : le moteur Rust ne fait aucune conversion de notation ; la conversion en notation
+    pointée est laissée au script.
+
+Raises:
+  Erreur d'exécution Rhai : objet non convertible en JSON, ou erreur @common::Error du
+    registre ; l'erreur avorte le script appelant, que ./../lint/runner.sdd replie en une
+    ligne en échec.
+
+Must:
+  Ne contenir aucune politique : ni sévérité, ni filtre, ni message reformulé ; les chaînes
+    sont celles de @SchemaError.
+  Ne pas modifier l'objet passé : la conversion est une copie.
+
+Tasks:
+  [x] Couvrir chaque scénario par un test de même nom.
+
+Done when:
+  Chaque scénario a un test passant et le harnais statique est vert.
+
+Scenario: validate returns path and message maps
+  Given un Deployment avec un champ inventé sur son premier conteneur
+  When `schema_validate(obj)` est évalué dans un script
+  Then le résultat est un tableau d'une carte dont `path` finit par `/containers/0`
+  Test @validate-returns-path-and-message-maps
+
+Scenario: non strict mode accepts unknown fields
+  Given le même Deployment
+  When `schema_validate(obj, #{strict: false})` est évalué
+  Then le tableau est vide
+  Test @non-strict-mode-accepts-unknown-fields
+
+Scenario: unknown kind is known false
+  Given un objet `Certificate` sans schéma fourni
+  When `schema_known(obj)` est évalué
+  Then le résultat est `false`
+  Test @unknown-kind-is-known-false

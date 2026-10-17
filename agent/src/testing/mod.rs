@@ -1,5 +1,7 @@
 pub mod handler;
+pub mod lint;
 pub mod result;
+pub mod schema;
 pub mod vyniltest;
 pub mod vyniltestset;
 

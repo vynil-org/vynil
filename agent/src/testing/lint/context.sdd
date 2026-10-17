@@ -1,0 +1,97 @@
+# Spec fichier de ./context.rs — le contexte en lecture seule du script de lint.
+
+Spec: LintContext
+
+Platform: Rust
+
+Purpose:
+  Construire, à partir des données déjà connues à la fin d'un test, les deux valeurs que le
+    script de la distribution reçoit : le contexte d'un test (`ctx`) et le contexte de suite.
+    Ce sont les seuls canaux par lesquels une règle apprend où elle s'exécute : elle peut
+    ainsi conditionner un constat au type du package, à ses options ou à la posture du test,
+    et vérifier que les tests eux-mêmes respectent les exigences de la distribution. Pur.
+
+Owns:
+  ./context.rs
+
+References:
+  ./../vyniltest.sdd — @VynilTest, @VynilTestSetRef, @appslug.
+  /common/src/vynilpackage.sdd — @VynilPackageSource.
+
+Exposes:
+  @build_test_context — `(package: &VynilPackageSource, test: &VynilTest,
+    refs: &[VynilTestSetRef]) -> serde_json::Value`.
+  @build_suite_context — `(package: &VynilPackageSource,
+    tests: &BTreeMap<String, VynilTest>, testsets: &BTreeMap<String, VynilTestSet>,
+    executed: &[String]) -> serde_json::Value`.
+
+Accepts:
+  @test : le test résolu par @TestHandler::get_templated_test (mocks et asserts rendus,
+    testSets fusionnés, instance virtuelle ajoutée). @refs : les références `testSets` du test
+    chargé, avant fusion. Pour la suite : les documents tels que chargés, non rendus.
+
+Returns:
+  @build_test_context — une carte avec exactement trois clés :
+    `package` : `name`, `type` (`tenant`, `service` ou `system`), `category`,
+      `description`, `app_version` (absent si non défini), `features`, `options` (les
+      options déclarées par le package telles que dans `package.yaml`), `images` et
+      `resources` (les sections du `package.yaml`, formes sérialisées inchangées).
+    `instance` : `name`, `namespace`, `appslug` (@appslug du package et de l'instance),
+      `options` (les options fournies par le test, non résolues).
+    `test` : `name`, `description` (absent si non défini), `testsets` (tableau de
+      `{name, variables}` selon @refs), `definition` (le @VynilTest résolu, sérialisé :
+      `apiVersion`, `kind`, `metadata`, `instance`, `mocks`, `asserts`).
+  @build_suite_context — une carte avec deux clés : `package` (même forme) et `suite` :
+    `tests` (carte nom vers document @VynilTest chargé et sérialisé), `testsets` (carte nom
+    vers document @VynilTestSet chargé), `executed` (les noms des tests de cette invocation,
+    en ordre croissant).
+
+Must:
+  Ne contenir que des données sérialisables : aucune référence au cluster, au système de
+    fichiers, à l'environnement ni à l'horloge — deux appels avec les mêmes entrées donnent
+    des valeurs égales.
+  Reprendre les noms de champs du `package.yaml` et des documents de test sans les
+    renommer : le script de la distribution lit les mêmes noms que l'auteur du package.
+  Ne pas dupliquer les objets rendus : ils sont passés au script séparément, jamais dans le
+    contexte.
+
+Handles:
+  Package sans `images`, `resources` ou `options` — la clé correspondante est une carte vide.
+  Test sans description ni asserts — `description` absent, `asserts` vide dans `definition`.
+
+Tasks:
+  [x] Couvrir chaque scénario par un test de même nom.
+  [?] `instance.options` ne contient pas les valeurs par défaut des options du package : la
+      résolution est faite par les scripts `context` à l'exécution. Décider s'il faut exposer
+      une vue résolue (reproduire la fusion de vynil-core), ou laisser les règles combiner
+      `package.options` et `instance.options`.
+
+Done when:
+  Chaque scénario a un test passant et le harnais statique est vert.
+
+Scenario: package and instance facts are exposed
+  Given un package `system` de nom `traefik`, catégorie `core`, et un test d'instance `default`
+    dans `traefik`
+  When @build_test_context s'exécute
+  Then `package.type` vaut `system`, `package.name` vaut `traefik`, `instance.appslug` vaut
+    `traefik` et `test.name` vaut le nom du test
+  Test @package-and-instance-facts-are-exposed
+
+Scenario: the test definition is the resolved one
+  Given un test dont le testSet apporte deux asserts
+  When @build_test_context s'exécute
+  Then `test.definition.asserts` contient les asserts du test puis ceux du testSet, et
+    `test.testsets` liste la référence avec ses variables
+  Test @the-test-definition-is-the-resolved-one
+
+Scenario: the suite context lists every loaded test
+  Given une suite de deux tests dont un seul est exécuté
+  When @build_suite_context s'exécute
+  Then `suite.tests` porte les deux documents et `suite.executed` n'en nomme qu'un
+  Test @the-suite-context-lists-every-loaded-test
+
+Scenario: context is deterministic
+  Given les mêmes entrées passées deux fois
+  When @build_test_context s'exécute deux fois
+  Then les deux valeurs sont égales
+  Test @context-is-deterministic
