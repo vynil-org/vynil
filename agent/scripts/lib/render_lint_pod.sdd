@@ -28,6 +28,15 @@ Must:
     les fixtures du catalogue : mêmes objets signalés, même règle, aucun objet signalé en plus
     ni en moins. Le texte du message est libre mais doit nommer l'objet, la valeur fautive et
     la correction attendue.
+  Lire une quantité de ressource (`cpu`, `memory`) selon la grammaire des `Quantity` de
+    Kubernetes : un nombre décimal non signé (`5`, `0.5`, `.5`, `5.`) suivi soit d'un suffixe
+    binaire (`Ki`, `Mi`, `Gi`, `Ti`, `Pi`, `Ei`), soit d'un suffixe décimal (`n`, `u`, `m`, `k`,
+    `M`, `G`, `T`, `P`, `E`, ou aucun), soit d'un exposant décimal (`e` ou `E` suivi d'un entier
+    signé : `129e6`, `1E3`, `2e-3`). Le CPU se lit en millicores arrondies vers le haut, la
+    mémoire en MB de 2^20 octets. Une quantité hors de cette grammaire — signe, unité inconnue,
+    texte quelconque — reste non reconnue : la vérification la saute, comme aujourd'hui. Les
+    formes étendues ne sont pas mesurées contre l'oracle (le binaire n'est pas toujours
+    disponible) : leurs tests tirent leurs valeurs de la définition des `Quantity` de Kubernetes.
   Honorer les paramètres de la vérification portant le nom, la casse et la sémantique de ceux
     de kube-linter, et appliquer les mêmes valeurs par défaut.
   Ne signaler que ce que la vérification définit : une vérification n'infère aucune règle
@@ -75,3 +84,13 @@ Scenario: non-workload object is silent
   When une vérification du thème s'exécute
   Then le tableau est vide
   Test @non-workload-object-is-silent
+
+Scenario: extended quantity forms are read
+  Given des conteneurs dont la mémoire vaut `129e6`, `1P`, `1Ei`, `1E3` et `2e-3`, et dont le CPU
+    vaut `1e3`, `100000n`, `250u` et `1k`, avec `lowerBoundMB`, `upperBoundMB` et
+    `lowerBoundMillis`, `upperBoundMillis` réglés autour de chaque valeur attendue
+  When `unset-memory-requirements` et `unset-cpu-requirements` s'exécutent
+  Then chaque quantité est comparée aux bornes selon sa valeur exacte (par exemple `129e6` octets
+    valent environ 123 MB et `1e3` CPU valent 1 000 000 millicores), et aucune n'est sautée
+  And une quantité hors grammaire (`-1`, `12x`, `abc`) est sautée sans constat ni erreur
+  Test @extended-quantity-forms-are-read

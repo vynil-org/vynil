@@ -627,7 +627,8 @@ fn pdb_min_available(obj, idx, ctx, params) {
     if malformed(match_labels) || malformed_list(exprs) { return []; }
     let ns = obj_namespace(obj);
     let out = [];
-    for dep in idx.workload_pdb_targets.values(ns) {
+    for i in 0..idx.workload_pdb_targets.count(ns) {
+        let dep = idx.workload_pdb_targets.at(ns, i);
         let dlabels = field(field(dep, "spec"), "selector");
         let dl = field(dlabels, "matchLabels");
         let labels = if type_of(dl) == "map" { dl } else { #{} };

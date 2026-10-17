@@ -29,12 +29,22 @@ Exposes:
   @Multimap — type Rhai `Multimap`, copie par poignée.
   @register — `(engine: &mut rhai::Engine)` : enregistre le type et les fonctions Rhai
     `multimap() -> Multimap`, `put(key: String, value: Dynamic)`, `values(key: String) -> array`,
-    `first(key: String) -> Dynamic`, `has(key: String) -> bool`.
+    `first(key: String) -> Dynamic`, `has(key: String) -> bool`,
+    `count(key: String) -> int`, `at(key: String, index: int) -> Dynamic`.
 
 Returns:
   `values` : les valeurs rangées sous la clé, dans l'ordre d'insertion, tableau vide si la clé
     est absente. `first` : la première valeur rangée sous la clé, `()` si la clé est absente.
-    `has` : vrai quand au moins une valeur est rangée sous la clé.
+    `has` : vrai quand au moins une valeur est rangée sous la clé. `count` : le nombre de
+    valeurs rangées sous la clé, 0 si elle est absente. `at` : la valeur d'indice `index`
+    (à partir de 0) sous la clé, `()` si la clé est absente ou l'indice hors bornes.
+    Contrairement à `values`, `count` et `at` ne copient pas le seau : seule la valeur lue est
+    copiée, ce qui compte quand une boucle interroge le même seau pour chaque objet.
+
+Raises:
+  `put` : erreur de script, jamais une panique, quand la table porte déjà un million de valeurs
+    (toutes clés confondues) ; le message nomme la borne. C'est la borne de tableau du moteur de
+    lint : la table est un tableau déguisé et ne doit pas la contourner.
 
 Must:
   Se copier par poignée : deux copies d'un @Multimap voient les mêmes entrées, y compris une
@@ -42,6 +52,8 @@ Must:
   Conserver l'ordre d'insertion des valeurs d'une clé : les constats de la bibliothèque en
     dépendent pour rester déterministes.
   Ne jamais paniquer, y compris sur un verrou empoisonné.
+  Compter les valeurs de toutes les clés ensemble pour la borne de `put`, et rester sans effet
+    sur la table quand `put` est refusé.
   Ne rien exposer de l'ordre d'itération de la table : aucune fonction ne liste les clés.
 
 Must not:
@@ -78,3 +90,16 @@ Scenario: the handle survives a map copy
   When la carte d'origine est interrogée
   Then elle voit la valeur rangée par la copie
   Test @the-handle-survives-a-map-copy
+
+Scenario: count and at read a bucket without copying it
+  Given un @Multimap où trois valeurs sont rangées sous `ns` et aucune sous `other`
+  When `count("ns")`, `count("other")`, `at("ns", 1)`, `at("ns", 3)` et `at("other", 0)` s'exécutent
+  Then les résultats sont 3, 0, la deuxième valeur rangée, `()` et `()`
+  Test @count-and-at-read-a-bucket-without-copying-it
+
+Scenario: put is bounded
+  Given un @Multimap qui porte un million de valeurs réparties sur plusieurs clés
+  When `put` s'exécute une fois de plus
+  Then une erreur de script nomme la borne, la table garde exactement un million de valeurs et
+    `count` de chaque clé est inchangé
+  Test @put-is-bounded

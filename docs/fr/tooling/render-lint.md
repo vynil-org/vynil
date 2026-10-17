@@ -352,6 +352,7 @@ Un script de distribution minimal, avec une règle maison et l'appel à la bibli
 
 ```rhai
 import "render_lint" as render_lint;
+import "render_lint_schema" as schema;
 
 // Règle maison : tout Deployment porte un label `team`.
 fn team_label(objs) {
@@ -375,9 +376,19 @@ fn lint(objs, ctx) {
         ignore_prefix: "ignore-check.example/",
         require_reason: true
     });
+    // Les vérifications ci-dessus restent muettes sur un objet mal formé (elles ne retournent rien,
+    // comme kube-linter) : c'est la validation de schéma qui le signale.
+    for obj in objs.all {
+        findings += schema::check(obj);
+    }
     findings
 }
 ```
+
+Les vérifications de `render_lint::all` ne retournent aucun constat pour un objet dont elles ne savent pas
+lire la forme (une `spec` qui n'est pas une carte, un `env` du mauvais type). C'est le comportement de
+l'outil de référence, et il n'est sûr qu'à côté de la validation de schéma, qui signale justement ces
+formes : `render_lint::all` ne l'appelle pas, l'exemple appelle donc les deux.
 
 Exécution :
 
@@ -599,6 +610,13 @@ La lecture est bornée, et le moteur est restreint :
   proportionnel au nombre d'objets, et `render_lint::all` coûte environ seize mille opérations par objet avec
   les soixante vérifications.
 - Un constat `warn` n'a pas de champ de sévérité dans le verdict.
+- `env-value-from` résout une référence à un Secret ou à un ConfigMap par kind et nom, **dans n'importe quel
+  namespace**, comme kube-linter : la fixture `env-value-from` référence un Secret d'un autre namespace et
+  l'outil ne signale rien. Un Secret de même nom dans un autre namespace satisfait donc la référence.
+- Une quantité de ressource hors de la grammaire de Kubernetes (un signe, une unité inconnue, du texte
+  libre) est sautée par `unset-cpu-requirements` et `unset-memory-requirements`. Les formes à exposant
+  (`129e6`) et les suffixes `P`, `E`, `Pi`, `Ei`, `n`, `u` sont lus. Les formes étendues sont testées contre
+  la définition de la `Quantity` de Kubernetes, pas contre l'outil de référence.
 - kube-linter plante (SIGSEGV) sur une option `dnsConfig` dont le nom est la clé cherchée mais qui n'a pas de
   valeur. Ce cas ne se confronte pas à l'oracle, il n'a donc pas d'`expected.json` ; la bibliothèque le signale
   sans planter. C'est la seule divergence connue consignée ici.
