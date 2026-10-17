@@ -92,13 +92,16 @@ Must:
     @TestHandler::run_fixes, écrire sur stderr une ligne par étape —
     `fix {rule}: {applied|not applicable|failed}` suivie de ` — {message}` quand le message
     n'est pas vide — puis, si `changed` et pas `--dry-run`, réécrire `package.yaml` par
-    @YamlDoc::to_yaml_string. Avec `--dry-run`, ne rien écrire et afficher sur stderr le document
-    qui serait écrit, après les lignes d'étapes. Un fichier dont rien n'a changé n'est jamais
+    @YamlDoc::to_yaml_string. Avec `--dry-run`, ne rien écrire et, si `changed`, afficher sur stderr le document
+    qui serait écrit, après les lignes d'étapes (sans changement, il n'y a rien à écrire donc rien
+    à afficher). Un fichier dont rien n'a changé n'est jamais
     réécrit : sa mise en forme (commentaires, quoting), que @YamlDoc ne conserve pas, reste intacte.
     Le verdict ne change pas : il vient de la suite telle qu'elle a tourné avant le fix, donc des
     constats `error` qui viennent d'être corrigés valent encore exit 3 ; c'est une relance qui
     vérifie la correction. Une lecture ou écriture de `package.yaml` en échec est un @Err
-    @Error::Stdio.
+    @Error::Stdio ; un `package.yaml` qui ne s'analyse pas en YAML est un @Err
+    @Error::YamlError dont le message nomme le fichier. Ces erreurs interrompent l'invocation
+    avant le calcul du verdict.
   Accepte sous @format exactement `text` et `json` (les noms @clap::ValueEnum, casse
     exacte ; l'enum ne dérive aucun @Default — la chaîne `default_value` de
     l'argument arme le défaut), et @format_results mappe @OutputFormat::Json vers

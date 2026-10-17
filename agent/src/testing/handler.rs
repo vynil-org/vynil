@@ -1,7 +1,8 @@
 use super::{
     lint::{
         context::{build_suite_context, build_test_context},
-        runner::LintRunner,
+        finding::Finding,
+        runner::{FixStatus, LintRunner},
         sections::Sections,
     },
     result::{Suppression, TestResultCollector},
@@ -14,6 +15,7 @@ use common::{
     httpmock::HttpMockItem,
     rhaihandler::{Dynamic, Map, Script},
     vynilpackage::{VynilPackageSource, VynilPackageType, read_package_yaml},
+    yamlhandler::YamlDoc,
 };
 use std::{
     collections::BTreeMap,
@@ -346,6 +348,23 @@ struct Templated {
 
 // ── TestHandler ─────────────────────────────────────────────────────────────
 
+/// Rapport de [`TestHandler::run_fixes`] : le `package.yaml` final (le reçu si rien n'a été
+/// appliqué), une étape par règle exécutée, et `changed` quand une étape a appliqué son fix.
+#[derive(Clone, Debug)]
+pub struct FixReport {
+    pub package: YamlDoc,
+    pub steps: Vec<FixStep>,
+    pub changed: bool,
+}
+
+/// Une étape de `run_fixes` : la règle, le statut de son `fix` et son message.
+#[derive(Clone, Debug)]
+pub struct FixStep {
+    pub rule: String,
+    pub status: FixStatus,
+    pub message: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct TestHandler {
     package_dir: PathBuf,
@@ -360,6 +379,8 @@ pub struct TestHandler {
     lint: Option<LintRunner>,
     /// Noms des tests exécutés par cette invocation (contexte de suite).
     executed: Vec<String>,
+    /// Constats valides du lint, supprimés compris, dans l'ordre d'arrivée (pour `run_fixes`).
+    findings: Vec<Finding>,
 }
 
 impl TestHandler {
@@ -386,6 +407,7 @@ impl TestHandler {
             test_sets: BTreeMap::new(),
             lint: None,
             executed: Vec::new(),
+            findings: Vec::new(),
         };
         if let Some(ts_dirs) = testset_dirs {
             for dir in &ts_dirs {
@@ -426,6 +448,42 @@ impl TestHandler {
         self.results
             .add("(suite)".to_string(), outcome.rows, std::time::Duration::ZERO);
         self.results.add_suppressions(outcome.suppressions);
+        self.findings.extend(outcome.findings);
+    }
+
+    /// Rejoue les constats collectés dans les `fix` de la distribution : une fois par règle
+    /// ayant au moins un constat, règles en ordre alphabétique. Chaque fix reçoit le document
+    /// laissé par le précédent. Pur : ne lit ni n'écrit aucun fichier.
+    #[must_use]
+    pub fn run_fixes(&self, package: &YamlDoc) -> FixReport {
+        let mut report = FixReport {
+            package: package.clone(),
+            steps: Vec::new(),
+            changed: false,
+        };
+        let Some(lint) = self.lint.as_ref() else {
+            return report;
+        };
+        let mut by_rule: BTreeMap<&str, Vec<Finding>> = BTreeMap::new();
+        for finding in &self.findings {
+            by_rule
+                .entry(finding.rule.as_str())
+                .or_default()
+                .push(finding.clone());
+        }
+        for (rule, findings) in by_rule {
+            let outcome = lint.run_fix(rule, &findings, &report.package);
+            if let (FixStatus::Applied, Some(package)) = (outcome.status, outcome.package) {
+                report.package = package;
+                report.changed = true;
+            }
+            report.steps.push(FixStep {
+                rule: rule.to_string(),
+                status: outcome.status,
+                message: outcome.message,
+            });
+        }
+        report
     }
 
     /// Scans a directory for .yml/.yaml files (potentially multi-document)
@@ -683,10 +741,12 @@ impl TestHandler {
     pub fn run_test(&mut self, name: &str, created_objects: &Arc<Mutex<Vec<Dynamic>>>) {
         let start = std::time::Instant::now();
         let mut suppressions: Vec<Suppression> = Vec::new();
-        let result = self.run_test_inner(name, created_objects, &mut suppressions);
+        let mut findings: Vec<Finding> = Vec::new();
+        let result = self.run_test_inner(name, created_objects, &mut suppressions, &mut findings);
         let duration = start.elapsed();
         self.executed.push(name.to_string());
         self.results.add_suppressions(suppressions);
+        self.findings.extend(findings);
 
         match result {
             Ok(asserts) => {
@@ -704,12 +764,14 @@ impl TestHandler {
         }
     }
 
-    /// Exécute un test. Les suppressions du lint, s'il tourne, sont ajoutées à `suppressions`.
+    /// Exécute un test. Les suppressions et les constats du lint, s'il tourne, sont ajoutés à
+    /// `suppressions` et `findings`.
     fn run_test_inner(
         &self,
         name: &str,
         created_objects: &Arc<Mutex<Vec<Dynamic>>>,
         suppressions: &mut Vec<Suppression>,
+        findings: &mut Vec<Finding>,
     ) -> common::Result<Vec<VynilAssertResult>> {
         // Resolve test: merge testSets, template mocks only (asserts need the rhai context)
         let test = self.resolve_test(name, false)?;
@@ -828,6 +890,12 @@ impl TestHandler {
                 lint_test_lane(lint, &created, &ctx, || instance_status(&mut rhai, fun_name));
             asserts.extend(rows);
             suppressions.extend(lane_suppressions);
+            let (sections, unreadable) = lint_sections(&created, instance_status(&mut rhai, fun_name));
+            asserts.extend(unreadable);
+            let outcome = lint.run_test(&ctx, &sections);
+            asserts.extend(outcome.rows);
+            suppressions.extend(outcome.suppressions);
+            findings.extend(outcome.findings);
         }
 
         Ok(asserts)
@@ -956,6 +1024,9 @@ mod tests {
     use super::*;
     use serde_json::{Value, json};
     use std::{cell::Cell, fs};
+    use crate::testing::lint::finding::{ObjectRef, Severity};
+    use serde_json::Value;
+    use std::fs;
 
     const PACKAGE_YAML: &str = "apiVersion: vinyl.solidite.fr/v1beta1\nkind: Package\nmetadata:\n  name: demo\n  category: core\n  description: demo package\n  type: tenant\n  features: []\nrequirements: []\n";
 
@@ -1756,5 +1827,157 @@ mod tests {
         let message = rows[0]["message"].as_str().unwrap_or_default();
         assert!(message.contains("values.name"), "{message}");
         assert_eq!(created.lock().map(|o| o.len()).unwrap_or_default(), 0);
+    /// Constat `no-web` sur le `ConfigMap` `app/web`, pour la règle et le message donnés.
+    fn finding(rule: &str, message: &str) -> Finding {
+        Finding {
+            rule: rule.to_string(),
+            severity: Severity::Error,
+            object: ObjectRef {
+                api_version: "v1".to_string(),
+                kind: "ConfigMap".to_string(),
+                namespace: Some("app".to_string()),
+                name: "web".to_string(),
+            },
+            path: None,
+            message: message.to_string(),
+            source: None,
+            suppressed: false,
+            reason: None,
+            origin: None,
+        }
+    }
+
+    /// Lint qui signale, pour chaque test, un constat dont le message est son nom ; `second` le
+    /// signale supprimé. `lint_suite` signale une fois.
+    const LINT_TWO_TESTS_AND_SUITE: &str = r#"fn lint(objs, ctx) {
+    let name = ctx.test.name;
+    let found = #{
+        rule: "no-web", severity: "error",
+        object: #{ apiVersion: "v1", kind: "ConfigMap", namespace: "app", name: "web" },
+        message: name
+    };
+    if name == "second" {
+        found.suppressed = true;
+        found.reason = "legacy";
+    }
+    [found]
+}
+fn lint_suite(ctx) {
+    [#{
+        rule: "suite-size", severity: "error",
+        object: #{ apiVersion: "v1", kind: "Suite", name: "all" },
+        message: "suite"
+    }]
+}
+"#;
+
+    /// `fix` qui ajoute à `pkg["trace"]` la règle et le nombre de constats reçus.
+    const FIX_TRACE: &str = r#"fn lint(objs, ctx) { [] }
+
+fn fix(rule, findings, pkg) {
+    let prev = pkg["trace"];
+    let trace = if type_of(prev) == "string" { prev } else { "" };
+    pkg["trace"] = trace + rule + ":" + findings.len().to_string() + ";";
+    #{ status: "applied", pkg: pkg }
+}
+"#;
+
+    /// `fix` qui refuse `a-rule`, lève sur `b-rule`, et applique `c-rule` en posant `fixed`.
+    const FIX_MIXED: &str = r#"fn lint(objs, ctx) { [] }
+
+fn fix(rule, findings, pkg) {
+    if rule == "a-rule" { return #{ status: "not_applicable", message: "rien à retirer" }; }
+    if rule == "b-rule" { throw "boom"; }
+    pkg["fixed"] = rule;
+    #{ status: "applied", pkg: pkg }
+}
+"#;
+
+    #[test]
+    fn findings_are_kept_across_tests_and_the_suite() {
+        let fx = fixture(
+            &[
+                ("first.yaml", plain_test("first")),
+                ("second.yaml", plain_test("second")),
+            ],
+            INSTALL_ONE_CONFIGMAP,
+            Some(LINT_TWO_TESTS_AND_SUITE),
+        );
+        let mut h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        h.run_all_tests();
+        h.run_suite_lint();
+        let messages: Vec<&str> = h.findings.iter().map(|f| f.message.as_str()).collect();
+        assert_eq!(messages, ["first", "second", "suite"]);
+        assert!(!h.findings[0].suppressed);
+        assert!(h.findings[1].suppressed, "le constat supprimé est gardé");
+        assert_eq!(h.findings[2].rule, "suite-size");
+    }
+
+    #[test]
+    fn fixes_run_once_per_rule_in_alphabetical_order() {
+        let fx = fixture(&[], INSTALL_ONE_CONFIGMAP, Some(FIX_TRACE));
+        let mut h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        h.findings = vec![
+            finding("b-rule", "un"),
+            finding("a-rule", "deux"),
+            finding("b-rule", "trois"),
+        ];
+        let doc: YamlDoc = "k: v\n".parse().expect("YAML");
+        let report = h.run_fixes(&doc);
+        let steps: Vec<(&str, FixStatus)> =
+            report.steps.iter().map(|s| (s.rule.as_str(), s.status)).collect();
+        assert_eq!(steps, [
+            ("a-rule", FixStatus::Applied),
+            ("b-rule", FixStatus::Applied)
+        ]);
+        assert!(report.changed);
+        let yaml = report.package.to_yaml_string().expect("encodage");
+        assert!(yaml.contains("a-rule:1;b-rule:2;"), "{yaml}");
+    }
+
+    #[test]
+    fn a_fix_that_does_not_apply_leaves_the_document_alone() {
+        let fx = fixture(&[], INSTALL_ONE_CONFIGMAP, Some(FIX_MIXED));
+        let mut h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        h.findings = vec![
+            finding("a-rule", "x"),
+            finding("b-rule", "y"),
+            finding("c-rule", "z"),
+        ];
+        let doc: YamlDoc = "k: v\n".parse().expect("YAML");
+        let report = h.run_fixes(&doc);
+        let statuses: Vec<FixStatus> = report.steps.iter().map(|s| s.status).collect();
+        assert_eq!(statuses, [
+            FixStatus::NotApplicable,
+            FixStatus::Failed,
+            FixStatus::Applied
+        ]);
+        assert_eq!(report.steps[0].message, "rien à retirer");
+        assert!(
+            report.steps[1].message.contains("boom"),
+            "{}",
+            report.steps[1].message
+        );
+        assert!(report.changed);
+        let yaml = report.package.to_yaml_string().expect("encodage");
+        assert!(yaml.contains("fixed: c-rule"), "{yaml}");
+        assert!(!yaml.contains("a-rule") && !yaml.contains("b-rule"), "{yaml}");
+    }
+
+    #[test]
+    fn no_findings_means_no_fixes() {
+        let doc: YamlDoc = "k: v\n".parse().expect("YAML");
+        let bare_fx = fixture(&[], INSTALL_ONE_CONFIGMAP, None);
+        let bare = handler(&bare_fx).run_fixes(&doc);
+        assert!(bare.steps.is_empty());
+        assert!(!bare.changed);
+        assert_eq!(bare.package.to_yaml_string(), doc.to_yaml_string());
+
+        let fx = fixture(&[], INSTALL_ONE_CONFIGMAP, Some(FIX_TRACE));
+        let h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        let report = h.run_fixes(&doc);
+        assert!(report.steps.is_empty());
+        assert!(!report.changed);
+        assert_eq!(report.package.to_yaml_string(), doc.to_yaml_string());
     }
 }
