@@ -1,6 +1,9 @@
 //! Constat de lint : forme, analyse depuis Rhai, conversions (spec : `finding.sdd`).
 
-use crate::testing::{result::Suppression, vyniltestset::VynilAssertResult};
+use crate::testing::{
+    result::{LINT_PREFIX, Suppression, WARN_PREFIX},
+    vyniltestset::VynilAssertResult,
+};
 use common::rhaihandler::{Dynamic, Map};
 
 /// Sévérité d'un constat. `Error` fait échouer la ligne de verdict ; `Warn` la laisse passer.
@@ -102,7 +105,7 @@ fn parse_finding(item: &Dynamic) -> Result<Finding, String> {
     }
     let rule = req_str(&map, "rule")?;
     if RESERVED_RULES.contains(&rule.as_str()) {
-        return Err(format!("`rule` `{rule}` est réservée aux lignes du moteur"));
+        return Err(format!("`rule` `{rule}` is reserved for the engine's own rows"));
     }
     Ok(Finding {
         rule,
@@ -169,10 +172,10 @@ fn to_row(finding: &Finding) -> VynilAssertResult {
         .map_or_else(String::new, |p| format!(" [{p}]"));
     let (passed, prefix) = match finding.severity {
         Severity::Error => (false, ""),
-        Severity::Warn => (true, "warning: "),
+        Severity::Warn => (true, WARN_PREFIX),
     };
     VynilAssertResult {
-        name: format!("lint:{}", finding.rule),
+        name: format!("{LINT_PREFIX}{}", finding.rule),
         description: Some(object_label(&finding.object)),
         passed,
         message: format!("{prefix}{}{suffix}", finding.message),
@@ -381,6 +384,45 @@ mod tests {
         assert_eq!(parsed.findings[0].object.namespace, None);
         let rows = to_rows(&parsed.findings, &parsed.invalid);
         assert_eq!(rows[0].description.as_deref(), Some("ConfigMap web"));
+    }
+
+    #[test]
+    fn invalid_finding_messages_are_in_english() {
+        let parsed = parse_findings(&eval(
+            r#"[
+                #{ rule: "sections", severity: "error", object: #{ apiVersion: "v1", kind: "ConfigMap", name: "web" }, message: "x" },
+                #{ rule: "latest-tag", severity: "error", object: #{ apiVersion: "v1", kind: "ConfigMap", name: "web" } },
+                #{ rule: "latest-tag", severity: "fatal", object: #{ apiVersion: "v1", kind: "ConfigMap", name: "web" }, message: "x" }
+            ]"#,
+        ));
+        assert_eq!(parsed.findings.len(), 0);
+        assert_eq!(parsed.invalid.len(), 3, "{:?}", parsed.invalid);
+        assert!(
+            parsed.invalid[0].starts_with("finding #0: "),
+            "{}",
+            parsed.invalid[0]
+        );
+        assert!(parsed.invalid[0].contains("reserved"), "{}", parsed.invalid[0]);
+        assert!(
+            parsed.invalid[1].starts_with("finding #1: "),
+            "{}",
+            parsed.invalid[1]
+        );
+        assert!(
+            parsed.invalid[1].contains("`message` is required"),
+            "{}",
+            parsed.invalid[1]
+        );
+        assert!(
+            parsed.invalid[2].starts_with("finding #2: "),
+            "{}",
+            parsed.invalid[2]
+        );
+        assert!(
+            parsed.invalid[2].contains("`severity` must be"),
+            "{}",
+            parsed.invalid[2]
+        );
     }
 
     #[test]

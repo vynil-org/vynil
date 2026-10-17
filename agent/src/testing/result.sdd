@@ -106,6 +106,15 @@ Must:
     d'objets `{test, rule, kind, namespace, name, path, reason, origin}` aux champs
     absents rendus `null` ; @to_junit pose sur le `<testsuite>` du test concerné un
     `<system-out>` listant ses suppressions une par ligne, et aucun `<system-out>` ailleurs.
+  Distinguer, dans le JUnit seulement, les lignes du lint du rendu, reconnues à un nom qui commence
+    par `lint:` (le contrat de nom de ./lint/finding.sdd) : leur cas de test porte leur
+    `description`, quand elle existe et n'est pas vide, en attribut `classname` — dix objets en
+    échec sur la même règle sont alors dix cas distincts —, et chaque ligne PASSANTE dont le
+    message commence par `warning: ` (le préfixe d'un constat `warn`, voir ./lint/finding.sdd)
+    ajoute au `<system-out>` de la suite une ligne `[WARN] {nom} ({description}): {message}`
+    (`[WARN] {nom}: {message}` sans description), après les lignes `[SKIP]`. Toute autre ligne —
+    tout assert ordinaire, même muni d'une description, même au message `warning: ` — garde le
+    JUnit d'avant, octet pour octet : sans lint du rendu, rien ne change.
 
 Exposes:
   @TestResult — enregistrement `#[derive(@Clone, @Debug, @Serialize)]`, trois champs pub :
@@ -273,3 +282,26 @@ Scenario: suppressions are rendered in the three forms
   Then le texte porte `Suppressed: 1` et une ligne `[SKIP]`, le JSON une clé `suppressions`
     d'un élément, et le JUnit un `<system-out>` sur la suite du test
   Test @suppressions-rendered-in-three-forms
+
+Scenario: lint rows carry their object in the junit
+  Given une suite dont trois lignes `lint:latest-tag` en échec ont pour description
+    `Deployment app/a`, `Deployment app/b` et `Deployment app/c`
+  When @to_junit s'exécute
+  Then les trois cas de test s'appellent `lint:latest-tag` et portent chacun l'attribut
+    `classname` de leur description
+  Test @lint-rows-carry-their-object-in-the-junit
+
+Scenario: warnings are listed in the junit system-out
+  Given une suite dont une ligne `lint:no-liveness-probe` passante au message
+    `warning: no probe` a pour description `Deployment app/web`, et une suppression
+  When @to_junit s'exécute
+  Then le `<system-out>` de la suite porte la ligne `[SKIP]` puis la ligne
+    `[WARN] lint:no-liveness-probe (Deployment app/web): warning: no probe`
+  Test @warnings-are-listed-in-the-junit-system-out
+
+Scenario: ordinary asserts keep their junit
+  Given un assert ordinaire passant, muni d'une description, et un autre dont le message commence
+    par `warning: `, sans aucune ligne `lint:`
+  When @to_junit s'exécute
+  Then aucun `classname` ni aucun `<system-out>` n'apparaît : la sortie est celle d'avant
+  Test @ordinary-asserts-keep-their-junit
