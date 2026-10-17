@@ -25,7 +25,13 @@ Exposes:
     -> common::Result<Self>`,
     `run_test(&self, ctx: &serde_json::Value, objects: &Sections) -> LintOutcome`,
     `run_suite(&self, ctx: &serde_json::Value) -> LintOutcome`.
-  @LintOutcome — `{ rows: Vec<VynilAssertResult>, suppressions: Vec<Suppression> }`.
+  @LintOutcome — `{ rows: Vec<VynilAssertResult>, suppressions: Vec<Suppression>,
+    findings: Vec<Finding> }` ; `findings` porte tous les constats valides du script, y compris
+    les supprimés, dans l'ordre de retour, pour que l'appelant puisse les remettre à `fix`.
+  @LintRunner::run_fix — `(&self, rule: &str, findings: &[Finding], package: &serde_json::Value)
+    -> FixOutcome`.
+  @FixOutcome — `{ status: FixStatus, package: Option<serde_json::Value>, message: String }`.
+  @FixStatus — `Applied`, `NotApplicable` ou `Failed`.
   @Sections — défini par ./sections.sdd, importé ici.
 
 Accepts:
@@ -63,15 +69,41 @@ Must:
     budget d'opérations ne protège pas d'une boucle `s += s` qui double à chaque tour.
   Rester déterministe : mêmes objets et mêmes contextes donnent les mêmes lignes.
 
+  Appeler `fix(rule, findings, package)` quand @run_fix s'exécute : `rule` le nom de la règle,
+    `findings` les constats de cette règle sous la forme que `finding.sdd` donne à
+    @findings_to_dynamic (supprimés compris : c'est le script qui décide de ce que la
+    suppression implique), `package` une copie du `package.yaml` décodé en carte. Le script
+    retourne une carte `#{ status, package, message }` : `status` vaut `"applied"` (alors
+    `package` est la carte modifiée, complète) ou `"not_applicable"` ; `message` est optionnel.
+    Le runner traduit `applied` en @FixStatus::Applied avec le `package` retourné,
+    `not_applicable` en @FixStatus::NotApplicable sans package.
+  Rendre @FixStatus::NotApplicable, sans échec, quand la distribution ne définit pas `fix` :
+    une distribution n'est jamais obligée de savoir corriger.
+  Rendre @FixStatus::Failed, avec le message de l'erreur et sans package, pour toute erreur
+    d'exécution de `fix`, tout dépassement de la limite d'opérations ou de mémoire, tout retour
+    qui n'est pas une carte, tout `status` inconnu, et tout `applied` sans `package` de type
+    carte. Un fix qui échoue ne modifie rien : l'appelant garde le `package` d'avant.
+  Évaluer `fix` dans les mêmes conditions que `lint` : moteur neuf, mêmes fonctions et
+    mêmes bornes mémoire, budget d'opérations réduit à la base. Le script est pur : il ne
+    reçoit ni n'écrit aucun fichier, il rend le nouveau `package.yaml` et c'est l'appelant qui
+    l'écrit.
+
 Must not:
   Modifier les objets du test : le script reçoit une copie.
+  Modifier le `package` reçu par @run_fix : le script en reçoit une copie, et le retour
+    seul fait foi.
 
 Handles:
-  `lint` retourne un tableau vide — aucune ligne, aucune suppression.
+  `lint` retourne un tableau vide — aucune ligne, aucune suppression, aucun constat.
+  @run_fix avec une liste de constats vide — le script est tout de même appelé (c'est lui qui
+    sait ce qui est à corriger) ; le runner n'ajoute aucune politique.
   Test dont l'installation a échoué — le runner n'est pas appelé (décision de ../handler.sdd) :
     pas de lint sur un rendu incomplet.
 
 Tasks:
+  [ ] Tranche fix (1a) : @LintOutcome::findings, @run_fix, @FixOutcome et les scénarios
+      `fix` ci-dessous ; la règle maison `no-cpu-limits` et son fix sont écrits inline dans
+      les tests (scripts de test, pas un catalogue livré par vynil).
   [x] Couvrir chaque scénario par un test de même nom, avec des scripts `lint.rhai` de test
       sous `/agent/tests/fixtures/`.
   [x] Valeurs du budget d'opérations : base de dix millions plus cinquante mille par objet reçu,
@@ -141,3 +173,68 @@ Scenario: the script sees every section
   Then le script voit `objs.all`, `objs.scalables` et `objs.befores` remplies et les autres
     clés présentes mais vides
   Test @the-script-sees-every-section
+
+Scenario: outcome carries every finding, suppressed included
+  Given un `lint.rhai` dont `lint` retourne un constat `error` et un constat `error` supprimé
+    avec sa raison
+  When @run_test s'exécute
+  Then `findings` contient les deux constats dans l'ordre, `rows` une seule ligne et
+    `suppressions` une seule entrée
+  Test @outcome-carries-every-finding-suppressed-included
+
+Scenario: a fix returns the modified package
+  Given un `lint.rhai` dont `fix` retire `resources.app.limits.cpu` du `package` et retourne
+    `applied` avec le nouveau `package`
+  When @run_fix s'exécute avec la règle `no-cpu-limits`, un constat et ce `package`
+  Then le statut est @FixStatus::Applied et le `package` rendu n'a plus la clé, `memory`
+    restant en place
+  And le `package` d'entrée de l'appelant est inchangé
+  Test @a-fix-returns-the-modified-package
+
+Scenario: a distribution without fix is not applicable
+  Given un `lint.rhai` qui définit `lint` mais pas `fix`
+  When @run_fix s'exécute
+  Then le statut est @FixStatus::NotApplicable, sans package ni échec
+  Test @a-distribution-without-fix-is-not-applicable
+
+Scenario: a fix declares itself not applicable
+  Given un `fix` qui retourne `#{ status: "not_applicable", message: "rien à retirer" }`
+  When @run_fix s'exécute
+  Then le statut est @FixStatus::NotApplicable, le message est conservé, aucun package
+  Test @a-fix-declares-itself-not-applicable
+
+Scenario: a throwing fix fails without changing anything
+  Given un `fix` qui lève
+  When @run_fix s'exécute
+  Then le statut est @FixStatus::Failed, le message porte l'erreur, aucun package
+  Test @a-throwing-fix-fails-without-changing-anything
+
+Scenario: a malformed fix return fails
+  Given un `fix` qui retourne un tableau, ou un `status` inconnu, ou `applied` sans `package`
+  When @run_fix s'exécute
+  Then chaque cas est @FixStatus::Failed, avec un message qui dit ce qui manque
+  Test @a-malformed-fix-return-fails
+
+Scenario: a fix cannot touch the cluster or loop forever
+  Given un `fix` qui appelle `k8s_resource`, et un autre qui boucle sans fin
+  When @run_fix s'exécute
+  Then les deux sont @FixStatus::Failed, le premier sur fonction inconnue
+  Test @a-fix-cannot-touch-the-cluster-or-loop-forever
+
+Scenario: the cpu limit fix is idempotent
+  Given la règle maison `no-cpu-limits` (son `lint` constate toute `limits.cpu` d'un conteneur,
+    son `fix` retire toutes les `resources.*.limits.cpu` du `package`, et le bloc `limits`
+    s'il devient vide), et un `package` à deux composants dont un seul `limits` ne porte
+    que `cpu`
+  When @run_fix s'exécute une première fois, puis une seconde sur le `package` rendu
+  Then la première est @FixStatus::Applied et le `package` n'a plus aucune `limits.cpu`,
+    le composant sans autre limite perd son bloc `limits`, l'autre garde `limits.memory`
+  And la seconde est @FixStatus::NotApplicable : plus rien à retirer
+  Test @the-cpu-limit-fix-is-idempotent
+
+Scenario: a suppressed finding makes the cpu limit fix not applicable
+  Given le même `fix` et un constat de la liste reçue avec `suppressed` vrai
+  When @run_fix s'exécute
+  Then le statut est @FixStatus::NotApplicable et le message dit qu'un objet est supprimé :
+    le fix global ne contredit pas la décision explicite d'un auteur
+  Test @a-suppressed-finding-makes-the-cpu-limit-fix-not-applicable
