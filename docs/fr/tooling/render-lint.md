@@ -192,9 +192,15 @@ namespacé. Pour le hook de suite, les lignes appartiennent à un enregistrement
 Une ligne en échec compte comme n'importe quel assert en échec : le résumé, le rapport JUnit et le code
 de sortie 3 s'appliquent sans changement. Un constat `warn` ne fait jamais échouer le test.
 
-Le modèle de verdict n'ayant pas de champ de sévérité, un avertissement n'est exprimé que par sa ligne
-réussie et son préfixe `warning: `. L'ajout d'un champ de sévérité explicite est une question ouverte
-dans les spécifications.
+Le modèle de verdict n'a pas de champ de sévérité : un avertissement est une ligne réussie au préfixe
+`warning: `. Le résumé texte le montre tel quel. Le rapport JUnit ajoute deux choses pour les lignes
+nommées `lint:...` (un assert ordinaire garde son rapport inchangé, octet pour octet) :
+
+- la description de la ligne (`Deployment app/web`) est écrite en `classname` du cas de test, si bien que
+  dix objets en échec sur la même règle sont dix cas distincts et non dix cas `lint:{rule}` identiques ;
+- une ligne réussie dont le message commence par `warning: ` est listée dans le `<system-out>` de la suite
+  sous la forme `[WARN] {nom} ({description}): {message}`, après les lignes `[SKIP]` des suppressions.
+  Sans cela, un lint dont tous les constats sont des avertissements paraîtrait vert et muet.
 
 ## Suppressions
 
@@ -296,4 +302,4 @@ d'un autre groupe n'est pas la charge de travail visée par la règle.
 ## Limites
 
 - Les valeurs du budget d'opérations et leur configuration ne sont pas encore fixées.
-- Un constat `warn` n'a pas de champ de sévérité dans le verdict.
+- Un constat `warn` n'a pas de champ de sévérité dans le verdict : c'est une ligne réussie à préfixe, listée en `[WARN]` dans le rapport JUnit.

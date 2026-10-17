@@ -188,8 +188,15 @@ For the suite hook, the rows belong to a record named `(suite)`.
 A failed row counts like any failed assert: the summary, the JUnit report and exit code 3 apply
 unchanged. A `warn` finding never fails the test.
 
-Because the verdict model has no severity field, a warning is expressed only by its passing row and
-its `warning: ` prefix. Adding an explicit severity field is an open question in the specifications.
+The verdict model has no severity field: a warning is a passing row with the `warning: ` prefix. The text
+summary shows it as such. The JUnit report adds two things for the rows named `lint:...` (an ordinary
+assert keeps its report unchanged, byte for byte):
+
+- the description of the row (`Deployment app/web`) is written as the `classname` of the test case, so that
+  ten objects failing the same rule are ten distinct cases rather than ten identical `lint:{rule}` ones;
+- a passing row whose message starts with `warning: ` is listed in the `<system-out>` of the suite as
+  `[WARN] {name} ({description}): {message}`, after the `[SKIP]` lines of the suppressions. Without it, a
+  lint whose findings are all warnings would look green and silent.
 
 ## Suppressions
 
@@ -288,4 +295,4 @@ another group is not the workload the rule is about.
 ## Limits
 
 - The values of the operation budget and their configuration are not fixed yet.
-- A `warn` finding has no severity field in the verdict.
+- A `warn` finding has no severity field in the verdict: it is a passing row with a prefix, listed as `[WARN]` in the JUnit report.

@@ -49,7 +49,7 @@ fn strict_option(opts: &Map) -> Result<bool, Box<EvalAltResult>> {
     opts.get("strict").map_or(Ok(true), |value| {
         value.as_bool().map_err(|_| {
             Box::new(runtime_error(
-                "schema_validate : l'option strict doit être un booléen",
+                "schema_validate: the strict option must be a boolean",
             ))
         })
     })
