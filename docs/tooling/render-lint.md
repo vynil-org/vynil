@@ -60,6 +60,9 @@ The script may define one or both of these functions. A function that is not def
 `lint` is not called for a test whose `value_script` or install step failed: the failure is already
 reported on the test, and a partial render would produce misleading findings.
 
+A third, optional function, `fix`, turns findings into a corrected `package.yaml` (see
+[Fixing findings](#fixing-findings-fix)). It is only called with `agent package test --fix`.
+
 ### The `objs` map
 
 `objs` is a map with a fixed set of keys. Every key is always present; a key with no object holds an
@@ -393,8 +396,113 @@ A Deployment without a `team` label produces a failed row `lint:team-label`. An 
 rule builds its finding directly and does not go through `render_lint::apply_suppressions`. To make a house rule
 suppressible, pass its findings through `render_lint::apply_suppressions(findings, objs.all, opts)`.
 
+## Fixing findings: `fix`
+
+A finding carries what is needed to correct it. When the command runs with `--fix`, the script's
+`fix` function is called **once per rule** that produced at least one finding, in alphabetical order
+of the rules:
+
+```rhai
+fn fix(rule, findings, pkg) { ... }
+```
+
+| Argument | Content |
+|---|---|
+| `rule` | Name of the rule. |
+| `findings` | All the findings of that rule, from every test and from the suite, suppressed ones included, in order of arrival. Same shape as a finding returned by `lint`. |
+| `pkg` | The `package.yaml` as an ordered document (`yaml_decode_ordered`). `package` is a reserved word in Rhai, hence `pkg`. |
+
+It returns a map:
+
+| Key | Content |
+|---|---|
+| `status` | `"applied"` or `"not_applicable"`. |
+| `pkg` | The complete, modified document. Required with `applied`. |
+| `message` | Optional text, shown in the report. |
+
+Anything else (an error, an unknown status, `applied` without `pkg`, a return that is not a map) is a
+failed fix: the document is left as it was and the following rules still run. A distribution without
+`fix` is not an error: its rules simply have no fix. Each rule sees the document as the previous rule
+left it. Vynil ships no fix: the catalogue is the distribution's.
+
+The script stays pure: it receives the document and returns the new one, only the command writes
+`package.yaml`. The key order is kept at every level. Comments and quoting are not (the same limit as
+`agent package update`), so `package.yaml` is only rewritten when a fix applied.
+
+Two traps of the document type: reading a nested key returns a copy, so to change it, read the parent,
+modify the copy and assign it back; and test the presence of a key with `keys().contains(...)`, because
+`contains`, `len` and `is_empty` do not resolve on the document itself.
+
+A suppressed finding is passed to `fix` on purpose. A fix that edits the whole package should not
+override an author's explicit decision: the example below declines when any finding is suppressed.
+
+### Example: no CPU limits
+
+The rule (`lint`) reports every container with a CPU limit; the fix removes `limits.cpu` from the
+`resources` of the package, and the `limits` block when it becomes empty. The rule is global to the
+package, so the fix is too: it declines when a finding is suppressed, to not override an explicit
+decision.
+
+```rhai
+fn lint(objs, ctx) {
+    let out = [];
+    for obj in objs.all {
+        if obj.kind == "Deployment" {
+            for c in obj.spec.template.spec.containers {
+                if "resources" in c && "limits" in c.resources && "cpu" in c.resources.limits {
+                    out.push(#{
+                        rule: "no-cpu-limits", severity: "error",
+                        object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
+                        message: "cpu limit on " + c.name
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
+fn fix(rule, findings, pkg) {
+    for f in findings {
+        if f.suppressed { return #{ status: "not_applicable", message: "an object is suppressed" }; }
+    }
+    let resources = pkg["resources"];
+    if type_of(resources) != "map" { return #{ status: "not_applicable" }; }
+    let changed = false;
+    for name in resources.keys() {
+        let component = resources[name];
+        let limits = component["limits"];
+        if type_of(limits) == "map" && limits.keys().contains("cpu") {
+            limits.remove("cpu");
+            if limits.keys().len() == 0 {
+                component.remove("limits");
+            } else {
+                component["limits"] = limits;
+            }
+            resources[name] = component;
+            changed = true;
+        }
+    }
+    if !changed { return #{ status: "not_applicable" }; }
+    pkg["resources"] = resources;
+    #{ status: "applied", pkg: pkg }
+}
+```
+
+```bash
+agent package test -p ./my-package --all --lint-dir ./distribution/lint --fix
+# stderr: fix no-cpu-limits: applied
+```
+
+The run above still exits with code 3, since the finding existed when the suite ran. Run it again:
+with the fix applied, the finding is gone.
+
 ## Limits
 
+- A fix only edits `package.yaml`. A value hard-coded in a template or a script is not reachable by
+  `fix`; its finding remains on the next run.
+- `package.yaml` loses its comments when a fix applies it. `--dry-run` prints the resulting document,
+  not a diff.
 - Three kube-linter checks are not ported (see the status note).
 - The values of the operation budget and their configuration are not fixed yet. The budget is
   proportional to the number of objects, and `render_lint::all` costs about sixteen thousand

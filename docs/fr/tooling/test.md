@@ -33,6 +33,8 @@ agent package test -p ./my-package --all --format json \
 | `--template-output-filename <file>` | Dump du rendu (test unique uniquement). |
 | `--lint-dir <dir>` | Répertoire du script de lint de la distribution (`lint.rhai`). Active le lint du rendu. |
 | `--schemas-dir <dir>` | Répertoire de schémas de la distribution. Exige `--lint-dir`. |
+| `--fix` | Applique à `package.yaml` les fix de la distribution (voir [Lint du rendu](render-lint.md#corriger-les-constats-fix)). Exige `--lint-dir`. |
+| `--dry-run` | Avec `--fix`, montre ce qui serait écrit sans l'écrire. Exige `--fix`. |
 
 Le répertoire `tests/` doit exister, sinon l'agent renvoie `MissingTestDirectory`.
 
@@ -158,6 +160,10 @@ agent package test -p ./my-package --all \
   réussie préfixée de `warning: ` et ne fait jamais échouer l'exécution. Une erreur du script donne une
   ligne en échec `lint:execution`, et un constat invalide une ligne en échec `lint:invalid-finding`.
 - **Sans `--lint-dir`** : rien ne change. Aucune ligne de lint ni aucune suppression n'est produite.
+- **Avec `--fix`** : après le résumé, chaque règle qui a produit des constats est confiée à la fonction `fix`
+  du script, et `package.yaml` est réécrit si un fix s'est appliqué. Le rapport va sur stderr, donc un
+  `--format json` sur stdout reste exploitable. Le code de sortie reste celui de l'exécution *avant* le fix :
+  relancer la commande pour vérifier que les constats ont disparu.
 
 ### Suppressions
 
