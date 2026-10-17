@@ -49,6 +49,11 @@ Must:
   Ne jamais paniquer : un `status` mal formé donne des sections vides et laisse tout dans
     @unsectioned.
   Ne pas lire les objets au-delà de leur identité : aucune règle, aucune sévérité.
+  Rester linéaire en nombre d'objets plus nombre d'entrées de `status` : calculer une seule fois,
+    par objet, son identité (`kind`, `name`, `namespace`, `apiVersion`), indexer les entrées de
+    chaque section, et classer par recherche dans l'index. Aucune copie d'un objet entier dans
+    la boucle de classement. Le résultat — sections, contenu et ordre — est celui qu'un
+    parcours exhaustif de chaque couple (entrée, objet) donnerait.
 
 Handles:
   Entrée du `status` qui ne désigne aucun objet créé — ignorée sans erreur (objet appliqué puis
@@ -100,3 +105,12 @@ Scenario: every key is always present
   When @to_dynamic s'exécute
   Then la carte porte les neuf clés, chacune un tableau vide
   Test @every-key-is-always-present
+
+Scenario: classification stays linear
+  Given trois mille Deployments créés et un `status` dont `scalables` porte les trois mille
+    entrées qui les désignent
+  When @from_status s'exécute
+  Then `scalables` contient les trois mille objets dans l'ordre de création, `unsectioned` est
+    vide, et l'appel s'achève en moins de dix secondes (un parcours de chaque couple, avec la
+    copie d'un objet entier à chaque comparaison, en prend des centaines)
+  Test @classification-stays-linear

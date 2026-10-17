@@ -41,6 +41,9 @@ pub struct ParsedFindings {
 }
 
 const INVALID_RULE: &str = "lint:invalid-finding";
+/// Noms de règle réservés aux lignes que le moteur produit lui-même (`lint:execution`,
+/// `lint:invalid-finding`, `lint:sections`).
+const RESERVED_RULES: [&str; 3] = ["execution", "invalid-finding", "sections"];
 
 /// Analyse la valeur retournée par le script. Un élément mal formé devient une description
 /// dans `invalid` : rien n'est écarté silencieusement.
@@ -82,7 +85,7 @@ fn parse_finding(item: &Dynamic) -> Result<Finding, String> {
             ObjectRef {
                 api_version: req_str(&object, "apiVersion")?,
                 kind: req_str(&object, "kind")?,
-                namespace: opt_str(&object, "namespace")?,
+                namespace: opt_str(&object, "namespace")?.filter(|ns| !ns.is_empty()),
                 name: req_str(&object, "name")?,
             }
         }
@@ -97,8 +100,12 @@ fn parse_finding(item: &Dynamic) -> Result<Finding, String> {
     if suppressed && reason.as_deref().is_none_or(str::is_empty) {
         return Err("`reason` is required when `suppressed` is true".to_string());
     }
+    let rule = req_str(&map, "rule")?;
+    if RESERVED_RULES.contains(&rule.as_str()) {
+        return Err(format!("`rule` `{rule}` est réservée aux lignes du moteur"));
+    }
     Ok(Finding {
-        rule: req_str(&map, "rule")?,
+        rule,
         severity,
         object,
         path: opt_str(&map, "path")?,
@@ -335,6 +342,45 @@ mod tests {
         );
         assert!(rows[0].message.contains("finding #0"));
         assert!(rows[1].message.contains("finding #1"));
+    }
+
+    #[test]
+    fn reserved_rule_names_are_invalid_findings() {
+        let parsed = parse_findings(&eval(
+            r#"[
+                #{ rule: "execution", severity: "error", object: #{ apiVersion: "v1", kind: "ConfigMap", name: "web" }, message: "x" },
+                #{ rule: "invalid-finding", severity: "error", object: #{ apiVersion: "v1", kind: "ConfigMap", name: "web" }, message: "x" },
+                #{ rule: "sections", severity: "error", object: #{ apiVersion: "v1", kind: "ConfigMap", name: "web" }, message: "x" },
+                #{ rule: "latest-tag", severity: "error", object: #{ apiVersion: "v1", kind: "ConfigMap", name: "web" }, message: "x" }
+            ]"#,
+        ));
+        assert_eq!(parsed.findings.len(), 1);
+        assert_eq!(parsed.findings[0].rule, "latest-tag");
+        assert_eq!(parsed.invalid.len(), 3, "{:?}", parsed.invalid);
+        for (index, rule) in ["execution", "invalid-finding", "sections"].iter().enumerate() {
+            let expected = format!("finding #{index}: ");
+            assert!(
+                parsed.invalid[index].starts_with(&expected),
+                "{}",
+                parsed.invalid[index]
+            );
+            assert!(parsed.invalid[index].contains(rule), "{}", parsed.invalid[index]);
+        }
+    }
+
+    #[test]
+    fn an_empty_namespace_is_no_namespace() {
+        let parsed = parse_findings(&eval(
+            r#"[#{
+                rule: "latest-tag", severity: "error",
+                object: #{ apiVersion: "v1", kind: "ConfigMap", namespace: "", name: "web" },
+                message: "x"
+            }]"#,
+        ));
+        assert!(parsed.invalid.is_empty(), "{:?}", parsed.invalid);
+        assert_eq!(parsed.findings[0].object.namespace, None);
+        let rows = to_rows(&parsed.findings, &parsed.invalid);
+        assert_eq!(rows[0].description.as_deref(), Some("ConfigMap web"));
     }
 
     #[test]

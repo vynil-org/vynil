@@ -2,7 +2,7 @@ use super::{
     lint::{
         context::{build_suite_context, build_test_context},
         finding::Finding,
-        runner::{FixStatus, HintOutcome, LintRunner},
+        runner::{FixStatus, HintOutcome, LintOutcome, LintRunner},
         sections::Sections,
     },
     result::{Suppression, TestResultCollector},
@@ -208,6 +208,26 @@ fn instance_already_mocked(
 fn instance_status(rhai: &mut Script, fun_name: &str) -> Result<Dynamic, String> {
     rhai.eval(&format!("{fun_name}(args.namespace, args.instance).status"))
         .map_err(|e| e.to_string())
+}
+
+/// Voie lint de test : rend les lignes, les suppressions et les constats du script `lint` sur les
+/// objets créés. Sans le hook `lint` (distribution qui ne définit que `lint_suite`), rien n'est lu ni
+/// appelé : `read_status` n'est pas invoquée.
+fn lint_test_lane(
+    lint: &LintRunner,
+    created: &[Dynamic],
+    ctx: &serde_json::Value,
+    read_status: impl FnOnce() -> Result<Dynamic, String>,
+) -> LintOutcome {
+    if !lint.has_test_hook() {
+        return LintOutcome::default();
+    }
+    let (sections, unreadable) = lint_sections(created, read_status());
+    let mut outcome = lint.run_test(ctx, &sections);
+    let mut rows: Vec<VynilAssertResult> = unreadable.into_iter().collect();
+    rows.extend(outcome.rows);
+    outcome.rows = rows;
+    outcome
 }
 
 /// Sections des objets créés d'après le `status` lu. Un statut illisible laisse toutes les
@@ -794,9 +814,7 @@ impl TestHandler {
                 .and_then(|loaded| loaded.testSets.clone())
                 .unwrap_or_default();
             let ctx = build_test_context(&self.package, &test, &refs);
-            let (sections, unreadable) = lint_sections(&created, instance_status(&mut rhai, fun_name));
-            asserts.extend(unreadable);
-            let outcome = lint.run_test(&ctx, &sections);
+            let outcome = lint_test_lane(lint, &created, &ctx, || instance_status(&mut rhai, fun_name));
             asserts.extend(outcome.rows);
             suppressions.extend(outcome.suppressions);
             findings.extend(outcome.findings);
@@ -885,8 +903,8 @@ impl TestHandler {
 mod tests {
     use super::*;
     use crate::testing::lint::finding::{ObjectRef, Severity};
-    use serde_json::Value;
-    use std::fs;
+    use serde_json::{Value, json};
+    use std::{cell::Cell, fs};
 
     const PACKAGE_YAML: &str = "apiVersion: vinyl.solidite.fr/v1beta1\nkind: Package\nmetadata:\n  name: demo\n  category: core\n  description: demo package\n  type: tenant\n  features: []\nrequirements: []\n";
 
@@ -1388,5 +1406,35 @@ fn hint(rule, findings, pkg) {
 
         let bare_fx = fixture(&[], INSTALL_ONE_CONFIGMAP, None);
         assert_eq!(handler(&bare_fx).finding_count(), 0);
+    }
+
+    #[test]
+    fn a_suite_only_distribution_reads_no_status() {
+        let ctx = json!({"package": {"name": "demo"}, "test": {"name": "default"}});
+        let fx = fixture(&[], INSTALL_ONE_CONFIGMAP, Some("fn lint_suite(ctx) { [] }\n"));
+        let h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        let lint = h.lint.as_ref().expect("voie lint");
+        let read = Cell::new(false);
+        let outcome = lint_test_lane(lint, &[], &ctx, || {
+            read.set(true);
+            Err("statut illisible".to_string())
+        });
+        assert!(!read.get(), "le statut ne doit pas être lu sans hook `lint`");
+        assert!(outcome.rows.is_empty(), "{:?}", outcome.rows);
+        assert!(outcome.suppressions.is_empty(), "{:?}", outcome.suppressions);
+        assert!(outcome.findings.is_empty(), "{:?}", outcome.findings);
+
+        let fx = fixture(&[], INSTALL_ONE_CONFIGMAP, Some("fn lint(objs, ctx) { [] }\n"));
+        let h = handler(&fx).with_lint(&fx.lint, None).expect("lint configuré");
+        let lint = h.lint.as_ref().expect("voie lint");
+        let read = Cell::new(false);
+        let outcome = lint_test_lane(lint, &[], &ctx, || {
+            read.set(true);
+            Err("statut illisible".to_string())
+        });
+        assert!(read.get(), "le statut doit être lu avec un hook `lint`");
+        assert_eq!(outcome.rows.len(), 1, "{:?}", outcome.rows);
+        assert_eq!(outcome.rows[0].name, "lint:sections");
+        assert!(!outcome.rows[0].passed);
     }
 }

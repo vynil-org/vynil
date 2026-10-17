@@ -26,7 +26,9 @@ Exposes:
   @LintRunner — `new(lint_dir: &Path, script_dir: &Path, schemas: SchemaRegistry)
     -> common::Result<Self>`,
     `run_test(&self, ctx: &serde_json::Value, objects: &Sections) -> LintOutcome`,
-    `run_suite(&self, ctx: &serde_json::Value) -> LintOutcome`.
+    `run_suite(&self, ctx: &serde_json::Value) -> LintOutcome`,
+    `has_test_hook(&self) -> bool` et `has_suite_hook(&self) -> bool` : vrai quand la
+    distribution définit `lint`, respectivement `lint_suite`.
   @LintOutcome — `{ rows: Vec<VynilAssertResult>, suppressions: Vec<Suppression>,
     findings: Vec<Finding> }` ; `findings` porte tous les constats valides du script, y compris
     les supprimés, dans l'ordre de retour, pour que l'appelant puisse les remettre à `fix`.
@@ -52,6 +54,11 @@ Must:
   Résoudre les imports du script dans l'ordre : @lint_dir, puis `{script_dir}/lib`. Un module
     posé dans @lint_dir masque donc le module standard du même nom : la distribution peut
     surcharger un fichier fourni, comme un paquet le fait.
+  Évaluer les instructions de premier niveau du script UNE fois par appel, pas deux : elles
+    s'exécutent dans l'appel du point d'entrée, sans exécution à blanc préalable. Le compteur
+    d'opérations est propre à chaque évaluation, donc la double exécution ne consommait pas deux
+    fois le budget : elle coûtait seulement du temps de calcul pour rien, et un premier niveau
+    coûteux se payait deux fois.
   Évaluer chaque appel dans un moteur neuf, sans état partagé entre tests, avec les seules
     fonctions de manipulation de données du moteur de base, les fonctions `schema_*`,
     `regex_is_match` de ./patterns.sdd, le type `Multimap` de ./multimap.sdd et les gabarits
@@ -286,3 +293,22 @@ Scenario: a hint renders a template file from the lint directory
   Then le résultat est @HintOutcome::Text avec `Retirer 2 limite(s) : no-cpu-limits`
   And un `hint` qui appelle `register_partial_dir(h, "..")` donne @HintOutcome::Failed
   Test @a-hint-renders-a-template-file-from-the-lint-directory
+
+Scenario: top level statements run once per call
+  Given un `lint.rhai` dont le premier niveau pose `let seuil = 7;`, fait une boucle qui coûte
+    plus de la moitié du budget d'opérations d'un appel sans objet, puis lève si `seuil` ne vaut
+    plus 7, et dont `lint` retourne `[]`
+  When @run_test s'exécute
+  Then aucune ligne `lint:execution` n'est produite : le premier niveau s'évalue sans erreur et
+    sans budget cumulé
+  And les liaisons de premier niveau ne sont pas visibles des fonctions du script (sémantique de
+    Rhai : une fonction ne capture pas la portée globale) ; seuls les `import` y ont leur usage
+  And le nombre d'évaluations du premier niveau n'est pas observable depuis le script : ce test
+    est une garde de non-régression, l'évaluation unique s'établit par la lecture du code
+  Test @top-level-statements-run-once-per-call
+
+Scenario: the test hook is exposed
+  Given un `lint.rhai` qui ne définit que `lint_suite`, puis un qui ne définit que `lint`
+  When @has_test_hook et @has_suite_hook sont lus
+  Then le premier répond faux puis vrai, le second vrai puis faux
+  Test @the-test-hook-is-exposed

@@ -417,12 +417,15 @@ Scenario: missing lint script dies before any output
   Given `--lint-dir /distro` où `/distro/lint.rhai` est absent
   When @run tourne
   Then @Err revient avant l'affichage de tout nom de test ou de résumé et exit 3 suit
+  And le message de l'erreur nomme `lint.rhai` ; une autre erreur ne satisfait pas le scénario
   Test @missing-lint-script-dies-before-output
 
 Scenario: no lint dir leaves behaviour unchanged
   Given une suite exécutée sans `--lint-dir`
   When @run tourne
   Then la sortie texte, JSON et JUnit est identique octet pour octet à celle d'avant le lint
+  And le test compare ces trois sorties à des instantanés littéraux écrits dans le test, pas
+    seulement à l'absence de lignes `lint:`
   Test @no-lint-dir-leaves-behaviour-unchanged
 
 Scenario: fix rewrites package.yaml

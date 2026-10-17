@@ -33,7 +33,8 @@ Exposes:
 Accepts:
   Pour @parse_findings, un tableau Rhai de cartes. Champs de la carte d'un constat :
     `rule` (chaîne non vide), `severity` (`error` ou `warn`), `object` (carte avec
-    `apiVersion`, `kind`, `name` chaînes non vides et `namespace` chaîne optionnelle),
+    `apiVersion`, `kind`, `name` chaînes non vides et `namespace` chaîne optionnelle ; un
+    `namespace` vide vaut un namespace absent),
     `message` (chaîne non vide) ; optionnels : `path` (chaîne), `source` (chaîne),
     `suppressed` (booléen, défaut `false`), `reason` (chaîne, non vide dès que `suppressed`
     est vrai), `origin` (chaîne). Les clés inconnues sont ignorées.
@@ -76,6 +77,10 @@ Handles:
     (`lint:invalid-finding`) : une exception se justifie, sinon une erreur deviendrait muette
     sans trace de sa raison. Une `reason` est tolérée sur un constat non supprimé. La politique « une annotation vide
     supprime-t-elle ? » est celle de la bibliothèque (/agent/scripts/lib/render_lint.sdd).
+  `rule` égale à `execution`, `invalid-finding` ou `sections` — élément invalide
+    (`lint:invalid-finding`) : ces trois noms sont ceux des lignes que le moteur produit lui-même
+    (`lint:execution`, `lint:invalid-finding`, `lint:sections`), et une règle de distribution
+    portant l'un d'eux serait indiscernable d'une panne du script.
   Tableau vide — aucune ligne, aucune suppression.
 
 Tasks:
@@ -134,3 +139,17 @@ Scenario: findings survive a round trip to a script
   When @findings_to_dynamic les convertit puis @parse_findings les relit
   Then la liste relue est égale à la liste d'origine et `invalid` est vide
   Test @findings-survive-a-round-trip-to-a-script
+
+Scenario: reserved rule names are invalid findings
+  Given trois constats dont les règles valent `execution`, `invalid-finding` et `sections`, et
+    un constat de règle `latest-tag`
+  When @parse_findings s'exécute
+  Then seul le constat `latest-tag` est valide ; chacun des trois autres donne une description
+    `finding #{index}: ...` qui nomme la règle réservée
+  Test @reserved-rule-names-are-invalid-findings
+
+Scenario: an empty namespace is no namespace
+  Given un constat dont l'objet porte `namespace: ""`
+  When @parse_findings puis @to_rows s'exécutent
+  Then `namespace` vaut `None` et la description est `{kind} {name}`, sans espace ni barre oblique
+  Test @an-empty-namespace-is-no-namespace

@@ -53,7 +53,7 @@ Le répertoire `<package-dir>/tests` doit exister (sinon erreur `MissingTestDire
 | Flag | Variable d'environnement | Rôle |
 |---|---|---|
 | `--lint-dir <dir>` | `LINT_DIRECTORY` | Répertoire du script de lint du rendu de la distribution (`lint.rhai`). Quand il est donné, le script s'exécute à la fin de chaque test et ses constats s'ajoutent au verdict. Sans lui, aucun lint du rendu ne tourne. |
-| `--schemas-dir <dir>` | `SCHEMAS_DIRECTORY` | Répertoire de JSON Schemas et de CRD utilisé par les fonctions `schema_*` du script de lint. Exige `--lint-dir` (erreur d'usage sinon). |
+| `--schemas-dir <dir>` | `SCHEMAS_DIRECTORY` | Répertoire de JSON Schemas et de CRD utilisé par les fonctions `schema_*` du script de lint. Exige `--lint-dir` (erreur d'usage sinon) : `SCHEMAS_DIRECTORY` seule dans l'environnement est cette même erreur d'usage. |
 | `--fix` | — | Après l'exécution, rejoue les constats du lint dans la fonction `fix` de la distribution et réécrit `<package-dir>/package.yaml` quand un fix s'est appliqué : l'ordre des clés est conservé, mais pas les commentaires ni le quoting du fichier. Exige `--lint-dir`. Le verdict et le code de sortie sont ceux de la dernière exécution de la suite (voir `--fix-rounds`). |
 | `--dry-run` | — | Avec `--fix`, n'écrit rien : affiche sur stderr les étapes et le `package.yaml` qui en résulterait. Exige `--fix`. |
 | `--fix-rounds <n>` | — | Avec `--fix`, nombre maximal d'exécutions de la suite (défaut `1`, minimum `1`). Après un fix appliqué, la suite s'exécute à nouveau sur le `package.yaml` réécrit ; la boucle s'arrête dès que rien n'a changé ou que le nombre de constats ne baisse plus. Le résumé et le verdict sont ceux de la dernière exécution. Exige `--fix`. |

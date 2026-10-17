@@ -193,6 +193,10 @@ Must:
     test, appel @LintRunner::run_test ; les lignes obtenues sont ajoutées en fin du vecteur
     d'asserts (ordre final : ligne `value_script` éventuelle, asserts, lignes de lint) et les
     suppressions sont enregistrées auprès du collecteur sous le nom du test.
+  Ne rien faire de la voie lint de test — ni lecture du `status`, ni classement, ni ligne
+    `lint:sections` — quand la distribution ne définit pas `lint` (@LintRunner::has_test_hook) :
+    un statut illisible ne doit pas faire rougir un test pour un point d'entrée qui n'existe pas.
+    Le hook de suite, lui, ne lit aucun statut.
   Ne pas exécuter le lint quand la voie value_script ou la voie install a échoué : un rendu
     incomplet donnerait des constats trompeurs, et la ligne `value_script` ou `execution`
     existante porte déjà le diagnostic.
@@ -520,3 +524,14 @@ Scenario: the finding count ignores suppressed findings
   When @finding_count s'exécute
   Then il vaut deux, et zéro sans @with_lint
   Test @the-finding-count-ignores-suppressed-findings
+
+Scenario: a suite only distribution reads no status
+  Given la fonction de la voie lint de test, appelée avec une lecture du `status` injectée sous
+    la forme d'une fermeture qui enregistre son appel et échoue, sur un @LintRunner dont le
+    script ne définit que `lint_suite`
+  When la voie lint s'exécute
+  Then la lecture du `status` n'est pas appelée, aucune ligne `lint:sections` n'est produite et
+    le script n'est pas appelé
+  And avec un script qui définit `lint`, la même lecture est appelée et son échec produit la
+    ligne `lint:sections`
+  Test @a-suite-only-distribution-reads-no-status
