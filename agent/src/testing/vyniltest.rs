@@ -48,6 +48,8 @@ pub struct VynilTestInstance {
     pub name: String,
     pub namespace: String,
     pub options: Option<BTreeMap<String, serde_json::Value>>,
+    /// Node names mocked for the run, so `ctx::run` derives `cluster.ha` from them.
+    pub nodes: Option<Vec<String>>,
 }
 
 #[allow(non_snake_case)]

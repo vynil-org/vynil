@@ -79,7 +79,8 @@ Exposes:
     @asserts (@Option<Vec<@VynilAssert>>).
   @VynilTestMeta — @name (@String), @description (@Option<@String>).
   @VynilTestInstance — @name (@String), @namespace (@String, tous deux requis), @options
-    (@Option<@BTreeMap<@String, @serde_json::Value>>).
+    (@Option<@BTreeMap<@String, @serde_json::Value>>), @nodes (@Option<Vec<@String>> — noms
+    des Nodes que ./handler.rs mocke pour la course).
   @VynilTestSetRef — #[allow(non_snake_case)] @testSet (@String), @variables
     (@Option<@BTreeMap<@String, @serde_json::Value>> — nom → valeur brute, typée contrairement
     aux déclarations de variables du TestSet).
@@ -95,7 +96,7 @@ Accepts:
     `vinyl.solidite.fr/v1beta1`, kind `Test`, abort sur nom dupliqué — rien n'est revalidé
     ici). Clés wire obligatoires : `apiVersion`, `kind`, `metadata` avec `name`, et
     `instance` avec `name` et `namespace` tous deux requis ; optionnelles : `description`,
-    `testSets`, `mocks`, `asserts`, `instance.options`. Pas de rename de conteneur ni de
+    `testSets`, `mocks`, `asserts`, `instance.options`, `instance.nodes`. Pas de rename de conteneur ni de
     `deny_unknown_fields`, donc les clés sont exactement l'orthographe des champs (le
     camelCase `apiVersion`/`testSets` survit via `#[allow(non_snake_case)]`) et les clés
     inconnues sont droppées ; pas de `#[serde(default)]` — l'optionnalité est @Option-only,

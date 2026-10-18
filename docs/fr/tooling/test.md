@@ -62,6 +62,25 @@ que `package` et `instance`.
 
 Une variable absente du contexte fait échouer le test avec une ligne `execution` qui la nomme.
 
+### Surcharges du cluster
+
+Le contexte est calculé par les scripts du paquet à partir du cluster mocké, exactement
+comme en production. Pour piloter une propriété du cluster, on décrit le cluster plutôt
+que la propriété.
+
+`instance.nodes` mocke un `Node` par nom ; `cluster.ha` est donc dérivé du nombre de
+nodes (plus d'un node signifie HA) :
+
+```yaml
+instance:
+  name: my-app
+  namespace: my-ns
+  nodes: [master01, worker01]
+```
+
+Un `Node` déjà présent dans `mocks.kubernetes` n'est pas dupliqué ; un nom vide fait
+échouer le test.
+
 ### Bonnes pratiques
 
 - **Tests prévisibles** : ne pas asserter sur des champs dépendants de la version amont

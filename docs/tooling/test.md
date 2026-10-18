@@ -62,6 +62,24 @@ scripts. Mocks are rendered earlier, before any script runs, and only see `packa
 
 A variable missing from the context fails the test with an `execution` row naming it.
 
+### Cluster overrides
+
+The context is computed by the package scripts from the mocked cluster, exactly as in
+production. To drive a cluster property, describe the cluster rather than the property.
+
+`instance.nodes` mocks one `Node` per name, so `cluster.ha` is derived from the node
+count (more than one node means HA):
+
+```yaml
+instance:
+  name: my-app
+  namespace: my-ns
+  nodes: [master01, worker01]
+```
+
+A `Node` already present in `mocks.kubernetes` is not duplicated; an empty name fails the
+test.
+
 ### Best practices
 
 - **Predictable tests**: do not assert on fields that depend on upstream versions

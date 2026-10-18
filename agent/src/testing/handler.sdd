@@ -95,7 +95,8 @@ Must:
   Garde les résultats déterministes pour la carte et accepte le non-déterminisme à la
     frontière d'erreur : @list_tests rend un ordre de clés ascendant car @tests est un @BTreeMap,
     tandis que l'ordre de `mocks.kubernetes` suit l'ordre de scan de chaque appel (mocks du test
-    d'abord, mocks de chaque testSet référé dans l'ordre du tableau @testSets, instance virtuelle en dernier).
+    d'abord, mocks de chaque testSet référé dans l'ordre du tableau @testSets, Nodes de
+    @instance.nodes, instance virtuelle en dernier).
   # voie templating / fusion — @TestHandler::get_templated_test et helpers
   Résout un test dans cet ordre : contexte de base = {`package`: @VynilPackageSource sérialisé,
     `instance`: @VynilTestInstance sérialisé plus une chaîne `appslug` injectée depuis
@@ -123,6 +124,13 @@ Must:
   Ne template que ces champs par fixture: @HttpMockItem.path et la carte `.return_obj`
     (`.method` est clonée verbatim); pour un @VynilAssert, seuls @selector.kind/.name/.namespace
     et @value — @name, @description et @matcher ne se rendent jamais.
+  Ajoute, après les mocks des testSets et avant l'instance virtuelle, un mock
+    `{apiVersion: "v1", kind: "Node", metadata:{name}}` par nom de @instance.nodes dans
+    l'ordre du tableau, sauf quand un mock `kind` `Node` de même `metadata.name` est déjà
+    présent (fourni par le test, un testSet ou un nom répété) — `ctx::run` dérive ainsi
+    `cluster.ha` du nombre de Nodes comme en production, sans surcharge en Rust ; un nom
+    vide @Err un @Error::Other `instance.nodes: empty node name` ; @instance.nodes absent ou
+    vide n'ajoute rien.
   Ajoute le mock d'instance virtuelle en dernier sauf si le test le fournit déjà:
     @instance_already_mocked apparie un @Dynamic existant par chaîne `kind` exacte égale au
     genre dérivé de l'usage (`ServiceInstance`/`SystemInstance`/`TenantInstance`) plus
@@ -286,7 +294,7 @@ Raises:
     YAML (scan) et de schéma (parse), `{file}: duplicate Test '{name}'`, et
     `{file}: duplicate TestSet '{name}'` (un gabarit partagé par les deux loaders).
   @Error::Other — ratés de la voie de résolution : `Test '{name}' not found`,
-    `TestSet '{name}' not found`, et de la surface morte `Test '{test_name}' references unknown
+    `TestSet '{name}' not found`, `instance.nodes: empty node name`, et de la surface morte `Test '{test_name}' references unknown
     TestSet '{name}'`, plus @Error::Other("expected map after templating").
   @Error::SerializationError — tout aller-retour @serde_json dans @template_dynamic,
     @virtual_instance_dynamic, la sérialisation du contexte de @get_templated_test ou la
@@ -315,6 +323,8 @@ Tasks:
   [x] Couvrir la voie lint par des tests de même nom que les scénarios lint ci-dessous.
   [x] Templater les asserts sur le contexte rhai réel, couvert par les tests de même nom que
       les scénarios asserts-resolve-against-the-real-context à mocks-do-not-see-the-rhai-context.
+  [x] Mocker les Nodes de @instance.nodes, couvert par les tests de même nom que les scénarios
+      several-nodes-make-the-cluster-ha à an-empty-node-name-is-rejected.
   [ ] Couvrir ce fichier par des tests — pas de module #[cfg(test)] ici et les seuls tests
       côté agent siègent aujourd'hui dans ./result.rs ; mapper chaque scénario vers un test du même nom :
       scan-apiVersion-gate-skips-correct-spelling, duplicate-names-abort-load-later-file-named,
@@ -383,6 +393,32 @@ Scenario: virtual instance joins last unless already mocked
     dernier mock k8s, et Given un mock exact kind/nom/namespace déjà présent — aucun
     ajout n'est fait, tandis que le même nom dans un autre namespace déclenche quand même l'ajout
   Test @virtual-instance-exact-triple-dedup-and-append-last
+
+Scenario: several nodes make the cluster ha
+  Given un test dont @instance.nodes nomme deux Nodes et un `context.rhai` qui dérive
+    `cluster.ha` du nombre de Nodes listés
+  When @run_test exécute le test
+  Then l'installation voit `cluster.ha` à `true`
+  Test @several-nodes-make-the-cluster-ha
+
+Scenario: a single node is not ha
+  Given un test dont @instance.nodes nomme un seul Node
+  When @run_test exécute le test
+  Then l'installation voit `cluster.ha` à `false`
+  Test @a-single-node-is-not-ha
+
+Scenario: node mocks precede the virtual instance without duplicates
+  Given un test qui mocke déjà le Node `m1` et dont @instance.nodes vaut `[m1, w1, w1]`
+  When @get_templated_test le résout
+  Then les mocks k8s sont le Node `m1` du test, un seul Node `w1`, puis l'instance virtuelle
+  Test @node-mocks-precede-the-virtual-instance-without-duplicates
+
+Scenario: an empty node name is rejected
+  Given un test dont @instance.nodes contient une chaîne vide
+  When @get_templated_test le résout
+  Then il @Err `instance.nodes: empty node name`, et @run_test en fait l'unique ligne
+    `execution` en échec
+  Test @an-empty-node-name-is-rejected
 
 Scenario: value_script failure short-circuits the install lane
   Given un package dont l'@value_script lève

@@ -200,6 +200,50 @@ fn instance_already_mocked(
     })
 }
 
+/// True when `k8s_mocks` already contains a `Node` mock named `name`.
+fn node_already_mocked(k8s_mocks: &[Dynamic], name: &str) -> bool {
+    k8s_mocks.iter().any(|m| {
+        let Ok(map) = m.as_map_ref() else { return false };
+        let kind_ok = map
+            .get("kind")
+            .and_then(|v| v.clone().into_string().ok())
+            .as_deref()
+            == Some("Node");
+        kind_ok
+            && map
+                .get("metadata")
+                .and_then(|meta| meta.as_map_ref().ok().and_then(|m| m.get("name").cloned()))
+                .and_then(|v| v.into_string().ok())
+                .as_deref()
+                == Some(name)
+    })
+}
+
+/// Appends one `Node` mock per `instance.nodes` name not already mocked, in array order.
+///
+/// # Errors
+///
+/// Returns a [`common::Error`] when a node name is empty or a mock cannot round-trip through JSON.
+fn push_node_mocks(
+    instance: &super::vyniltest::VynilTestInstance,
+    k8s_mocks: &mut Vec<Dynamic>,
+) -> common::Result<()> {
+    for name in instance.nodes.iter().flatten() {
+        if name.is_empty() {
+            return Err(common::Error::Other(
+                "instance.nodes: empty node name".to_string(),
+            ));
+        }
+        if node_already_mocked(k8s_mocks, name) {
+            continue;
+        }
+        let node = serde_json::json!({ "apiVersion": "v1", "kind": "Node", "metadata": { "name": name } });
+        let text = serde_json::to_string(&node).map_err(common::Error::SerializationError)?;
+        k8s_mocks.push(serde_json::from_str(&text).map_err(common::Error::SerializationError)?);
+    }
+    Ok(())
+}
+
 /// Lit le `status` de l'instance mockée du test, tel que l'installation l'a persisté dans la
 /// base de mocks (`fun_name` : `get_<usage>_instance`). L'échec de lecture est rendu à
 /// l'appelant : `lint_sections` en fait une ligne `lint:sections`.
@@ -477,6 +521,8 @@ impl TestHandler {
             http: http_mocks,
             asserts,
         } = self.template_sources(test, &base_ctx, true, with_asserts)?;
+
+        push_node_mocks(&test.instance, &mut k8s_mocks)?;
 
         // Build a virtual instance mock for the instance being tested,
         // so Rhai scripts can find it via get_{service,system,tenant}_instance().
@@ -1370,6 +1416,114 @@ mod tests {
         let message = rows[0]["message"].as_str().unwrap_or_default();
         assert!(message.contains("values.missing"), "{message}");
         assert_eq!(created.lock().map(|o| o.len()).unwrap_or_default(), 1);
+    }
+
+    // ── Nodes de l'instance ─────────────────────────────────────────────────
+
+    /// `cluster.ha` dérivé du nombre de Nodes listés, comme `build_context.rhai`.
+    const CONTEXT_HA_FROM_NODES: &str = r#"fn run(instance, args) {
+    let nodes = k8s_resource("Node").list_meta().items.map(|c| c.metadata.name);
+    #{ cluster: #{ ha: nodes.len() > 1 } }
+}
+"#;
+
+    /// Installation qui crée `app/ha` seulement quand `cluster.ha`.
+    const INSTALL_HA_ONLY: &str = r#"fn run(instance, context) {
+    if context.cluster.ha {
+        let h = k8s_resource("configmaps", "app");
+        h.create(#{ apiVersion: "v1", kind: "ConfigMap", metadata: #{ name: "ha", namespace: "app" } });
+    }
+}
+"#;
+
+    /// Résultat `(passed, rows)` d'un test à l'unique assert `ha-cm` (`matcher` donné) sur les `nodes` donnés.
+    fn run_ha_test(nodes: &str, matcher: &str) -> (bool, Vec<Value>) {
+        let instance = format!("{DEMO_INSTANCE}  nodes: {nodes}\n");
+        let asserts = format!(
+            "asserts:\n  - name: ha-cm\n    matcher: {matcher}\n    selector:\n      kind: ConfigMap\n      name: ha\n      namespace: app\n"
+        );
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(&instance, &asserts))],
+            CONTEXT_HA_FROM_NODES,
+            INSTALL_HA_ONLY,
+        );
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        let passed = rows.len() == 1 && rows[0]["name"] == "ha-cm" && rows[0]["passed"] == true;
+        (passed, rows)
+    }
+
+    #[test]
+    fn several_nodes_make_the_cluster_ha() {
+        let (passed, rows) = run_ha_test("[m1, w1]", "\n      exact: 1");
+        assert!(passed, "{rows:?}");
+    }
+
+    #[test]
+    fn a_single_node_is_not_ha() {
+        let (passed, rows) = run_ha_test("[m1]", "none");
+        assert!(passed, "{rows:?}");
+        // Sans Nodes du tout, `none` passerait aussi : vérifier que deux Nodes font bien échouer `none`.
+        let (passed, rows) = run_ha_test("[m1, w1]", "none");
+        assert!(!passed, "{rows:?}");
+    }
+
+    /// `(kind, metadata.name)` des mocks k8s d'un test résolu.
+    fn mock_kinds_and_names(test: &VynilTest) -> Vec<(String, String)> {
+        let mocks = test
+            .mocks
+            .as_ref()
+            .and_then(|m| m.kubernetes.clone())
+            .unwrap_or_default();
+        mocks
+            .iter()
+            .map(|d| {
+                let v: Value = serde_json::to_value(d).expect("mock sérialisable");
+                (
+                    v["kind"].as_str().unwrap_or_default().to_string(),
+                    v["metadata"]["name"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn node_mocks_precede_the_virtual_instance_without_duplicates() {
+        let instance = format!("{DEMO_INSTANCE}  nodes: [m1, w1, w1]\n");
+        let mocks = "mocks:\n  kubernetes:\n    - apiVersion: v1\n      kind: Node\n      metadata:\n        name: m1\n";
+        let fx = fixture(
+            &[("default.yaml", test_doc(&instance, mocks))],
+            INSTALL_ONE_CONFIGMAP,
+            None,
+        );
+        let test = handler(&fx).get_templated_test("default").expect("test résolu");
+        let pairs = mock_kinds_and_names(&test);
+        let expected = [("Node", "m1"), ("Node", "w1"), ("TenantInstance", "demo")]
+            .map(|(k, n)| (k.to_string(), n.to_string()));
+        assert_eq!(pairs, expected);
+    }
+
+    #[test]
+    fn an_empty_node_name_is_rejected() {
+        let instance = format!("{DEMO_INSTANCE}  nodes: [m1, \"\"]\n");
+        let fx = fixture(
+            &[("default.yaml", test_doc(&instance, ""))],
+            INSTALL_ONE_CONFIGMAP,
+            None,
+        );
+        let mut h = handler(&fx);
+        let err = h.get_templated_test("default").expect_err("nom vide rejeté");
+        assert!(
+            err.to_string().ends_with("instance.nodes: empty node name"),
+            "{err}"
+        );
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "execution");
+        let message = rows[0]["message"].as_str().unwrap_or_default();
+        assert!(message.ends_with("instance.nodes: empty node name"), "{message}");
     }
 
     #[test]
