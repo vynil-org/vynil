@@ -19,6 +19,8 @@ References:
   ./../schema/rhai.sdd — les fonctions `schema_*` enregistrées dans le moteur du script.
   ./patterns.sdd, ./multimap.sdd — les fonctions et le type natifs offerts à la bibliothèque.
   /common/src/rhaihandler.sdd — @Script, @Dynamic, le moteur.
+  /common/src/yamlhandler.sdd — @YamlDoc, le document YAML qui garde l'ordre des clés, et son
+    `remove` ; seul l'ordre des clés survit à un aller-retour, pas les commentaires.
 
 Exposes:
   @LintRunner — `new(lint_dir: &Path, script_dir: &Path, schemas: SchemaRegistry)
@@ -27,7 +29,16 @@ Exposes:
     `run_suite(&self, ctx: &serde_json::Value) -> LintOutcome`,
     `has_test_hook(&self) -> bool` et `has_suite_hook(&self) -> bool` : vrai quand la
     distribution définit `lint`, respectivement `lint_suite`.
-  @LintOutcome — `{ rows: Vec<VynilAssertResult>, suppressions: Vec<Suppression> }`.
+  @LintOutcome — `{ rows: Vec<VynilAssertResult>, suppressions: Vec<Suppression>,
+    findings: Vec<Finding> }` ; `findings` porte tous les constats valides du script, y compris
+    les supprimés, dans l'ordre de retour, pour que l'appelant puisse les remettre à `fix`.
+  @LintRunner::run_fix — `(&self, rule: &str, findings: &[Finding], package: &YamlDoc)
+    -> FixOutcome`.
+  @FixOutcome — `{ status: FixStatus, package: Option<YamlDoc>, message: String }`.
+  @FixStatus — `Applied`, `NotApplicable` ou `Failed`.
+  @LintRunner::run_hint — `(&self, rule: &str, findings: &[Finding], package: &YamlDoc)
+    -> HintOutcome`.
+  @HintOutcome — `Text(String)`, `None` ou `Failed(String)`.
   @Sections — défini par ./sections.sdd, importé ici.
 
 Accepts:
@@ -50,9 +61,10 @@ Must:
     coûteux se payait deux fois.
   Évaluer chaque appel dans un moteur neuf, sans état partagé entre tests, avec les seules
     fonctions de manipulation de données du moteur de base, les fonctions `schema_*`,
-    `regex_is_match` de ./patterns.sdd et le type `Multimap` de ./multimap.sdd :
-    aucune fonction k8s, http, s3, shell ni fichier n'y est enregistrée, si bien qu'un script
-    qui les appelle échoue sur fonction inconnue.
+    `regex_is_match` de ./patterns.sdd, le type `Multimap` de ./multimap.sdd et les gabarits
+    de ./templates.sdd (seule lecture de fichiers permise, bornée au répertoire de lint) :
+    aucune fonction k8s, http, s3, shell ni écriture n'y est enregistrée, et aucune autre
+    lecture de fichier, si bien qu'un script qui les appelle échoue sur fonction inconnue.
   Appeler `lint(objs, ctx)` avec `objs` la carte de @Sections::to_dynamic — `all` (copie, en
     ordre de création, des objets du test) et une clé par section du paquet (`crds`, `systems`,
     `befores`, `vitals`, `scalables`, `others`, `posts`) plus `unsectioned`, toutes toujours
@@ -70,15 +82,53 @@ Must:
     budget d'opérations ne protège pas d'une boucle `s += s` qui double à chaque tour.
   Rester déterministe : mêmes objets et mêmes contextes donnent les mêmes lignes.
 
+  Appeler `fix(rule, findings, pkg)` quand @run_fix s'exécute : `rule` le nom de la règle,
+    `findings` les constats de cette règle sous la forme que `finding.sdd` donne à
+    @findings_to_dynamic (supprimés compris : c'est le script qui décide de ce que la
+    suppression implique), `pkg` une copie du `package.yaml` sous la forme d'un @YamlDoc (`package`
+    est un mot réservé de Rhai). L'ordre des clés d'un @YamlDoc survit à tous les niveaux, ce
+    que ne ferait pas une carte Rhai, triée par clé : le moteur de `fix` enregistre donc la
+    surface @YamlDoc (`yaml_ordered_rhai_register`, /common/src/yamlhandler.sdd) en plus de
+    celle de `lint`. Le script
+    retourne une carte `#{ status, pkg, message }` : `status` vaut `"applied"` (alors
+    `pkg` est le @YamlDoc modifié, complet) ou `"not_applicable"` ; `message` est optionnel.
+    Le runner traduit `applied` en @FixStatus::Applied avec le `pkg` retourné,
+    `not_applicable` en @FixStatus::NotApplicable sans package.
+  Rendre @FixStatus::NotApplicable, sans échec, quand la distribution ne définit pas `fix` :
+    une distribution n'est jamais obligée de savoir corriger.
+  Rendre @FixStatus::Failed, avec le message de l'erreur et sans package, pour toute erreur
+    d'exécution de `fix`, tout dépassement de la limite d'opérations ou de mémoire, tout retour
+    qui n'est pas une carte, tout `status` inconnu, et tout `applied` sans `pkg` de type
+    @YamlDoc. Un fix qui échoue ne modifie rien : l'appelant garde le `package` d'avant.
+  Évaluer `fix` dans les mêmes conditions que `lint` : moteur neuf, mêmes fonctions et
+    mêmes bornes mémoire, budget d'opérations réduit à la base. Le script est pur : il ne
+    reçoit ni n'écrit aucun fichier, il rend le nouveau `package.yaml` et c'est l'appelant qui
+    l'écrit.
+  Appeler `hint(rule, findings, pkg)` quand @run_hint s'exécute, avec les mêmes arguments, le
+    même moteur (surface @YamlDoc comprise), les mêmes bornes et le même budget que `fix`. Un
+    hint est le texte qui dit à un lecteur — un humain, un LLM — comment corriger ce que `fix`
+    n'a pas su corriger ; il se construit avec les données que `fix` reçoit.
+    Le runner traduit : une chaîne non vide en @HintOutcome::Text (telle quelle) ; une chaîne vide,
+    ou l'absence de la fonction `hint`, en @HintOutcome::None ; une erreur d'exécution, un
+    dépassement de limite ou un retour qui n'est pas une chaîne en @HintOutcome::Failed avec le
+    message. Un `hint` ne modifie rien : il ne retourne pas de document.
+
 Must not:
   Modifier les objets du test : le script reçoit une copie.
+  Modifier le `package` reçu par @run_fix : le script en reçoit une copie, et le retour
+    seul fait foi.
 
 Handles:
-  `lint` retourne un tableau vide — aucune ligne, aucune suppression.
+  `lint` retourne un tableau vide — aucune ligne, aucune suppression, aucun constat.
+  @run_fix avec une liste de constats vide — le script est tout de même appelé (c'est lui qui
+    sait ce qui est à corriger) ; le runner n'ajoute aucune politique.
   Test dont l'installation a échoué — le runner n'est pas appelé (décision de ../handler.sdd) :
     pas de lint sur un rendu incomplet.
 
 Tasks:
+  [ ] Tranche fix (1a) : @LintOutcome::findings, @run_fix, @FixOutcome et les scénarios
+      `fix` ci-dessous ; la règle maison `no-cpu-limits` et son fix sont écrits inline dans
+      les tests (scripts de test, pas un catalogue livré par vynil).
   [x] Couvrir chaque scénario par un test de même nom, avec des scripts `lint.rhai` de test
       sous `/agent/tests/fixtures/`.
   [x] Valeurs du budget d'opérations : base de dix millions plus cinquante mille par objet reçu,
@@ -148,6 +198,101 @@ Scenario: the script sees every section
   Then le script voit `objs.all`, `objs.scalables` et `objs.befores` remplies et les autres
     clés présentes mais vides
   Test @the-script-sees-every-section
+
+Scenario: outcome carries every finding, suppressed included
+  Given un `lint.rhai` dont `lint` retourne un constat `error` et un constat `error` supprimé
+    avec sa raison
+  When @run_test s'exécute
+  Then `findings` contient les deux constats dans l'ordre, `rows` une seule ligne et
+    `suppressions` une seule entrée
+  Test @outcome-carries-every-finding-suppressed-included
+
+Scenario: a fix returns the modified package
+  Given un `lint.rhai` dont `fix` retire `resources.app.limits.cpu` du `package` et retourne
+    `applied` avec le nouveau `package`
+  When @run_fix s'exécute avec la règle `no-cpu-limits`, un constat et ce `package`
+  Then le statut est @FixStatus::Applied et le `package` rendu n'a plus la clé, `memory`
+    restant en place
+  And les clés restantes gardent leur ordre d'origine à chaque niveau (un `package` dont les
+    clés ne sont pas triées, `z` avant `a`, est ré-encodé dans le même ordre)
+  And le `package` d'entrée de l'appelant est inchangé
+  Test @a-fix-returns-the-modified-package
+
+Scenario: a distribution without fix is not applicable
+  Given un `lint.rhai` qui définit `lint` mais pas `fix`
+  When @run_fix s'exécute
+  Then le statut est @FixStatus::NotApplicable, sans package ni échec
+  Test @a-distribution-without-fix-is-not-applicable
+
+Scenario: a fix declares itself not applicable
+  Given un `fix` qui retourne `#{ status: "not_applicable", message: "rien à retirer" }`
+  When @run_fix s'exécute
+  Then le statut est @FixStatus::NotApplicable, le message est conservé, aucun package
+  Test @a-fix-declares-itself-not-applicable
+
+Scenario: a throwing fix fails without changing anything
+  Given un `fix` qui lève
+  When @run_fix s'exécute
+  Then le statut est @FixStatus::Failed, le message porte l'erreur, aucun package
+  Test @a-throwing-fix-fails-without-changing-anything
+
+Scenario: a malformed fix return fails
+  Given un `fix` qui retourne un tableau, ou un `status` inconnu, ou `applied` sans `pkg`
+  When @run_fix s'exécute
+  Then chaque cas est @FixStatus::Failed, avec un message qui dit ce qui manque
+  Test @a-malformed-fix-return-fails
+
+Scenario: a fix cannot touch the cluster or loop forever
+  Given un `fix` qui appelle `k8s_resource`, et un autre qui boucle sans fin
+  When @run_fix s'exécute
+  Then les deux sont @FixStatus::Failed, le premier sur fonction inconnue
+  Test @a-fix-cannot-touch-the-cluster-or-loop-forever
+
+Scenario: the cpu limit fix is idempotent
+  Given le `fix` de la règle maison `no-cpu-limits` (il retire toutes les
+    `resources.*.limits.cpu` du `package`, et le bloc `limits` s'il devient vide ; son `lint`
+    est exercé de bout en bout par la tranche de câblage, pas ici), et un `package` à deux composants dont un seul `limits` ne porte
+    que `cpu`
+  When @run_fix s'exécute une première fois, puis une seconde sur le `package` rendu
+  Then la première est @FixStatus::Applied et le `package` n'a plus aucune `limits.cpu`,
+    le composant sans autre limite perd son bloc `limits`, l'autre garde `limits.memory`
+  And la seconde est @FixStatus::NotApplicable : plus rien à retirer
+  Test @the-cpu-limit-fix-is-idempotent
+
+Scenario: a suppressed finding makes the cpu limit fix not applicable
+  Given le même `fix` et un constat de la liste reçue avec `suppressed` vrai
+  When @run_fix s'exécute
+  Then le statut est @FixStatus::NotApplicable et le message dit qu'un objet est supprimé :
+    le fix global ne contredit pas la décision explicite d'un auteur
+  Test @a-suppressed-finding-makes-the-cpu-limit-fix-not-applicable
+
+Scenario: a hint returns the text built from the findings
+  Given un `lint.rhai` dont `hint` retourne un texte qui cite la règle, le nombre de constats et
+    une clé du `pkg`
+  When @run_hint s'exécute avec deux constats
+  Then le résultat est @HintOutcome::Text avec ce texte, et le `package` d'entrée est inchangé
+  Test @a-hint-returns-the-text-built-from-the-findings
+
+Scenario: a missing or empty hint is none
+  Given un `lint.rhai` sans `hint`, puis un dont `hint` retourne `""`
+  When @run_hint s'exécute
+  Then les deux donnent @HintOutcome::None
+  Test @a-missing-or-empty-hint-is-none
+
+Scenario: a broken hint fails without a text
+  Given un `hint` qui lève, un qui retourne une carte, et un qui boucle sans fin
+  When @run_hint s'exécute
+  Then chacun est @HintOutcome::Failed et le message nomme la cause
+  Test @a-broken-hint-fails-without-a-text
+
+Scenario: a hint renders a template file from the lint directory
+  Given un répertoire de lint dont `templates/hint.hbs` vaut `Retirer {{count}} limite(s) : {{rule}}`
+    et un `hint` qui enregistre le répertoire `templates`, rend `{{> hint}}` avec le nombre de
+    constats et la règle, et retourne le texte
+  When @run_hint s'exécute avec deux constats
+  Then le résultat est @HintOutcome::Text avec `Retirer 2 limite(s) : no-cpu-limits`
+  And un `hint` qui appelle `register_partial_dir(h, "..")` donne @HintOutcome::Failed
+  Test @a-hint-renders-a-template-file-from-the-lint-directory
 
 Scenario: top level statements run once per call
   Given un `lint.rhai` dont le premier niveau pose `let seuil = 7;`, fait une boucle qui coûte

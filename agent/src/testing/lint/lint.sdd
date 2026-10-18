@@ -18,6 +18,8 @@ Structure:
   ./finding.rs: le type d'un constat, son analyse depuis Rhai, sa conversion en lignes de
     résultat et en inventaire de suppressions (./finding.sdd)
   ./context.rs: construction du contexte en lecture seule passé au script (./context.sdd)
+  ./templates.rs: les gabarits Handlebars du script, et la lecture des fichiers `.hbs` du
+    répertoire de la distribution (./templates.sdd)
   ./patterns.rs: la fonction `regex_is_match` offerte au script, pure (./patterns.sdd)
   ./multimap.rs: la table partagée par poignée que la bibliothèque remplit une fois par appel
     pour ne pas recopier la liste d'objets à chaque vérification (./multimap.sdd)
@@ -62,8 +64,13 @@ Must:
     messages déjà en anglais du reste de la CLI (`Missing tests directory`, `Tests failed:`). Les
     noms de ligne, les clés et les noms de règle ne se traduisent pas ; les specs, les commentaires
     et la documentation gardent leur langue.
-  Garder le script pur : il reçoit des données, retourne des constats, et n'a accès ni au
-    cluster, ni au réseau, ni au système de fichiers, ni à une horloge.
+  Garder le script presque pur : il reçoit des données, retourne des constats, et n'a accès ni
+    au cluster, ni au réseau, ni à l'environnement, ni à une horloge, ni à aucune écriture. Sa
+    seule lecture du système de fichiers est celle des fichiers `.hbs` du répertoire de la
+    distribution, bornée par ./templates.sdd. Les points d'entrée
+    optionnels `fix(rule, findings, pkg)` et `hint(rule, findings, pkg)` suivent la même règle :
+    ils reçoivent le `package.yaml` décodé ; `fix` rend le nouveau, `hint` rend un texte ; seul le
+    moteur écrit un fichier (./runner.sdd).
 
 Forbids:
   @common::context::init_k8s

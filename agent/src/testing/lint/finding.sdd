@@ -27,6 +27,8 @@ Exposes:
     `findings: Vec<Finding>` et `invalid: Vec<String>`.
   @to_rows — `(findings: &[Finding], invalid: &[String]) -> Vec<VynilAssertResult>`.
   @to_suppressions — `(test: &str, findings: &[Finding]) -> Vec<Suppression>`.
+  @findings_to_dynamic — `(findings: &[Finding]) -> Dynamic` : l'inverse de @parse_findings,
+    pour remettre des constats à un point d'entrée du script (`fix`).
 
 Accepts:
   Pour @parse_findings, un tableau Rhai de cartes. Champs de la carte d'un constat :
@@ -50,6 +52,11 @@ Returns:
       élément invalide — `name` = `lint:invalid-finding`, `description` = `None`,
         `passed` = false, `message` = la description de l'invalidité.
   @to_suppressions : une @Suppression par constat dont `suppressed` est vrai.
+  @findings_to_dynamic : un tableau Rhai de cartes, une par constat dans l'ordre, aux clés de
+    l'entrée de @parse_findings (`rule`, `severity` en `error`/`warn`, `object` avec
+    `apiVersion`, `kind`, `name` et `namespace` quand présent, `message`, `suppressed`) ;
+    `path`, `source`, `reason` et `origin` n'apparaissent que lorsqu'ils sont présents.
+    @parse_findings (@findings_to_dynamic(x)) redonne x.
 
 Must:
   Ne jamais écarter un constat : tout élément du tableau devient soit un @Finding, soit une
@@ -126,6 +133,13 @@ Scenario: cluster scoped object has no namespace in its description
   When @to_rows s'exécute
   Then la description est `ClusterRole {name}`
   Test @cluster-scoped-object-has-no-namespace-in-its-description
+
+Scenario: findings survive a round trip to a script
+  Given des constats dont un `warn` sans chemin, un supprimé avec raison et origine, et un
+    objet sans namespace
+  When @findings_to_dynamic les convertit puis @parse_findings les relit
+  Then la liste relue est égale à la liste d'origine et `invalid` est vide
+  Test @findings-survive-a-round-trip-to-a-script
 
 Scenario: reserved rule names are invalid findings
   Given trois constats dont les règles valent `execution`, `invalid-finding` et `sections`, et

@@ -60,6 +60,10 @@ Le script peut définir une de ces fonctions ou les deux. Une fonction non défi
 `lint` n'est pas appelée pour un test dont l'étape `value_script` ou l'install a échoué : l'échec est
 déjà signalé sur le test, et un rendu partiel produirait des constats trompeurs.
 
+Une troisième fonction, facultative, `fix`, transforme des constats en un `package.yaml` corrigé (voir
+[Corriger les constats](#corriger-les-constats-fix)). Elle n'est appelée qu'avec `agent package test --fix`. Une quatrième, `hint`, dit comment corriger ce que
+`fix` n'a pas su corriger (voir [Hints](#hints-hint)) ; elle n'est appelée qu'avec `--verbose`.
+
 ### La carte `objs`
 
 `objs` est une carte aux clés fixes. Chaque clé est toujours présente ; une clé sans objet porte un
@@ -84,9 +88,10 @@ autant.
 
 Chaque appel s'exécute dans un moteur Rhai neuf, sans état partagé entre tests. Le script reçoit des
 copies : il ne peut pas modifier les objets du test. Les fonctions disponibles sont les fonctions de
-manipulation de données du moteur de base et les fonctions `schema_*`. Aucune fonction Kubernetes, HTTP,
-S3, shell ou fichier n'est enregistrée : un script qui en appelle une échoue avec une erreur de fonction
-inconnue.
+manipulation de données du moteur de base, les fonctions `schema_*` et les [templates](#templates)
+Handlebars. Aucune fonction Kubernetes, HTTP, S3 ou shell n'est enregistrée, rien ne peut être écrit, et
+les seuls fichiers qu'un script peut lire sont les fichiers `.hbs` du répertoire de lint : un script qui
+appelle autre chose échoue avec une erreur de fonction inconnue.
 
 L'exécution est bornée par une limite d'opérations pour qu'un script qui boucle ne bloque pas la suite.
 La valeur de cette limite n'est pas encore fixée par le contrat.
@@ -401,7 +406,209 @@ Un Deployment sans label `team` produit une ligne en échec `lint:team-label`. U
 maison construit son constat directement et ne passe pas par `render_lint::apply_suppressions`. Pour rendre une
 règle maison supprimable, faire passer ses constats par `render_lint::apply_suppressions(findings, objs.all, opts)`.
 
+## Corriger les constats : `fix`
+
+Un constat porte ce qu'il faut pour le corriger. Quand la commande tourne avec `--fix`, la fonction `fix`
+du script est appelée **une fois par règle** ayant produit au moins un constat, dans l'ordre
+alphabétique des règles :
+
+```rhai
+fn fix(rule, findings, pkg) { ... }
+```
+
+| Argument | Contenu |
+|---|---|
+| `rule` | Nom de la règle. |
+| `findings` | Tous les constats de cette règle, de tous les tests et de la suite, supprimés compris, dans l'ordre d'arrivée. Même forme qu'un constat retourné par `lint`. |
+| `pkg` | Le `package.yaml` sous forme de document ordonné (`yaml_decode_ordered`). `package` est un mot réservé de Rhai, d'où `pkg`. |
+
+Elle retourne une carte :
+
+| Clé | Contenu |
+|---|---|
+| `status` | `"applied"` ou `"not_applicable"`. |
+| `pkg` | Le document complet, modifié. Obligatoire avec `applied`. |
+| `message` | Texte facultatif, affiché dans le rapport. |
+
+Tout le reste (une erreur, un statut inconnu, `applied` sans `pkg`, un retour qui n'est pas une carte)
+est un fix en échec : le document reste tel qu'il était et les règles suivantes s'exécutent quand même.
+Une distribution sans `fix` n'est pas une erreur : ses règles n'ont simplement pas de fix. Chaque règle
+voit le document tel que la règle précédente l'a laissé. Vynil n'embarque aucun fix : le catalogue est
+celui de la distribution.
+
+Le script reste pur : il reçoit le document et retourne le nouveau, seule la commande écrit
+`package.yaml`. L'ordre des clés est conservé à tous les niveaux. Les commentaires et le quoting ne le
+sont pas (même limite que `agent package update`), donc `package.yaml` n'est réécrit que lorsqu'un fix
+s'est appliqué.
+
+Un piège du type document : lire une clé imbriquée rend une copie, donc pour la modifier il faut lire
+le parent, modifier la copie et la ré-affecter. `keys()`, `contains(clé)`, `len()`, `is_empty()` et
+`remove(clé)` fonctionnent sur le document.
+
+Un constat supprimé est transmis à `fix` volontairement. Un fix qui édite tout le paquet ne doit pas
+passer outre la décision explicite d'un auteur : l'exemple ci-dessous renonce dès qu'un constat est
+supprimé.
+
+### Exemple : pas de limites CPU
+
+La règle (`lint`) signale chaque conteneur ayant une limite CPU ; le fix retire `limits.cpu` des
+`resources` du paquet, et le bloc `limits` quand il devient vide. La règle est globale au paquet, le fix
+l'est donc aussi : il renonce quand un constat est supprimé, pour ne pas écraser une décision explicite.
+
+```rhai
+fn lint(objs, ctx) {
+    let out = [];
+    for obj in objs.all {
+        if obj.kind == "Deployment" {
+            for c in obj.spec.template.spec.containers {
+                if "resources" in c && "limits" in c.resources && "cpu" in c.resources.limits {
+                    out.push(#{
+                        rule: "no-cpu-limits", severity: "error",
+                        object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
+                        message: "limite cpu sur " + c.name
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
+fn fix(rule, findings, pkg) {
+    for f in findings {
+        if f.suppressed { return #{ status: "not_applicable", message: "un objet est supprimé" }; }
+    }
+    let resources = pkg["resources"];
+    if type_of(resources) != "map" { return #{ status: "not_applicable" }; }
+    let changed = false;
+    for name in resources.keys() {
+        let component = resources[name];
+        let limits = component["limits"];
+        if type_of(limits) == "map" && limits.keys().contains("cpu") {
+            limits.remove("cpu");
+            if limits.keys().len() == 0 {
+                component.remove("limits");
+            } else {
+                component["limits"] = limits;
+            }
+            resources[name] = component;
+            changed = true;
+        }
+    }
+    if !changed { return #{ status: "not_applicable" }; }
+    pkg["resources"] = resources;
+    #{ status: "applied", pkg: pkg }
+}
+```
+
+```bash
+agent package test -p ./my-package --all --lint-dir ./distribution/lint --fix
+# stderr : fix no-cpu-limits: applied
+```
+
+L'exécution ci-dessus sort encore avec le code 3, puisque le constat existait quand la suite a tourné.
+Relancez-la, ou laissez la commande le faire avec `--fix-rounds` :
+
+```bash
+agent package test -p ./my-package --all --lint-dir ./distribution/lint --fix --fix-rounds 3
+# stderr : round 1: 2 finding(s)
+#          fix no-cpu-limits: applied
+#          round 2: 0 finding(s)
+```
+
+La suite s'exécute à nouveau sur le `package.yaml` réécrit, et le code de sortie est celui de la dernière
+exécution. `--fix-rounds` est un plafond : la boucle s'arrête aussi quand rien n'a changé, ou quand une
+exécution n'a pas strictement moins de constats que la précédente, auquel cas elle n'applique plus de fix.
+
+## Hints : `hint`
+
+Un fix ne sait pas toujours corriger un constat : la valeur peut être écrite en dur dans un template, ou la
+bonne valeur peut demander une décision. `hint` est le texte qui dit au lecteur, une personne ou un LLM,
+comment le corriger.
+
+```rhai
+fn hint(rule, findings, pkg) { ... }
+```
+
+Elle reçoit ce que reçoit `fix` et retourne une chaîne. Une chaîne non vide est le hint ; une chaîne vide,
+ou l'absence de la fonction `hint`, signifie pas de hint ; une erreur, ou un retour qui n'est pas une
+chaîne, s'affiche comme un hint en échec. Elle n'est appelée qu'avec `--verbose`, une fois par règle qui a
+encore au moins un constat non supprimé, et pas pour une règle qu'un fix vient de corriger.
+
+```rhai
+fn hint(rule, findings, pkg) {
+    if rule != "no-cpu-limits" { return ""; }
+    let names = [];
+    for f in findings { if !f.suppressed { names.push(f.object.name); } }
+    `Retirer la limite CPU des conteneurs de ${names}. Les limites ne sont pas dans package.yaml : chercher
+    "cpu" sous "limits" dans les templates de ce paquet. Garder la limite mémoire. Relancer les tests
+    pour vérifier.`
+}
+```
+
+```text
+hint no-cpu-limits:
+  Retirer la limite CPU des conteneurs de ["web"]. ...
+```
+
+Le littéral à backticks est le template : le hint se construit avec les mêmes données que le fix, il peut
+donc citer les constats et n'importe quelle partie de `pkg`. La sortie est du texte brut sur stderr, à
+remettre tel quel à qui corrige le paquet. Pour un texte plus long, le garder dans un fichier : voir
+[Templates](#templates).
+
+## Templates
+
+Un script peut composer ses textes avec Handlebars et garder ses gabarits en fichiers dans le répertoire
+de lint, ce qui laisse une distribution les organiser comme elle l'entend. C'est la seule chose qu'un
+script lit sur le disque.
+
+| Fonction | Rôle |
+|---|---|
+| `new_hbs()` | Un nouveau moteur Handlebars. |
+| `register_template(h, name, template)` | Enregistre un gabarit donné en chaîne. |
+| `register_partial_dir(h, dir)` | Enregistre chaque fichier `*.hbs` situé directement dans `dir`, sous son nom sans le suffixe, comme gabarit et comme partial. `dir` est relatif au répertoire de lint (`"."` pour le répertoire lui-même). |
+| `render_from(h, template, data)` | Rend une chaîne de gabarit avec la carte `data`. |
+| `render_named(h, name, template, data)` | Idem, en enregistrant le gabarit sous `name`. |
+
+Avec `hints/cpu_limits.hbs` dans le répertoire de lint :
+
+```handlebars
+Retirer la limite CPU des conteneurs de {{#each names}}{{this}} {{/each}}et garder la limite mémoire.
+```
+
+```rhai
+fn hint(rule, findings, pkg) {
+    if rule != "no-cpu-limits" { return ""; }
+    let names = [];
+    for f in findings { if !f.suppressed { names.push(f.object.name); } }
+    let h = new_hbs();
+    h.register_partial_dir("hints");
+    h.render_from("{{> cpu_limits}}", #{ names: names })
+}
+```
+
+La lecture est bornée, et le moteur est restreint :
+
+- `dir` doit être un chemin relatif qui reste dans le répertoire de lint : un chemin absolu, un composant
+  `..`, ou un répertoire qui se résout hors de lui (un lien symbolique, par exemple) est une erreur de
+  script qui nomme le chemin. Un répertoire absent aussi : une faute de frappe ne doit pas donner un hint
+  vide sans bruit.
+- Les helpers Handlebars qui touchent à l'hôte ne sont pas disponibles : `read_to_str`, `env_var`,
+  `canonicalize`, `parent`, `file_name`, `extension`, `render_file` et `jsonnet` (dont `importstr` lit
+  n'importe quel fichier). C'est vrai aussi dans un gabarit imbriqué par `render_template`.
+- Il n'y a pas de `register_helper_dir` : un helper est du code Rhai, et il s'exécuterait hors des bornes
+  du moteur de lint.
+
 ## Limites
+
+- Un gabarit ou un partial qui s'inclut lui-même n'est pas borné : la pile déborde et le processus meurt
+  sans message. Handlebars n'a pas de garde de récursion.
+- Un fichier `.hbs` qui est lui-même un lien symbolique vers l'extérieur du répertoire de lint est suivi ;
+  seul le répertoire est contrôlé.
+- Un fix n'édite que `package.yaml`. Une valeur écrite en dur dans un template ou un script n'est pas
+  atteignable par `fix` ; son constat reste à l'exécution suivante.
+- `package.yaml` perd ses commentaires quand un fix s'applique. `--dry-run` affiche le document obtenu,
+  pas un diff.
 
 - Trois vérifications de kube-linter ne sont pas portées (voir la note de statut).
 - Les valeurs du budget d'opérations et sa configuration ne sont pas encore fixées. Le budget est
