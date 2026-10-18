@@ -43,8 +43,24 @@ The `tests/` directory must exist, otherwise the agent returns `MissingTestDirec
 - execute a flow (`context → install`, `context → delete`, …);
 - **assert** on created objects, status, or template rendering.
 
-> The test framework is subject to ongoing improvements (assertion context variables,
-> cluster/tenant overrides) — see the repository issues if an expected behavior is missing.
+### Assertion variables
+
+Assertion `selector` and `value` fields are Handlebars templates rendered after the
+install, against the same `context` that `ctx::run()` handed to the package templates and
+scripts. Mocks are rendered earlier, before any script runs, and only see `package` and
+`instance`.
+
+| Variable | Source |
+|----------|--------|
+| `values`, `defaults` | Options merged with the package defaults, raw defaults |
+| `cluster` | `agent.yaml` and the mocked cluster (storage classes, nodes…) |
+| `tenant` | Tenant name and namespaces (tenant packages) |
+| `controller` | Output of the package `value_script` |
+| `instance` | `name`, `namespace`, `appslug`, `options` from the test, plus the context instance keys (`labels`, `selector`…) |
+| `package` | The package definition (`package.metadata.name`…) |
+| `var` | Variables of the referencing testSet (testSet asserts only) |
+
+A variable missing from the context fails the test with an `execution` row naming it.
 
 ### Best practices
 

@@ -292,6 +292,14 @@ fn virtual_instance_dynamic(
     serde_json::from_str(&text).map_err(common::Error::SerializationError)
 }
 
+/// Mocks and asserts collected by one templating walk over a test and its testSets.
+#[derive(Default)]
+struct Templated {
+    k8s: Vec<Dynamic>,
+    http: Vec<HttpMockItem>,
+    asserts: Vec<VynilAssert>,
+}
+
 // ── TestHandler ─────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
@@ -454,64 +462,21 @@ impl TestHandler {
     /// Returns a [`common::Error`] when the test or a referenced testSet is missing, when
     /// templating fails, or when the virtual instance mock cannot be serialized.
     pub fn get_templated_test(&self, name: &str) -> common::Result<VynilTest> {
-        let test = self
-            .tests
-            .get(name)
-            .ok_or_else(|| common::Error::Other(format!("Test '{name}' not found")))?;
+        self.resolve_test(name, true)
+    }
+
+    /// Resolves a test like `get_templated_test`; with `with_asserts` false, asserts are left
+    /// out so they can be templated later against the real rhai context.
+    fn resolve_test(&self, name: &str, with_asserts: bool) -> common::Result<VynilTest> {
+        let test = self.loaded_test(name)?;
         let package = &self.package;
 
-        let mut hbs = HandleBars::new();
-
-        // Build base context: package + instance (with appslug)
-        let slug = appslug(&package.metadata.name, &test.instance.name);
-        let mut inst = serde_json::to_value(&test.instance)?
-            .as_object()
-            .cloned()
-            .unwrap_or_default();
-        inst.insert("appslug".to_string(), serde_json::Value::String(slug));
-        let base_ctx = serde_json::json!({
-            "package": serde_json::to_value(package)?,
-            "instance": serde_json::Value::Object(inst),
-        });
-
-        let mut k8s_mocks: Vec<Dynamic> = Vec::new();
-        let mut http_mocks: Vec<HttpMockItem> = Vec::new();
-        let mut asserts: Vec<VynilAssert> = Vec::new();
-
-        // Template test's own mocks/asserts with base context
-        collect_templated(
-            &mut hbs,
-            &base_ctx,
-            test.mocks.as_ref(),
-            test.asserts.as_ref(),
-            &mut k8s_mocks,
-            &mut http_mocks,
-            &mut asserts,
-        )?;
-
-        // Merge each referenced testSet
-        if let Some(refs) = &test.testSets {
-            for ts_ref in refs {
-                let ts = self
-                    .test_sets
-                    .get(&ts_ref.testSet)
-                    .ok_or_else(|| common::Error::Other(format!("TestSet '{}' not found", ts_ref.testSet)))?;
-                let mut ctx = base_ctx.clone();
-                if let Some(obj) = ctx.as_object_mut() {
-                    obj.insert("var".to_string(), build_var_context(ts, ts_ref));
-                }
-
-                collect_templated(
-                    &mut hbs,
-                    &ctx,
-                    ts.mocks.as_ref(),
-                    ts.asserts.as_ref(),
-                    &mut k8s_mocks,
-                    &mut http_mocks,
-                    &mut asserts,
-                )?;
-            }
-        }
+        let base_ctx = self.base_context(test)?;
+        let Templated {
+            k8s: mut k8s_mocks,
+            http: http_mocks,
+            asserts,
+        } = self.template_sources(test, &base_ctx, true, with_asserts)?;
 
         // Build a virtual instance mock for the instance being tested,
         // so Rhai scripts can find it via get_{service,system,tenant}_instance().
@@ -548,6 +513,92 @@ impl TestHandler {
             },
             asserts: if asserts.is_empty() { None } else { Some(asserts) },
         })
+    }
+
+    fn loaded_test(&self, name: &str) -> common::Result<&VynilTest> {
+        self.tests
+            .get(name)
+            .ok_or_else(|| common::Error::Other(format!("Test '{name}' not found")))
+    }
+
+    /// Base templating context: `package` plus `instance` (with `appslug`).
+    fn base_context(&self, test: &VynilTest) -> common::Result<serde_json::Value> {
+        let slug = appslug(&self.package.metadata.name, &test.instance.name);
+        let mut inst = serde_json::to_value(&test.instance)?
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        inst.insert("appslug".to_string(), serde_json::Value::String(slug));
+        Ok(serde_json::json!({
+            "package": serde_json::to_value(&self.package)?,
+            "instance": serde_json::Value::Object(inst),
+        }))
+    }
+
+    /// Assert context: the rhai `context` as JSON (empty map when not a map), with `package`
+    /// replaced by the base one and the base `instance` keys merged over `context.instance`.
+    fn assert_context(&self, test: &VynilTest, context: &Dynamic) -> common::Result<serde_json::Value> {
+        let mut ctx = match serde_json::to_value(context).map_err(common::Error::SerializationError)? {
+            serde_json::Value::Object(map) => map,
+            _ => serde_json::Map::new(),
+        };
+        if let serde_json::Value::Object(base) = self.base_context(test)? {
+            for (key, value) in base {
+                match (ctx.get_mut(&key), value) {
+                    (Some(serde_json::Value::Object(existing)), serde_json::Value::Object(over))
+                        if key == "instance" =>
+                    {
+                        existing.extend(over);
+                    }
+                    (_, value) => {
+                        ctx.insert(key, value);
+                    }
+                }
+            }
+        }
+        Ok(serde_json::Value::Object(ctx))
+    }
+
+    /// Templates the test's own sources then each referenced testSet's (with `var`) on `ctx`,
+    /// keeping only the mocks and/or asserts asked for.
+    fn template_sources(
+        &self,
+        test: &VynilTest,
+        ctx: &serde_json::Value,
+        with_mocks: bool,
+        with_asserts: bool,
+    ) -> common::Result<Templated> {
+        let mut hbs = HandleBars::new();
+        let mut out = Templated::default();
+        collect_templated(
+            &mut hbs,
+            ctx,
+            test.mocks.as_ref().filter(|_| with_mocks),
+            test.asserts.as_ref().filter(|_| with_asserts),
+            &mut out.k8s,
+            &mut out.http,
+            &mut out.asserts,
+        )?;
+        for ts_ref in test.testSets.iter().flatten() {
+            let ts = self
+                .test_sets
+                .get(&ts_ref.testSet)
+                .ok_or_else(|| common::Error::Other(format!("TestSet '{}' not found", ts_ref.testSet)))?;
+            let mut ts_ctx = ctx.clone();
+            if let Some(obj) = ts_ctx.as_object_mut() {
+                obj.insert("var".to_string(), build_var_context(ts, ts_ref));
+            }
+            collect_templated(
+                &mut hbs,
+                &ts_ctx,
+                ts.mocks.as_ref().filter(|_| with_mocks),
+                ts.asserts.as_ref().filter(|_| with_asserts),
+                &mut out.k8s,
+                &mut out.http,
+                &mut out.asserts,
+            )?;
+        }
+        Ok(out)
     }
 
     /// Validates that every `TestSet` referenced in a Test's testSets exists.
@@ -611,8 +662,8 @@ impl TestHandler {
         created_objects: &Arc<Mutex<Vec<Dynamic>>>,
         suppressions: &mut Vec<Suppression>,
     ) -> common::Result<Vec<VynilAssertResult>> {
-        // Resolve test: merge testSets, template mocks/asserts
-        let test = self.get_templated_test(name)?;
+        // Resolve test: merge testSets, template mocks only (asserts need the rhai context)
+        let test = self.resolve_test(name, false)?;
 
         // Extract mocks and asserts from resolved test
         let k8s_mocks = test
@@ -682,17 +733,30 @@ impl TestHandler {
             VynilPackageType::Service => "get_service_instance",
         };
 
-        // Run the install script
-        let _ = rhai.eval(
+        // Build the context, then run the install script (`instance` and `context` stay in scope)
+        let context = rhai.eval(
             format!(
                 "import(\"context\") as ctx;\n\
             let instance = {fun_name}(args.namespace, args.instance);\n\
             let context = ctx::run(instance, args);\n\
-            import(\"install\") as install;\n\
-            install::run(instance, context);"
+            context"
             )
             .as_str(),
         )?;
+        let _ = rhai.eval("import(\"install\") as install;\ninstall::run(instance, context);")?;
+
+        // Template asserts against the same context the scripts and templates received
+        let loaded = self.loaded_test(name)?;
+        let assert_ctx = self.assert_context(loaded, &context)?;
+        let asserts_tpl = self.template_sources(loaded, &assert_ctx, false, true)?.asserts;
+        let test = VynilTest {
+            asserts: if asserts_tpl.is_empty() {
+                None
+            } else {
+                Some(asserts_tpl)
+            },
+            ..test
+        };
 
         // Validate asserts against created objects, then copy them for the lint lane
         let objects = created_objects
@@ -1139,5 +1203,191 @@ mod tests {
         assert_eq!(rows.len(), 1, "{rows:?}");
         assert_eq!(rows[0].name, "lint:sections");
         assert!(!rows[0].passed);
+    }
+
+    // ── Contexte d'asserts ──────────────────────────────────────────────────
+
+    /// Comme `fixture`, avec le `context.rhai` donné à la place du contexte vide.
+    fn fixture_with_context(tests: &[(&str, String)], context: &str, install: &str) -> Fixture {
+        let fx = fixture(tests, install, None);
+        fs::write(fx.package.join("scripts").join("context.rhai"), context).expect("context.rhai");
+        fx
+    }
+
+    /// `ctx::run` rend une carte portant toutes les clés du contexte réel d'un paquet.
+    const CONTEXT_FULL: &str = r#"fn run(instance, args) {
+    #{
+        instance: #{
+            name: instance.metadata.name,
+            namespace: instance.metadata.namespace,
+            appslug: "from-context",
+            labels: #{ app: "from-context" }
+        },
+        values: #{ name: "alpha" },
+        defaults: #{ replicas: 3 },
+        cluster: #{ ha: true },
+        tenant: #{ name: "acme" },
+        controller: #{ flavour: "vanilla" }
+    }
+}
+"#;
+
+    /// Installation aux nom et labels littéraux : seul un assert rendu sur `CONTEXT_FULL` les retrouve.
+    const INSTALL_LITERAL_CM: &str = r#"fn run(instance, context) {
+    let h = k8s_resource("configmaps", "app");
+    h.create(#{ apiVersion: "v1", kind: "ConfigMap", metadata: #{
+        name: "cm-alpha", namespace: "app",
+        labels: #{ tenant: "acme", ha: "true", replicas: "3", flavour: "vanilla" }
+    } });
+}
+"#;
+
+    /// Test `default` dont l'instance est `instance_yaml` et les asserts `asserts_yaml`.
+    fn test_doc(instance_yaml: &str, asserts_yaml: &str) -> String {
+        format!(
+            "apiVersion: vinyl.solidite.fr/v1beta1\nkind: Test\nmetadata:\n  name: default\ninstance:\n{instance_yaml}{asserts_yaml}"
+        )
+    }
+
+    const DEMO_INSTANCE: &str = "  name: demo\n  namespace: app\n";
+
+    /// Lignes enregistrées du premier test du collecteur.
+    fn rows(h: &TestHandler) -> Vec<Value> {
+        report(h)["tests"][0]["asserts"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn asserts_resolve_against_the_real_context() {
+        let asserts = "asserts:\n  - name: from-context\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: \"cm-{{values.name}}\"\n      namespace: app\n    value:\n      metadata:\n        labels:\n          tenant: \"{{tenant.name}}\"\n          ha: \"{{cluster.ha}}\"\n          replicas: \"{{defaults.replicas}}\"\n          flavour: \"{{controller.flavour}}\"\n";
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(DEMO_INSTANCE, asserts))],
+            CONTEXT_FULL,
+            INSTALL_LITERAL_CM,
+        );
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "from-context", "{rows:?}");
+        assert_eq!(rows[0]["passed"], true, "{rows:?}");
+    }
+
+    #[test]
+    fn base_instance_keys_win_over_context_instance() {
+        let slug = appslug("demo", "web");
+        let install = format!(
+            r#"fn run(instance, context) {{
+    let h = k8s_resource("configmaps", "app");
+    h.create(#{{ apiVersion: "v1", kind: "ConfigMap", metadata: #{{
+        name: "{slug}-big", namespace: "app", labels: #{{ app: "from-context", pkg: "demo" }}
+    }} }});
+}}
+"#
+        );
+        let instance = "  name: web\n  namespace: app\n  options:\n    size: big\n";
+        let asserts = "asserts:\n  - name: base-wins\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: \"{{instance.appslug}}-{{instance.options.size}}\"\n      namespace: \"{{instance.namespace}}\"\n    value:\n      metadata:\n        labels:\n          app: \"{{instance.labels.app}}\"\n          pkg: \"{{package.metadata.name}}\"\n";
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(instance, asserts))],
+            CONTEXT_FULL,
+            &install,
+        );
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["passed"], true, "{rows:?}");
+    }
+
+    #[test]
+    fn testset_asserts_see_real_context_and_var() {
+        let testset = "apiVersion: vinyl.solidite.fr/v1beta1\nkind: TestSet\nmetadata:\n  name: suffixed\nvariables:\n  suffix:\n    type: string\n    default: none\nasserts:\n  - name: suffixed-cm\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: \"cm-{{values.name}}-{{var.suffix}}\"\n      namespace: app\n".to_string();
+        let test = test_doc(
+            DEMO_INSTANCE,
+            "testSets:\n  - testSet: suffixed\n    variables:\n      suffix: beta\n",
+        );
+        let install = r#"fn run(instance, context) {
+    let h = k8s_resource("configmaps", "app");
+    h.create(#{ apiVersion: "v1", kind: "ConfigMap", metadata: #{ name: "cm-alpha-beta", namespace: "app" } });
+}
+"#;
+        let fx = fixture_with_context(
+            &[("default.yaml", test), ("suffixed.yaml", testset)],
+            CONTEXT_FULL,
+            install,
+        );
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "suffixed-cm", "{rows:?}");
+        assert_eq!(rows[0]["passed"], true, "{rows:?}");
+    }
+
+    #[test]
+    fn non_map_context_keeps_package_and_instance() {
+        let slug = appslug("demo", "web");
+        let asserts = "asserts:\n  - name: base-only\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: \"{{instance.appslug}}\"\n      namespace: \"{{instance.namespace}}\"\n    value:\n      metadata:\n        labels:\n          pkg: \"{{package.metadata.name}}\"\n";
+        let install = format!(
+            r#"fn run(instance, context) {{
+    let h = k8s_resource("configmaps", "app");
+    h.create(#{{ apiVersion: "v1", kind: "ConfigMap", metadata: #{{ name: "{slug}", namespace: "app", labels: #{{ pkg: "demo" }} }} }});
+}}
+"#
+        );
+        let fx = fixture_with_context(
+            &[(
+                "default.yaml",
+                test_doc("  name: web\n  namespace: app\n", asserts),
+            )],
+            "fn run(instance, args) { () }\n",
+            &install,
+        );
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["passed"], true, "{rows:?}");
+    }
+
+    #[test]
+    fn unknown_assert_variable_fails_after_install() {
+        let asserts = "asserts:\n  - name: missing\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: \"{{values.missing}}\"\n";
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(DEMO_INSTANCE, asserts))],
+            CONTEXT_FULL,
+            INSTALL_LITERAL_CM,
+        );
+        let mut h = handler(&fx);
+        let created = sink();
+        h.run_test("default", &created);
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "execution", "{rows:?}");
+        assert_eq!(rows[0]["passed"], false, "{rows:?}");
+        let message = rows[0]["message"].as_str().unwrap_or_default();
+        assert!(message.contains("values.missing"), "{message}");
+        assert_eq!(created.lock().map(|o| o.len()).unwrap_or_default(), 1);
+    }
+
+    #[test]
+    fn mocks_do_not_see_the_rhai_context() {
+        let mocks = "mocks:\n  kubernetes:\n    - apiVersion: v1\n      kind: ConfigMap\n      metadata:\n        name: \"{{values.name}}\"\n        namespace: app\n";
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(DEMO_INSTANCE, mocks))],
+            CONTEXT_FULL,
+            INSTALL_LITERAL_CM,
+        );
+        let mut h = handler(&fx);
+        let created = sink();
+        h.run_test("default", &created);
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "execution", "{rows:?}");
+        let message = rows[0]["message"].as_str().unwrap_or_default();
+        assert!(message.contains("values.name"), "{message}");
+        assert_eq!(created.lock().map(|o| o.len()).unwrap_or_default(), 0);
     }
 }

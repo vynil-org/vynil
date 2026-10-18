@@ -43,9 +43,24 @@ Le répertoire `tests/` doit exister, sinon l'agent renvoie `MissingTestDirector
 - exécuter un flow (`context → install`, `context → delete`, …) ;
 - **asserter** sur les objets créés, le statut, ou le rendu des templates.
 
-> Le framework de test fait l'objet d'améliorations en cours (variables de contexte
-> d'assertions, surcharge cluster/tenant) — voir les issues du dépôt si un comportement
-> attendu manque.
+### Variables des assertions
+
+Les champs `selector` et `value` des assertions sont des templates Handlebars rendus après
+l'installation, sur le même `context` que celui que `ctx::run()` a transmis aux templates
+et aux scripts du paquet. Les mocks sont rendus plus tôt, avant tout script, et ne voient
+que `package` et `instance`.
+
+| Variable | Source |
+|----------|--------|
+| `values`, `defaults` | Options fusionnées avec les défauts du paquet, défauts bruts |
+| `cluster` | `agent.yaml` et le cluster mocké (storage classes, nodes…) |
+| `tenant` | Nom et namespaces du tenant (paquets tenant) |
+| `controller` | Sortie du `value_script` du paquet |
+| `instance` | `name`, `namespace`, `appslug`, `options` du test, plus les clés de l'instance du contexte (`labels`, `selector`…) |
+| `package` | La définition du paquet (`package.metadata.name`…) |
+| `var` | Variables du testSet référençant (asserts de testSet uniquement) |
+
+Une variable absente du contexte fait échouer le test avec une ligne `execution` qui la nomme.
 
 ### Bonnes pratiques
 

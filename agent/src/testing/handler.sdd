@@ -165,13 +165,30 @@ Must:
     `"vynil-system"`, `package_dir`, `script_dir`, `template_dir`, `config_dir`
     (affichages de chemins), `agent_image` = @DEFAULT_AGENT_IMAGE, `tag` figé `"0.1.0"`, puis
     la chaîne `controller_values`.
-  Exécute le seul snippet d'install figé dont l'@Err interrompt la course en entrée de la voie @Error de la
-    ligne `execution` : import de `context`, appel `{fun_name}(args.namespace, args.instance)` —
-    `fun_name` est @get_tenant_instance / @get_system_instance / @get_service_instance selon
-    l'usage du package — puis `ctx::run(instance, args)`, puis import de `install` et appel
-    `install::run(instance, context)` ; le @Dynamic renvoyé par le snippet est jeté.
-  N'évalue la course qu'après le snippet d'install : verrouille le sink en récupérant le poison via
-    @PoisonError::into_inner et étend les asserts collectés avec
+  Résout les mocks de la course sans templater aucun assert : mocks du test puis de chaque
+    réf @testSets sur le contexte de base de la voie templating (plus `var` pour les testSets),
+    instance virtuelle en dernier — les mocks ne voient jamais le contexte rhai, qui n'existe
+    pas encore quand ils sont chargés dans @Script::new_mock.
+  Exécute la voie rhai en deux snippets figés dont chaque @Err interrompt la course en entrée
+    de la voie @Error de la ligne `execution`, l'état du @Scope (`instance`, `context`)
+    persistant de l'un à l'autre : d'abord import de `context`, appel
+    `{fun_name}(args.namespace, args.instance)` — `fun_name` est @get_tenant_instance /
+    @get_system_instance / @get_service_instance selon l'usage du package — puis
+    `ctx::run(instance, args)` dont le @Dynamic `context` est rendu et capturé ; ensuite import
+    de `install` et appel `install::run(instance, context)`, dont le @Dynamic renvoyé est jeté.
+  Templater les asserts après le snippet d'install, sur le contexte d'asserts : la carte JSON
+    du `context` capturé (un `context` qui n'est pas une carte compte comme une carte vide),
+    où `package` est remplacé par le @VynilPackageSource sérialisé et où `instance` reçoit les
+    clés de l'`instance` du contexte de base, celles-ci gagnant en cas de collision — donc
+    `values`, `defaults`, `cluster`, `tenant`, `controller` et toute autre clé produite par
+    `ctx::run` sont visibles des asserts, et `{{instance.appslug}}`, `{{instance.options…}}`,
+    `{{package.metadata…}}` gardent leur valeur d'avant. Les asserts du test lui-même puis
+    ceux de chaque réf @testSets (plus `var`) sont templatés dans cet ordre, avec la clé
+    `context` d'auto-copie de @collect_templated ; un échec de rendu (variable inconnue en
+    mode strict) interrompt la course en ligne `execution` alors que l'installation a déjà
+    rempli le sink.
+  N'évalue la course qu'après le templating des asserts : verrouille le sink en récupérant le
+    poison via @PoisonError::into_inner et étend les asserts collectés avec
     @VynilTest::run_asserts sur les objets enregistrés du sink — donc un vecteur final est
     l'éventuelle ligne `value_script` passante suivie de l'ordre de définition des asserts, et les
     asserts voient toujours chaque objet créé par les scripts.
@@ -234,7 +251,9 @@ Exposes:
     avec aucun appelant nulle part dans le workspace (Tasks).
   @TestHandler::list_tests -> @Vec<@String> — `#[must_use]`, noms ascendants.
   @TestHandler::get_templated_test(@name) -> @common::Result<@VynilTest> — @&self, pur ;
-    `pub` mais son seul appelant vivant est @run_test_inner.
+    `pub`, asserts rendus sur le contexte de base ; @run_test_inner ne l'appelle pas mais
+    partage sa résolution privée en sautant les asserts, templatés ensuite sur le contexte
+    d'asserts.
   @TestHandler::validate_refs -> @common::Result<@()> — parcourt @tests en ordre ascendant,
     la première réf non résolue @Err `Test '{test_name}' references unknown TestSet '{name}'` ;
     aucun appelant n'existe (Tasks).
@@ -270,7 +289,8 @@ Raises:
     `TestSet '{name}' not found`, et de la surface morte `Test '{test_name}' references unknown
     TestSet '{name}'`, plus @Error::Other("expected map after templating").
   @Error::SerializationError — tout aller-retour @serde_json dans @template_dynamic,
-    @virtual_instance_dynamic ou la sérialisation du contexte de @get_templated_test ;
+    @virtual_instance_dynamic, la sérialisation du contexte de @get_templated_test ou la
+    conversion en JSON du `context` rhai capturé par @run_test_inner ;
     @Error::Core — échecs de @HandleBars::render sur toute chaîne templatée.
   Jamais depuis @run_test/@run_all_tests eux-mêmes : chaque échec de @run_test_inner ci-dessus
     arrive à la place comme l'unique ligne `execution` en échec.
@@ -293,6 +313,8 @@ Handles:
 
 Tasks:
   [x] Couvrir la voie lint par des tests de même nom que les scénarios lint ci-dessous.
+  [x] Templater les asserts sur le contexte rhai réel, couvert par les tests de même nom que
+      les scénarios asserts-resolve-against-the-real-context à mocks-do-not-see-the-rhai-context.
   [ ] Couvrir ce fichier par des tests — pas de module #[cfg(test)] ici et les seuls tests
       côté agent siègent aujourd'hui dans ./result.rs ; mapper chaque scénario vers un test du même nom :
       scan-apiVersion-gate-skips-correct-spelling, duplicate-names-abort-load-later-file-named,
@@ -376,6 +398,48 @@ Scenario: install-stage errors fold into one execution row
     l'@Err — la ligne `value_script` passante collectée plus tôt est jetée — et @run_test
     renvoie quand même `()`
   Test @install-failure-replaces-collected-asserts-with-one-execution-row
+
+Scenario: asserts resolve against the real rhai context
+  Given un `context.rhai` dont `run` rend une carte portant `values`, `defaults`, `cluster`,
+    `tenant` et `controller`, une installation qui crée un ConfigMap aux nom et labels
+    littéraux, et un assert dont le sélecteur et la valeur ne référencent que ces clés
+  When @run_test exécute le test
+  Then l'assert passe : ses templates ont été rendus sur le `context` produit par `ctx::run`
+  Test @asserts-resolve-against-the-real-context
+
+Scenario: base instance keys win over the context instance
+  Given un `context` dont l'`instance` porte un `appslug` différent et des `labels` mais pas
+    d'`options`, et un test dont l'instance porte des `options`
+  When les asserts sont templatés
+  Then `{{instance.appslug}}` et `{{instance.options…}}` rendent les valeurs du contexte de base,
+    `{{instance.labels…}}` celles du `context`, et `{{package.metadata.name}}` le nom du package
+  Test @base-instance-keys-win-over-context-instance
+
+Scenario: testSet asserts see the real context and their var
+  Given un test qui référence un testSet dont l'assert combine `{{values…}}` et `{{var…}}`
+  When @run_test exécute le test
+  Then l'assert du testSet est rendu sur le contexte d'asserts étendu par son `var` et passe
+  Test @testset-asserts-see-real-context-and-var
+
+Scenario: a non-map context keeps package and instance
+  Given un `context.rhai` dont `run` rend `()`
+  When les asserts sont templatés
+  Then `package` et `instance` du contexte de base restent disponibles et l'assert passe
+  Test @non-map-context-keeps-package-and-instance
+
+Scenario: an unknown assert variable fails after install
+  Given un assert qui référence une clé absente du `context`
+  When @run_test exécute le test
+  Then @results reçoit l'unique ligne `execution` en échec nommant la variable, et le sink
+    porte les objets que l'installation a créés
+  Test @unknown-assert-variable-fails-after-install
+
+Scenario: mocks do not see the rhai context
+  Given un mock dont un template référence `{{values…}}`
+  When @run_test exécute le test
+  Then @results reçoit l'unique ligne `execution` en échec nommant la variable et aucun script
+    n'a tourné : le sink est vide
+  Test @mocks-do-not-see-the-rhai-context
 
 Scenario: run_all isolates sinks per test
   Given une suite de deux tests
