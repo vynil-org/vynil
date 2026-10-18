@@ -2695,10 +2695,10 @@ fn flagged_by(rhai: &mut Script, function: &str, resources: &Value, params: &str
 
 #[test]
 fn extended_quantity_forms_are_read() {
-    // Valeurs exactes selon la grammaire des `Quantity` de Kubernetes (pas de binaire de
-    // référence : les attendus sont calculés à la main). CPU en millicores arrondies vers le
-    // haut ; mémoire en MB de 2^20 octets. Pour chaque forme, des bornes qui contiennent la
-    // valeur la signalent, des bornes qui l'excluent ne la signalent pas.
+    // Formes de la grammaire des `Quantity` de Kubernetes, confrontées à kube-linter v0.8.3
+    // (custom check `cpu-requirements` / `memory-requirements`, bornes entières comme l'outil) :
+    // chaque forme est signalée par les bornes ci-dessous et pas par celles qui l'excluent.
+    // CPU en millicores arrondies vers le haut ; mémoire en MB de 2^20 octets.
     let mut rhai = lib_script();
     let cpu = [
         ("1e3", 1_000_000_i64), // exposant : 1000 cœurs
@@ -2726,11 +2726,12 @@ fn extended_quantity_forms_are_read() {
     }
     // Mémoire : (forme, valeur MB attendue entre lo et hi).
     let memory = [
-        ("129e6", 123.0, 123.1),                           // 129 000 000 octets = 123,024 MB
+        ("129e6", 123.0, 124.0),                           // 129 000 000 octets = 123,024 MB
         ("1P", 953_674_316.0, 953_674_317.0),              // 10^15 octets
         ("1Ei", 1_099_511_627_775.0, 1_099_511_627_777.0), // 2^60 octets = 2^40 MB
-        ("1E3", 0.0009, 0.001),                            // 1000 octets
-        ("2e-3", 1e-9, 1e-6),                              // 0,002 octet
+        ("1E3", 0.0, 1.0),                                 // 1000 octets (0,00095 MB)
+        ("2e-3", 0.0, 1.0),                                // 0,002 octet
+        ("1E", 953_674_316_000.0, 953_674_317_000.0),      // 10^18 octets
     ];
     for (q, lo, hi) in memory {
         let res = json!({ "requests": { "memory": q } });
