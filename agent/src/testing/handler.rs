@@ -729,9 +729,10 @@ impl TestHandler {
             VynilPackageType::System => "system",
             VynilPackageType::Service => "service",
         };
+        let config_dir = self.run_config_dir(&test.instance)?;
         let resolver_path = vec![
             format!("{}/scripts", self.package_dir.display()),
-            self.config_dir.display().to_string(),
+            config_dir.display().to_string(),
             format!("{}/{type_dir}", self.script_dir.display()),
             format!("{}/lib", self.script_dir.display()),
         ];
@@ -768,7 +769,7 @@ impl TestHandler {
         };
 
         // Build args for the rhai script
-        let args = self.build_test_args(&test, &controller_values);
+        let args = self.build_test_args(&test, &config_dir, &controller_values);
         rhai.set_dynamic("args", &args);
 
         // Build instance object for rhai (kept out of the runtime wiring on purpose)
@@ -829,8 +830,38 @@ impl TestHandler {
         Ok(asserts)
     }
 
+    /// Configuration directory of a run: the handler's one, or `<package_dir>/tests/<config_dir>`
+    /// when the instance names a sub-directory of `tests/`.
+    fn run_config_dir(&self, instance: &super::vyniltest::VynilTestInstance) -> common::Result<PathBuf> {
+        let Some(rel) = &instance.config_dir else {
+            return Ok(self.config_dir.clone());
+        };
+        let rel_path = Path::new(rel);
+        let inside = rel_path.components().next().is_some()
+            && rel_path
+                .components()
+                .all(|c| matches!(c, std::path::Component::Normal(_)));
+        if !inside {
+            return Err(common::Error::Other(format!(
+                "instance.config_dir: '{rel}' must be a relative path inside tests/"
+            )));
+        }
+        let dir = self.package_dir.join("tests").join(rel_path);
+        if !dir.is_dir() {
+            return Err(common::Error::Other(format!(
+                "instance.config_dir: '{rel}' is not a directory"
+            )));
+        }
+        Ok(dir)
+    }
+
     /// Builds the rhai `args` object exposed to the install scripts during a test run.
-    fn build_test_args(&self, test: &VynilTest, controller_values: &str) -> serde_json::Value {
+    fn build_test_args(
+        &self,
+        test: &VynilTest,
+        config_dir: &Path,
+        controller_values: &str,
+    ) -> serde_json::Value {
         serde_json::json!({
             "namespace": test.instance.namespace,
             "instance": test.instance.name,
@@ -840,7 +871,7 @@ impl TestHandler {
             "template_dir": self.template_dir.display().to_string(),
             "agent_image": common::DEFAULT_AGENT_IMAGE,
             "tag": "0.1.0",
-            "config_dir": self.config_dir.display().to_string(),
+            "config_dir": config_dir.display().to_string(),
             "controller_values": controller_values,
         })
     }
@@ -1524,6 +1555,122 @@ mod tests {
         assert_eq!(rows[0]["name"], "execution");
         let message = rows[0]["message"].as_str().unwrap_or_default();
         assert!(message.ends_with("instance.nodes: empty node name"), "{message}");
+    }
+
+    // ── Répertoire de configuration du test ─────────────────────────────────
+
+    /// `cluster` lu de `agent.yaml` comme `build_context.rhai` : `ha` absent → nombre de Nodes.
+    const CONTEXT_AGENT_YAML: &str = r#"fn run(instance, args) {
+    let path = `${args.config_dir}/agent.yaml`;
+    let cfg = if is_file(path) { yaml_decode(file_read(path)) } else { #{} };
+    if !("ha" in cfg.keys()) {
+        cfg["ha"] = k8s_resource("Node").list_meta().items.len() > 1;
+    }
+    #{ cluster: cfg }
+}
+"#;
+
+    /// Écrit `files` (chemin relatif à `tests/`, contenu) dans le package de la fixture.
+    fn write_test_files(fx: &Fixture, files: &[(&str, &str)]) {
+        for (rel, body) in files {
+            let path = fx.package.join("tests").join(rel);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("dossier de test");
+            }
+            fs::write(path, body).expect("fichier de test");
+        }
+    }
+
+    /// Lance le test `default` (un seul Node, assert `ha-cm` au `matcher` donné) avec
+    /// `config_dir` optionnel ; rend `(passed, rows)`.
+    fn run_config_dir_test(config_dir: Option<&str>, matcher: &str) -> (bool, Vec<Value>) {
+        let dir = config_dir
+            .map(|d| format!("  config_dir: \"{d}\"\n"))
+            .unwrap_or_default();
+        let instance = format!("{DEMO_INSTANCE}  nodes: [m1]\n{dir}");
+        let asserts = format!(
+            "asserts:\n  - name: ha-cm\n    matcher: {matcher}\n    selector:\n      kind: ConfigMap\n      name: ha\n      namespace: app\n"
+        );
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(&instance, &asserts))],
+            CONTEXT_AGENT_YAML,
+            INSTALL_HA_ONLY,
+        );
+        write_test_files(&fx, &[("ha/agent.yaml", "ha: true\n")]);
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        let passed = rows.len() == 1 && rows[0]["name"] == "ha-cm" && rows[0]["passed"] == true;
+        (passed, rows)
+    }
+
+    #[test]
+    fn config_dir_agent_yaml_drives_the_cluster() {
+        let (passed, rows) = run_config_dir_test(Some("ha"), "\n      exact: 1");
+        assert!(passed, "{rows:?}");
+        // Sans `config_dir`, le Node unique laisse `cluster.ha` à `false`.
+        let (passed, rows) = run_config_dir_test(None, "none");
+        assert!(passed, "{rows:?}");
+    }
+
+    #[test]
+    fn config_dir_resolves_rhai_modules() {
+        let install = r#"fn run(instance, context) {
+    import "extra" as extra;
+    let h = k8s_resource("configmaps", "app");
+    h.create(#{ apiVersion: "v1", kind: "ConfigMap", metadata: #{ name: extra::name(), namespace: "app" } });
+}
+"#;
+        let instance = format!("{DEMO_INSTANCE}  config_dir: cfg\n");
+        let asserts = "asserts:\n  - name: from-module\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: from-config\n      namespace: app\n";
+        let fx = fixture(&[("default.yaml", test_doc(&instance, asserts))], install, None);
+        write_test_files(&fx, &[("cfg/extra.rhai", "fn name() { \"from-config\" }\n")]);
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["passed"], true, "{rows:?}");
+    }
+
+    /// Lignes d'un test `default` dont `instance.config_dir` vaut `config_dir`, et taille du sink.
+    fn run_with_config_dir(config_dir: &str) -> (Vec<Value>, usize) {
+        let instance = format!("{DEMO_INSTANCE}  config_dir: \"{config_dir}\"\n");
+        let fx = fixture(
+            &[("default.yaml", test_doc(&instance, ""))],
+            INSTALL_ONE_CONFIGMAP,
+            None,
+        );
+        let mut h = handler(&fx);
+        let created = sink();
+        h.run_test("default", &created);
+        let count = created.lock().map(|o| o.len()).unwrap_or_default();
+        (rows(&h), count)
+    }
+
+    #[test]
+    fn a_config_dir_escaping_tests_is_rejected() {
+        for dir in ["/etc", "../scripts", "ha/../../scripts", ".", ""] {
+            let (rows, created) = run_with_config_dir(dir);
+            assert_eq!(rows.len(), 1, "{dir}: {rows:?}");
+            assert_eq!(rows[0]["name"], "execution", "{dir}: {rows:?}");
+            let message = rows[0]["message"].as_str().unwrap_or_default();
+            let expected = format!("instance.config_dir: '{dir}' must be a relative path inside tests/");
+            assert!(message.ends_with(&expected), "{dir}: {message}");
+            assert_eq!(created, 0, "{dir}: aucun script ne doit tourner");
+        }
+    }
+
+    #[test]
+    fn a_missing_config_dir_is_rejected() {
+        let (rows, created) = run_with_config_dir("nope");
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "execution", "{rows:?}");
+        let message = rows[0]["message"].as_str().unwrap_or_default();
+        assert!(
+            message.ends_with("instance.config_dir: 'nope' is not a directory"),
+            "{message}"
+        );
+        assert_eq!(created, 0);
     }
 
     #[test]

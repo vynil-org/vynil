@@ -155,9 +155,20 @@ Must:
     l'ordre de @list_tests, lâché quand le test finit — dans la voie all rien ne peut collecter
     les objets créés ensuite ; la voie test unique reçoit le sink de l'appelant à la place
     (dump template de ./../package/test.sdd).
+  Détermine le répertoire de configuration de la course avant de construire l'interpréteur :
+    sans @instance.config_dir, le @config_dir du handler ; sinon `<package_dir>/tests/{config_dir}`,
+    à condition que la valeur soit un chemin relatif non vide fait uniquement de segments
+    normaux (ni racine, ni `.`, ni `..`) — sinon @Err
+    un @Error::Other `instance.config_dir: '{config_dir}' must be a relative path inside tests/`
+    — et qu'il désigne un répertoire existant — sinon @Err un @Error::Other
+    `instance.config_dir: '{config_dir}' is not a directory`. Ce répertoire remplace le
+    @config_dir du handler partout dans la course (chemin de résolution et `args.config_dir`),
+    comme le `--config-dir` d'un vrai cluster : il peut porter un `agent.yaml` lu par `ctx::run`
+    et des modules rhai. Rien n'est copié ni écrit.
   Construit l'interpréteur de @run_test_inner depuis @Script::new_mock avec le chemin de résolution
     [`{package_dir}/scripts`, `{config_dir}`, `{script_dir}/{type_dir}`, `{script_dir}/lib`]
-    où `type_dir` est le @VynilPackageType en minuscules `tenant`/`system`/`service`, puis
+    où `type_dir` est le @VynilPackageType en minuscules `tenant`/`system`/`service` et
+    `{config_dir}` le répertoire de configuration de la course, puis
     passe les listes de mocks @http_mocks et @kubernetes plus un clone du sink d'objets créés.
   Exécute @package.value_script en premier s'il existe : au succès, empile la ligne passante
     `name: "value_script"`, `description: Some("Value script execution")`,
@@ -170,8 +181,8 @@ Must:
     package sans @value_script n'apporte pas de ligne `value_script` et un littéral `"{}"`.
   Publie le global rhai `args` via @Script::set_dynamic avec les clés `namespace`
     (namespace de l'instance), `instance` (nom de l'instance), `vynil_namespace` figé
-    `"vynil-system"`, `package_dir`, `script_dir`, `template_dir`, `config_dir`
-    (affichages de chemins), `agent_image` = @DEFAULT_AGENT_IMAGE, `tag` figé `"0.1.0"`, puis
+    `"vynil-system"`, `package_dir`, `script_dir`, `template_dir`, `config_dir` (celui de la
+    course) (affichages de chemins), `agent_image` = @DEFAULT_AGENT_IMAGE, `tag` figé `"0.1.0"`, puis
     la chaîne `controller_values`.
   Résout les mocks de la course sans templater aucun assert : mocks du test puis de chaque
     réf @testSets sur le contexte de base de la voie templating (plus `var` pour les testSets),
@@ -294,7 +305,8 @@ Raises:
     YAML (scan) et de schéma (parse), `{file}: duplicate Test '{name}'`, et
     `{file}: duplicate TestSet '{name}'` (un gabarit partagé par les deux loaders).
   @Error::Other — ratés de la voie de résolution : `Test '{name}' not found`,
-    `TestSet '{name}' not found`, `instance.nodes: empty node name`, et de la surface morte `Test '{test_name}' references unknown
+    `TestSet '{name}' not found`, `instance.nodes: empty node name`, `instance.config_dir: '{config_dir}' must be a relative
+    path inside tests/`, `instance.config_dir: '{config_dir}' is not a directory`, et de la surface morte `Test '{test_name}' references unknown
     TestSet '{name}'`, plus @Error::Other("expected map after templating").
   @Error::SerializationError — tout aller-retour @serde_json dans @template_dynamic,
     @virtual_instance_dynamic, la sérialisation du contexte de @get_templated_test ou la
@@ -325,6 +337,9 @@ Tasks:
       les scénarios asserts-resolve-against-the-real-context à mocks-do-not-see-the-rhai-context.
   [x] Mocker les Nodes de @instance.nodes, couvert par les tests de même nom que les scénarios
       several-nodes-make-the-cluster-ha à an-empty-node-name-is-rejected.
+  [x] Substituer @instance.config_dir au répertoire de configuration, couvert par les tests de
+      même nom que les scénarios config-dir-agent-yaml-drives-the-cluster à
+      a-missing-config-dir-is-rejected.
   [ ] Couvrir ce fichier par des tests — pas de module #[cfg(test)] ici et les seuls tests
       côté agent siègent aujourd'hui dans ./result.rs ; mapper chaque scénario vers un test du même nom :
       scan-apiVersion-gate-skips-correct-spelling, duplicate-names-abort-load-later-file-named,
@@ -419,6 +434,37 @@ Scenario: an empty node name is rejected
   Then il @Err `instance.nodes: empty node name`, et @run_test en fait l'unique ligne
     `execution` en échec
   Test @an-empty-node-name-is-rejected
+
+Scenario: config dir agent yaml drives the cluster
+  Given un test à un seul Node dont @instance.config_dir désigne un dossier de `tests/` portant
+    un `agent.yaml` à `ha: true`, et un `context.rhai` qui lit `${args.config_dir}/agent.yaml`
+  When @run_test exécute le test
+  Then l'installation voit `cluster.ha` à `true` : l'`agent.yaml` du test gagne sur le
+    nombre de Nodes, comme en production
+  Test @config-dir-agent-yaml-drives-the-cluster
+
+Scenario: config dir resolves rhai modules
+  Given une installation qui importe un module présent seulement dans le dossier désigné par
+    @instance.config_dir
+  When @run_test exécute le test
+  Then le module est résolu et l'objet qu'il nomme est créé
+  Test @config-dir-resolves-rhai-modules
+
+Scenario: a config dir escaping tests is rejected
+  Given @instance.config_dir valant un chemin absolu, un chemin relatif portant `..`, `.` ou
+    une chaîne vide
+  When @run_test exécute le test
+  Then @results reçoit l'unique ligne `execution` en échec
+    `instance.config_dir: '{config_dir}' must be a relative path inside tests/` et aucun
+    script n'a tourné
+  Test @a-config-dir-escaping-tests-is-rejected
+
+Scenario: a missing config dir is rejected
+  Given @instance.config_dir désignant un dossier absent de `tests/`
+  When @run_test exécute le test
+  Then @results reçoit l'unique ligne `execution` en échec
+    `instance.config_dir: '{config_dir}' is not a directory`
+  Test @a-missing-config-dir-is-rejected
 
 Scenario: value_script failure short-circuits the install lane
   Given un package dont l'@value_script lève

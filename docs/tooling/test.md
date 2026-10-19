@@ -80,6 +80,26 @@ instance:
 A `Node` already present in `mocks.kubernetes` is not duplicated; an empty name fails the
 test.
 
+`instance.config_dir` names a sub-directory of `tests/` used as the configuration
+directory of the run, like `--config-dir` on a real cluster. It may hold an `agent.yaml`
+(for instance `ha: true` or `prefered_storage`) and Rhai modules. An `agent.yaml` setting
+`ha` wins over the node count, as in production.
+
+```yaml
+# tests/ha/agent.yaml
+ha: true
+```
+
+```yaml
+instance:
+  name: my-app
+  namespace: my-ns
+  config_dir: ha
+```
+
+The value must be a relative path inside `tests/` (no absolute path, no `..`) naming an
+existing directory; otherwise the test fails.
+
 ### Best practices
 
 - **Predictable tests**: do not assert on fields that depend on upstream versions

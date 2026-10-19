@@ -50,6 +50,8 @@ pub struct VynilTestInstance {
     pub options: Option<BTreeMap<String, serde_json::Value>>,
     /// Node names mocked for the run, so `ctx::run` derives `cluster.ha` from them.
     pub nodes: Option<Vec<String>>,
+    /// Sub-directory of the package `tests/` used as the run's configuration directory.
+    pub config_dir: Option<String>,
 }
 
 #[allow(non_snake_case)]
