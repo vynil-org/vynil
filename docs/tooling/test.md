@@ -100,6 +100,29 @@ instance:
 The value must be a relative path inside `tests/` (no absolute path, no `..`) naming an
 existing directory; otherwise the test fails.
 
+A tenant is not declared either: it is the set of namespaces sharing the
+`vynil.solidite.fr/tenant` label (or the key set by `TENANT_LABEL`). Mock those
+`Namespace` objects. Without a labelled namespace, `tenant.name` is the instance namespace
+and `tenant.namespaces` contains only that namespace.
+
+```yaml
+mocks:
+  kubernetes:
+    - apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: my-ns
+        labels:
+          vynil.solidite.fr/tenant: acme
+    - apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: acme-db
+        labels:
+          vynil.solidite.fr/tenant: acme
+# tenant.name: acme — tenant.namespaces: [my-ns, acme-db]
+```
+
 ### Best practices
 
 - **Predictable tests**: do not assert on fields that depend on upstream versions

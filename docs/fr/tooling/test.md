@@ -101,6 +101,29 @@ instance:
 La valeur doit être un chemin relatif à l'intérieur de `tests/` (ni chemin absolu, ni `..`)
 désignant un dossier existant ; sinon le test échoue.
 
+Un tenant ne se déclare pas non plus : c'est l'ensemble des namespaces qui partagent le
+label `vynil.solidite.fr/tenant` (ou la clé fixée par `TENANT_LABEL`). On mocke ces objets
+`Namespace`. Sans namespace labellisé, `tenant.name` est le namespace de l'instance et
+`tenant.namespaces` ne contient que ce namespace.
+
+```yaml
+mocks:
+  kubernetes:
+    - apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: my-ns
+        labels:
+          vynil.solidite.fr/tenant: acme
+    - apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: acme-db
+        labels:
+          vynil.solidite.fr/tenant: acme
+# tenant.name : acme — tenant.namespaces : [my-ns, acme-db]
+```
+
 ### Bonnes pratiques
 
 - **Tests prévisibles** : ne pas asserter sur des champs dépendants de la version amont

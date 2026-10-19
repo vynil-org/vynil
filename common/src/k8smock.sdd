@@ -88,8 +88,12 @@ Must:
     dont `metadata.name` est égal et dont `metadata.labels` contient la clé de la variable
     d'environnement `TENANT_LABEL` (lue à chaque appel, défaut `vynil.solidite.fr/tenant`),
     et retourner le texte d'affichage @rhai::Dynamic de cette valeur de label ; sinon retomber
-    sur la chaîne du namespace elle-même. @K8sInstanceMock::get_tenant_namespaces emballe ce
-    résultat dans un tableau mono-élément — le repli inclus, y compris le cas chaîne vide.
+    sur la chaîne du namespace elle-même. @K8sInstanceMock::get_tenant_namespaces suit
+    @TenantInstance::get_tenant_namespaces de production : sans `metadata.namespace`
+    exploitable il répond `[""]` ; sans `Namespace` correspondant porteur du label tenant il
+    répond `[namespace]` ; sinon il répond le `metadata.name` de chaque entrée de `kind`
+    `"Namespace"` dont le label tenant a le même texte d'affichage, dans l'ordre de la base et
+    sans doublon — le namespace de l'instance compris, puisqu'il porte ce label.
   Les résultats de liste sont du JSON brut, pas des objets mock-capables :
     @list_instance_mocks et @list_jukebox_mocks retournent un @rhai::serde::to_dynamic de
     `{"items": [...]}` où chaque item est l'encodage serde de @K8sInstanceMockObj /
@@ -307,9 +311,10 @@ Tasks:
       typés mock-capables ; les chemins `.items[i]` diffèrent donc entre scripts mock et
       production. Décider aussi plus tard si @K8sInstanceMockObj est une API signifiante ou
       une fuite d'implémentation.
-  [?] @get_tenant_namespaces répond toujours un tableau mono-élément (le nom de tenant ou
-      `""`), jamais plusieurs namespaces ; confirmer que les tenants mono-namespace sont la
-      sémantique mock voulue pour les scripts qui l'itèrent.
+  [x] Aligner @get_tenant_namespaces sur la production : un tenant est l'ensemble des
+      namespaces partageant le label tenant, pas un tableau mono-élément portant le nom du
+      tenant ; couvert par les tests de même nom que le scénario
+      tenant-namespaces-list-every-namespace-sharing-the-label.
   [?] L'Arc de la base interne n'est jamais exposé et `created` n'est pas utilisé ici, donc
       les appelants Rust (pilotes de fixtures) ne peuvent pas affirmer les écritures mock sans
       relancer les scripts. Décider plus tard si l'Arc est rendu.
@@ -380,9 +385,18 @@ Scenario: Tenant name resolves by Namespace label with namespace fallback
     réponse est `team-a`
   And avec un `metadata.namespace` illisible la réponse est `""`, et `get_tenant_namespaces()`
     répond alors `[""]`
-  And avec toute correspondance trouvée `get_tenant_namespaces()` répond exactement un
-    élément — le nom de tenant
   No mapped test exists.
+
+Scenario: tenant namespaces list every namespace sharing the label
+  Given l'instance dans le namespace `team-a`, et une base tenant les `Namespace` `team-a`
+    et `team-b` labellisés `vynil.solidite.fr/tenant: acme`, plus `other` labellisé `globex`
+  When `get_tenant_namespaces()` s'exécute
+  Then la réponse est `[team-a, team-b]`, dans l'ordre de la base et sans doublon même si
+    `team-b` y figure deux fois, et `get_tenant_name()` répond `acme`
+  But sans `Namespace` labellisé pour `team-a` la réponse est `[team-a]`, et sans
+    `metadata.namespace` exploitable elle est `[""]`
+  Test @tenant-namespaces-list-every-namespace-sharing-the-label,
+    @tenant-namespaces-fall-back-to-the-own-namespace
 
 Scenario: JukeBox status writes stay on the handle
   Given une base tenant un `JukeBox` nommé `test-box` dépourvu de `status`
