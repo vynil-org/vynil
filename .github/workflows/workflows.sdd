@@ -19,10 +19,16 @@ Structure:
   ./docker-agent-test.yml: Test fumée limité au build des Dockerfiles de l'agent et de l'opérateur
   ./docs.yml: Contrôle de parité de la documentation anglais/français
   ../scripts/check-docs-parity.sh: Vérificateur de parité EN/FR appelé par docs.yml
+  ../scripts/check-parent-manifests.sh: Vérificateur de synchronisation des `parent.toml` appelé
+    par test.yml
+  ../scripts/check-parent-manifests.test.sh: Tests du vérificateur sur des dépôts factices, un par
+    scénario ci-dessous, appelés par test.yml avant le vérificateur
 
 Owns:
   ./*.yml
   ../scripts/check-docs-parity.sh
+  ../scripts/check-parent-manifests.sh
+  ../scripts/check-parent-manifests.test.sh
 
 Must:
   Lancer `cargo test`, `cargo fmt --check` sur nightly, `cargo clippy -- -D warnings`, et une
@@ -33,6 +39,17 @@ Must:
   Construire le plugin pour `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, et
     `x86_64-pc-windows-msvc`, en limitant cargo à `kubectl-vynil/Cargo.toml`.
   Construire chaque image depuis le Dockerfile de sa propre crate sous `/`.
+  Vérifier sur chaque push et chaque pull request de test.yml que `/agent/parent.toml`,
+    `/operator/parent.toml` et `/server/parent.toml` sont exactement ceux que régénère
+    `cargo cmd generate` : ../scripts/check-parent-manifests.sh lit les commandes de
+    `[package.metadata.commands].generate` du `/Cargo.toml` qui écrivent un `parent.toml`, les
+    rejoue dans un répertoire temporaire sur une copie de `/Cargo.toml`, et échoue en
+    affichant le diff de chaque fichier divergent — sans jamais réécrire le dépôt ni recopier
+    les commandes, `/Cargo.toml` restant leur seule source.
+  Déclencher docker-agent-test.yml, et le build de l'image concernée, sur un changement de son
+    Dockerfile, de son `parent.toml`, de son `Cargo.toml`, de `/common/Cargo.toml`, de
+    `/Cargo.toml` ou de `/Cargo.lock` : ce sont les entrées de l'étape de cache de dépendances
+    du Dockerfile, qui casse sans que le Dockerfile change.
 
 Must not:
   Se connecter à Docker Hub ni référencer le secret `DOCKERHUB_TOKEN` : Docker Hub est abandonné.
@@ -51,3 +68,23 @@ Tasks:
   [x] #2 Retirer les deux étapes `DockerHub Login` et préfixer `ghcr.io/` les tags de agent.yml,
     operator.yml et server.yml (sans préfixe, les images partaient sur Docker Hub).
   [ ] #1 Garder la toolchain Rust épinglée alignée sur le `RUST_VERSION` de chaque Dockerfile.
+  [x] #3 Détecter un `parent.toml` désynchronisé (dépendance de workspace ajoutée au seul
+    `/Cargo.toml`, qui cassait le build de l'image agent) et reconstruire les images quand
+    leurs manifestes changent.
+
+Scenario: synchronized parent manifests pass
+  Given des `parent.toml` identiques à la sortie des commandes `generate` de `/Cargo.toml`
+  When ../scripts/check-parent-manifests.sh s'exécute
+  Then il sort `0` et n'a modifié aucun fichier du dépôt
+
+Scenario: a workspace dependency missing from a parent manifest fails
+  Given une dépendance de `[workspace.dependencies]` présente dans `/Cargo.toml` mais absente
+    de `/agent/parent.toml`
+  When ../scripts/check-parent-manifests.sh s'exécute
+  Then il sort `1`, nomme `agent/parent.toml` et affiche le diff qui porte la dépendance
+    manquante
+
+Scenario: no generate command writing a parent manifest fails
+  Given un `/Cargo.toml` dont `[package.metadata.commands].generate` n'écrit aucun `parent.toml`
+  When ../scripts/check-parent-manifests.sh s'exécute
+  Then il sort `1` : un contrôle qui ne vérifie rien ne doit pas passer
