@@ -1,0 +1,26 @@
+[
+  {
+    "rule": "cluster-admin-role-binding",
+    "kind": "ClusterRoleBinding",
+    "namespace": null,
+    "name": "admin-no-subjects"
+  },
+  {
+    "rule": "cluster-admin-role-binding",
+    "kind": "ClusterRoleBinding",
+    "namespace": null,
+    "name": "admin-other-api-group"
+  },
+  {
+    "rule": "cluster-admin-role-binding",
+    "kind": "ClusterRoleBinding",
+    "namespace": null,
+    "name": "admin-user"
+  },
+  {
+    "rule": "cluster-admin-role-binding",
+    "kind": "ClusterRoleBinding",
+    "namespace": "other",
+    "name": "admin-namespaced-metadata"
+  }
+]

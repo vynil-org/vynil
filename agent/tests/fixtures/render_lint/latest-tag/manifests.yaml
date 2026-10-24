@@ -1,0 +1,362 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tag-latest
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: tag-latest}
+  template:
+    metadata:
+      labels: {app: tag-latest}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:latest
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sans-tag
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: sans-tag}
+  template:
+    metadata:
+      labels: {app: sans-tag}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-latest
+  namespace: app
+spec:
+  initContainers:
+    - name: prepare
+      image: busybox:latest
+  containers:
+    - name: main
+      image: busybox:1.36
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-latest
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: task
+              image: alpine:latest
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pas-un-workload
+  namespace: app
+data:
+  image: nginx:latest
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: port-registre
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: port-registre}
+  template:
+    metadata:
+      labels: {app: port-registre}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test:5000/web
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: port-registre-tague
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: registry.example.test:5000/web:2.0
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: beta1-latest
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: beta1-latest}
+  template:
+    metadata:
+      labels: {app: beta1-latest}
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
+---
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: beta2-latest
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: beta2-latest}
+  template:
+    metadata:
+      labels: {app: beta2-latest}
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: ext-deploy-latest
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: ext-deploy-latest}
+  template:
+    metadata:
+      labels: {app: ext-deploy-latest}
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sts-latest
+  namespace: app
+spec:
+  replicas: 3
+  serviceName: sts-latest
+  selector:
+    matchLabels: {app: sts-latest}
+  template:
+    metadata:
+      labels: {app: sts-latest}
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: sts-beta1-latest
+  namespace: app
+spec:
+  replicas: 3
+  serviceName: sts-beta1-latest
+  selector:
+    matchLabels: {app: sts-beta1-latest}
+  template:
+    metadata:
+      labels: {app: sts-beta1-latest}
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ds-latest
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: ds-latest}
+  template:
+    metadata:
+      labels: {app: ds-latest}
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: ext-ds-latest
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: ext-ds-latest}
+  template:
+    metadata:
+      labels: {app: ext-ds-latest}
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: rs-latest
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: rs-latest}
+  template:
+    metadata:
+      labels: {app: rs-latest}
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
+---
+apiVersion: extensions/v1beta1
+kind: ReplicaSet
+metadata:
+  name: ext-rs-latest
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: ext-rs-latest}
+  template:
+    metadata:
+      labels: {app: ext-rs-latest}
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: rc-latest
+  namespace: app
+spec:
+  replicas: 3
+  selector: {app: rc-latest}
+  template:
+    metadata:
+      labels: {app: rc-latest}
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-latest
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: web
+          image: nginx:latest
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Job
+metadata:
+  name: argo-job-latest
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: web
+          image: nginx:latest
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: cron-beta1-latest
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: web
+              image: nginx:latest
+---
+apiVersion: v1beta1
+kind: Pod
+metadata:
+  name: pod-beta1-latest
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: nginx:latest
+---
+apiVersion: example.io/v1
+kind: Pod
+metadata:
+  name: pod-example-latest
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: nginx:latest
+---
+apiVersion: example.io/v1
+kind: Deployment
+metadata:
+  name: example-deploy-latest
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: example-deploy-latest}
+  template:
+    metadata:
+      labels: {app: example-deploy-latest}
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest

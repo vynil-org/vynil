@@ -1,0 +1,44 @@
+[
+  {
+    "rule": "sensitive-host-mounts",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "usr-monte"
+  },
+  {
+    "rule": "sensitive-host-mounts",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "racine-deux-conteneurs"
+  },
+  {
+    "rule": "sensitive-host-mounts",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "racine-deux-conteneurs"
+  },
+  {
+    "rule": "sensitive-host-mounts",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "etc-monte"
+  },
+  {
+    "rule": "sensitive-host-mounts",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "boot-et-dev"
+  },
+  {
+    "rule": "sensitive-host-mounts",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "boot-et-dev"
+  },
+  {
+    "rule": "sensitive-host-mounts",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "proc-init"
+  }
+]

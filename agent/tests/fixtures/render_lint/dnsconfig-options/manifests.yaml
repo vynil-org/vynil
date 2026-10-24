@@ -1,0 +1,160 @@
+# Conforme : l'option ndots vaut 2 (défaut de la vérification).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dns-ndots-deux
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: dns-ndots-deux}
+  template:
+    metadata:
+      labels: {app: dns-ndots-deux}
+    spec:
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "2"
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dns-ndots-deux-autres-options
+  namespace: app
+spec:
+  serviceName: dns-ndots-deux-autres-options
+  replicas: 1
+  selector:
+    matchLabels: {app: dns-autres}
+  template:
+    metadata:
+      labels: {app: dns-autres}
+    spec:
+      dnsConfig:
+        options:
+          - name: timeout
+            value: "1"
+          - name: ndots
+            value: "2"
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-ndots-deux
+  namespace: app
+spec:
+  schedule: "0 5 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          dnsConfig:
+            options:
+              - name: ndots
+                value: "2"
+          containers:
+            - name: task
+              image: registry.example.test/task:1.0.0
+---
+# Non conformes : DNSConfig absent, ndots différent, option ndots absente.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dns-absent
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: dns-absent}
+  template:
+    metadata:
+      labels: {app: dns-absent}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dns-ndots-cinq
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: dns-cinq}
+  template:
+    metadata:
+      labels: {app: dns-cinq}
+    spec:
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "5"
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dns-sans-ndots
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: dns-sans}
+  template:
+    metadata:
+      labels: {app: dns-sans}
+    spec:
+      dnsConfig:
+        options:
+          - name: timeout
+            value: "1"
+      containers:
+        - name: agent
+          image: registry.example.test/agent:2.0.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-dns-absent
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-ndots-trois
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "3"
+      containers:
+        - name: migrate
+          image: registry.example.test/migrate:3.1.0
+---
+# Non-workload : silencieux.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resolution
+  namespace: app
+data:
+  note: "ndots 5"

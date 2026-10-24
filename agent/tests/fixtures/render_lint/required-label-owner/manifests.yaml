@@ -1,0 +1,184 @@
+# Conforme : label owner présent.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-dep, namespace: app, labels: {owner: team}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-dep}}
+  template:
+    metadata: {labels: {app: ok-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : la clé est reconnue par son motif (owner-team contient owner).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-key-prefix, namespace: app, labels: {owner-team: team}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-key-prefix}}
+  template:
+    metadata: {labels: {app: ok-key-prefix}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : la clé est reconnue par son motif (xowner contient owner).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-key-suffix, namespace: app, labels: {xowner: team}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-key-suffix}}
+  template:
+    metadata: {labels: {app: ok-key-suffix}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Conforme : la valeur est libre, même vide.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-empty-value, namespace: app, labels: {owner: ""}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-empty-value}}
+  template:
+    metadata: {labels: {app: ok-empty-value}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : aucun label owner.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: bad-absent, namespace: app, labels: {app: bad-absent}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-absent}}
+  template:
+    metadata: {labels: {app: bad-absent}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : la clé est sensible à la casse (Owner ne vaut pas owner).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: bad-case, namespace: app, labels: {Owner: team}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-case}}
+  template:
+    metadata: {labels: {app: bad-case}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : le label owner n'est porté que par le gabarit de pod.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: bad-template-only, namespace: app, labels: {app: bad-template-only}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-template-only}}
+  template:
+    metadata: {labels: {app: bad-template-only, owner: team}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : StatefulSet sans label owner.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: bad-sts, namespace: app, labels: {app: bad-sts}}
+spec:
+  replicas: 3
+  serviceName: bad-sts
+  selector: {matchLabels: {app: bad-sts}}
+  template:
+    metadata: {labels: {app: bad-sts}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+# Non conforme : DaemonSet sans label owner.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: bad-ds, namespace: app, labels: {app: bad-ds}}
+spec:
+  selector: {matchLabels: {app: bad-ds}}
+  template:
+    metadata: {labels: {app: bad-ds}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+# Non conforme : ReplicaSet sans label owner.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata: {name: bad-rs, namespace: app, labels: {app: bad-rs}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-rs}}
+  template:
+    metadata: {labels: {app: bad-rs}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : ReplicationController sans label owner.
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: bad-rc, namespace: app, labels: {app: bad-rc}}
+spec:
+  replicas: 3
+  selector: {app: bad-rc}
+  template:
+    metadata: {labels: {app: bad-rc}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : Job sans label owner.
+apiVersion: batch/v1
+kind: Job
+metadata: {name: bad-job, namespace: app, labels: {app: bad-job}}
+spec:
+  template:
+    metadata: {labels: {app: bad-job}}
+    spec: {restartPolicy: Never, containers: [{name: migrate, image: "registry.example.test/migrate:3.1.0"}]}
+---
+# Non conforme : CronJob sans label owner.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: bad-cron, namespace: app, labels: {app: bad-cron}}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: bad-cron}}
+        spec: {restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+# Non conforme : Pod sans label owner.
+apiVersion: v1
+kind: Pod
+metadata: {name: bad-pod, namespace: app, labels: {app: bad-pod}}
+spec:
+  containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Non conforme : apps/v1beta1 est aussi un Deployment du groupe apps.
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata: {name: bad-beta, namespace: app, labels: {app: bad-beta}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: bad-beta}}
+  template:
+    metadata: {labels: {app: bad-beta}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Hors scope : un Service n'est pas un workload.
+apiVersion: v1
+kind: Service
+metadata: {name: svc, namespace: app, labels: {app: svc}}
+spec:
+  selector: {app: svc}
+  ports: [{port: 80}]
+---
+# Hors scope : un ConfigMap n'est pas un workload.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: cfg, namespace: app, labels: {app: cfg}}
+data: {k: v}
+---
+# Hors scope : groupe extensions/v1beta1 (non lu par la vérification).
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: legacy-ext, namespace: app, labels: {app: legacy-ext}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: legacy-ext}}
+  template:
+    metadata: {labels: {app: legacy-ext}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}

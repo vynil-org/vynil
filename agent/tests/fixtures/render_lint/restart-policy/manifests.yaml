@@ -1,0 +1,170 @@
+# Conformes : Always ou OnFailure.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restart-always
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: restart-always}
+  template:
+    metadata:
+      labels: {app: restart-always}
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-onfailure
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: registry.example.test/migrate:3.1.0
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-always
+  namespace: app
+spec:
+  schedule: "0 9 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Always
+          containers:
+            - name: task
+              image: registry.example.test/task:1.0.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-always
+  namespace: app
+spec:
+  restartPolicy: Always
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+---
+# Non conformes : restartPolicy absente, Never (Job, CronJob, Pod), ou valeur inconnue.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restart-absente
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: restart-absente}
+  template:
+    metadata:
+      labels: {app: restart-absente}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: restart-ss-absente
+  namespace: app
+spec:
+  serviceName: restart-ss-absente
+  replicas: 1
+  selector:
+    matchLabels: {app: restart-ss}
+  template:
+    metadata:
+      labels: {app: restart-ss}
+    spec:
+      containers:
+        - name: db
+          image: registry.example.test/db:16.2
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-never
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: registry.example.test/migrate:3.1.0
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-never
+  namespace: app
+spec:
+  schedule: "0 10 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: task
+              image: registry.example.test/task:1.0.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-never
+  namespace: app
+spec:
+  restartPolicy: Never
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-absente
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: restart-inconnue
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: restart-inconnue}
+  template:
+    metadata:
+      labels: {app: restart-inconnue}
+    spec:
+      restartPolicy: OnceUpon
+      containers:
+        - name: agent
+          image: registry.example.test/agent:2.0.0
+---
+# Non-workload : silencieux.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: politique
+  namespace: app
+data:
+  restartPolicy: Never

@@ -1,0 +1,257 @@
+# Conforme : un compte de service applicatif, nommé par serviceAccountName ou par le champ
+# déprécié serviceAccount ; serviceAccountName l'emporte quand il est renseigné.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sa-applicatif
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: sa-applicatif}
+  template:
+    metadata:
+      labels: {app: sa-applicatif}
+    spec:
+      serviceAccountName: app-sa
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sa-deprecie-applicatif
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: sa-deprecie}
+  template:
+    metadata:
+      labels: {app: sa-deprecie}
+    spec:
+      serviceAccount: app-sa
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sa-nom-prime-sur-deprecie
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: sa-nom}
+  template:
+    metadata:
+      labels: {app: sa-nom}
+    spec:
+      serviceAccountName: app-sa
+      serviceAccount: default
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+# Non conformes : compte absent, vide, ou `default`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sa-absent
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: sa-absent}
+  template:
+    metadata:
+      labels: {app: sa-absent}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sa-default
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: sa-default}
+  template:
+    metadata:
+      labels: {app: sa-default}
+    spec:
+      serviceAccountName: default
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sa-deprecie-default
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: sa-dep-default}
+  template:
+    metadata:
+      labels: {app: sa-dep-default}
+    spec:
+      serviceAccount: default
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sa-vide
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: sa-vide}
+  template:
+    metadata:
+      labels: {app: sa-vide}
+    spec:
+      serviceAccountName: ""
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ss-absent
+  namespace: app
+spec:
+  serviceName: ss-absent
+  replicas: 1
+  selector:
+    matchLabels: {app: ss-absent}
+  template:
+    metadata:
+      labels: {app: ss-absent}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ds-default
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: ds-default}
+  template:
+    metadata:
+      labels: {app: ds-default}
+    spec:
+      serviceAccountName: default
+      containers:
+        - name: agent
+          image: registry.example.test/agent:2.0.0
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: rs-absent
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: rs-absent}
+  template:
+    metadata:
+      labels: {app: rs-absent}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-absent
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: registry.example.test/migrate:3.1.0
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-default
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: default
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: registry.example.test/backup:1.0.0
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-applicatif
+  namespace: app
+spec:
+  schedule: "0 4 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: app-sa
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: registry.example.test/backup:1.0.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-absent
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-applicatif
+  namespace: app
+spec:
+  serviceAccountName: app-sa
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+---
+# Non-workload : silencieux.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: configuration
+  namespace: app
+data:
+  mode: production

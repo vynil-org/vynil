@@ -1,0 +1,131 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pid-desactive
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: pid-desactive}
+  template:
+    metadata:
+      labels: {app: pid-desactive}
+    spec:
+      hostPID: false
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pid-partage
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: pid-partage}
+  template:
+    metadata:
+      labels: {app: pid-partage}
+    spec:
+      hostPID: true
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pid-partage-sts
+  namespace: app
+spec:
+  serviceName: pid-partage-sts
+  replicas: 1
+  selector:
+    matchLabels: {app: pid-partage-sts}
+  template:
+    metadata:
+      labels: {app: pid-partage-sts}
+    spec:
+      hostPID: true
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pid-partage-job
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      hostPID: true
+      containers:
+        - name: tache
+          image: registry.example.test/tache:1.0.0
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pid-partage-cron
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          hostPID: true
+          containers:
+            - name: tache
+              image: registry.example.test/tache:1.0.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pid-partage-pod
+  namespace: app
+spec:
+  hostPID: true
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pas-un-workload
+  namespace: app
+spec:
+  hostPID: true
+  ports:
+    - port: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pas-un-workload-cm
+  namespace: app
+data:
+  hostPID: "true"

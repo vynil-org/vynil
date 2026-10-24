@@ -1,0 +1,26 @@
+[
+  {
+    "rule": "ssh-port",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-ssh"
+  },
+  {
+    "rule": "ssh-port",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "ssh-tcp-explicite"
+  },
+  {
+    "rule": "ssh-port",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "ssh-tcp-implicite"
+  },
+  {
+    "rule": "ssh-port",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "init-ssh"
+  }
+]

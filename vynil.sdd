@@ -30,6 +30,9 @@ Structure:
   /.github/workflows/workflows.sdd: Pipelines intégration continue
   ./docs/docs.sdd: Documentation utilisateur et conception
   ./linting.sdd: Harnais analyse et formatage
+  ./NOTICE: Attributions des éléments dérivés de logiciels tiers
+  ./third_party/kube-linter/LICENSE: Texte de la licence Apache 2.0 de kube-linter, dont la
+    logique est portée dans la bibliothèque `render_lint`
 
 Owns:
   ./Cargo.toml
@@ -41,6 +44,8 @@ Owns:
   ./llms.txt
   ./CONTRIBUTORS
   ./LICENSE
+  ./NOTICE
+  ./third_party/kube-linter/LICENSE
   ./TODO.md
   ./src/lib.rs
 
@@ -52,6 +57,10 @@ Depends on:
   `vynil-core` depuis crates.io, boîte à outils réutilisable Rhai/Handlebars/OCI
 
 Must:
+  Attribuer, dans ./NOTICE, tout élément dérivé d'un logiciel tiers (aujourd'hui la logique des
+    vérifications de kube-linter portée dans `render_lint`), en conservant le texte de sa licence
+    sous ./third_party/. Réutiliser le travail d'une autre équipe se dit, quelle que soit la
+    licence qui le permet.
   Tenir le dépôt (`vynil-org/vynil`) et `vynil-core` (`vynil-org/vynil-core`) pour la propriété de
     l'organisation GitHub `vynil-org`. L'origine `sebt3` (GitHub comme `docker.io/sebt3`) est gelée :
     plus une source de publication ni un défaut. Seul `rust-yaml` (fork git, ./Cargo.toml) y reste.

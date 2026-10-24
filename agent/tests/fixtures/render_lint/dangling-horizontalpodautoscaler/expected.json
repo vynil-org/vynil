@@ -1,0 +1,68 @@
+[
+  {
+    "rule": "dangling-horizontalpodautoscaler",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "h-ext"
+  },
+  {
+    "rule": "dangling-horizontalpodautoscaler",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "h-kind-mismatch"
+  },
+  {
+    "rule": "dangling-horizontalpodautoscaler",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "h-missing"
+  },
+  {
+    "rule": "dangling-horizontalpodautoscaler",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "h-noapi"
+  },
+  {
+    "rule": "dangling-horizontalpodautoscaler",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "h-pod"
+  },
+  {
+    "rule": "dangling-horizontalpodautoscaler",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "h-rc"
+  },
+  {
+    "rule": "dangling-horizontalpodautoscaler",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "h-svc"
+  },
+  {
+    "rule": "dangling-horizontalpodautoscaler",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "h-tiers-group"
+  },
+  {
+    "rule": "dangling-horizontalpodautoscaler",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "h-v1-missing"
+  },
+  {
+    "rule": "dangling-horizontalpodautoscaler",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "h-version-mismatch"
+  },
+  {
+    "rule": "dangling-horizontalpodautoscaler",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "other",
+    "name": "h-other-ns-missing"
+  }
+]

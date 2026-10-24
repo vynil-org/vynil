@@ -1,0 +1,455 @@
+# Création de pods et de charges de travail (mesuré sur kube-linter v0.8.3) : même moteur que
+# access-to-secrets (voir son fichier), avec les ressources pods, deployments, statefulsets,
+# replicasets, cronjob (singulier, tel quel), jobs, daemonsets et le verbe create. Une liaison
+# signalée une fois ; "*" concorde avec tout ; `cronjobs` (pluriel) et `pod` (singulier) ne concordent pas.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-pods, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-deployments, namespace: app}
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-statefulsets, namespace: app}
+rules:
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-replicasets, namespace: app}
+rules:
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-cronjob, namespace: app}
+rules:
+- apiGroups: ["batch"]
+  resources: ["cronjob"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-jobs, namespace: app}
+rules:
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-daemonsets, namespace: app}
+rules:
+- apiGroups: ["apps"]
+  resources: ["daemonsets"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-cronjobs-plural, namespace: app}
+rules:
+- apiGroups: ["batch"]
+  resources: ["cronjobs"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-pod-singular, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pod"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-pods-update, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-pods-creates, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["creates"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-pods-get-and-create, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-pods-star-verb, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-star-resource-create, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-pods-get, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-configmaps-create, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-apps-group-pods-create, namespace: app}
+rules:
+- apiGroups: ["apps"]
+  resources: ["pods"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-two-create-rules, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-two-rules, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-cross-rule, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cr-create-pods}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cr-create-deployments-ns-other, namespace: other}
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cr-get-pods}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata: {name: cr-beta-create}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-role-only, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-pods, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-pods}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-deployments, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-deployments}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-statefulsets, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-statefulsets}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-replicasets, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-replicasets}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-cronjob, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-cronjob}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-jobs, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-jobs}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-daemonsets, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-daemonsets}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-cronjobs-plural, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-cronjobs-plural}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-pod-singular, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-pod-singular}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-pods-update, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-pods-update}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-pods-creates, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-pods-creates}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-pods-get-and-create, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-pods-get-and-create}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-pods-star-verb, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-pods-star-verb}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-star-resource-create, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-star-resource-create}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-pods-get, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-pods-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-configmaps-create, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-configmaps-create}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-apps-group-pods-create, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-apps-group-pods-create}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-two-create-rules, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-two-create-rules}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-two-rules, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-two-rules}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-cross-rule, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-cross-rule}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-no-subjects, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-pods}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-other-namespace, namespace: other}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-pods}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-clusterrole-kind, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cr-create-pods}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-api-other, namespace: app}
+roleRef: {apiGroup: example.com, kind: Role, name: c-pods}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata: {name: rb-c-beta-binding, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-pods}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: crb-cr-create-pods}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cr-create-pods}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: crb-cr-create-deployments}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cr-create-deployments-ns-other}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: crb-cr-get-pods}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cr-get-pods}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: crb-kind-role}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: cr-create-pods}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: crb-role-only-name}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: c-role-only}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata: {name: crb-cr-beta}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cr-beta-create}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-deployments-update, namespace: app}
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-deployments-update, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-deployments-update}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: c-star-update, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-c-star-update, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: c-star-update}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}

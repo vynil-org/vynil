@@ -1,0 +1,44 @@
+[
+  {
+    "rule": "restart-policy",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-never"
+  },
+  {
+    "rule": "restart-policy",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "restart-inconnue"
+  },
+  {
+    "rule": "restart-policy",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "restart-absente"
+  },
+  {
+    "rule": "restart-policy",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-never"
+  },
+  {
+    "rule": "restart-policy",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-absente"
+  },
+  {
+    "rule": "restart-policy",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-never"
+  },
+  {
+    "rule": "restart-policy",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "restart-ss-absente"
+  }
+]

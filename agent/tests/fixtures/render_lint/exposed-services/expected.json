@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "exposed-services",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "loadbalancer"
+  },
+  {
+    "rule": "exposed-services",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "loadbalancer-upper"
+  },
+  {
+    "rule": "exposed-services",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "nodeport"
+  },
+  {
+    "rule": "exposed-services",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "nodeport-lower"
+  },
+  {
+    "rule": "exposed-services",
+    "kind": "Service",
+    "namespace": "other",
+    "name": "nodeport-other"
+  }
+]

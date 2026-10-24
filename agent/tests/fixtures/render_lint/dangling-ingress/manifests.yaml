@@ -1,0 +1,398 @@
+# Services cibles : noyau, namespace app sauf mention, avec des ports nommés et non nommés.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-named, namespace: app}
+spec:
+  selector: {app: web}
+  ports: [{port: 80, name: http, targetPort: 8080}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-unnamed, namespace: app}
+spec:
+  selector: {app: web}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-noport, namespace: app}
+spec:
+  selector: {app: web}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-other, namespace: other}
+spec:
+  selector: {app: web}
+  ports: [{port: 80, name: http}]
+---
+# Groupe tiers homonyme d'un Service : n'est pas une cible.
+apiVersion: example.io/v1
+kind: Service
+metadata: {name: tiers-svc, namespace: app}
+spec:
+  selector: {app: web}
+  ports: [{port: 80, name: http}]
+---
+# Service mal formé (ports en chaîne) : n'est pas une cible.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-malformed, namespace: app}
+spec:
+  selector: {app: web}
+  ports: "junk"
+---
+# Conformes : backend présent par nom de port ou par numéro, defaultBackend présent.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ok-number, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-named, port: {number: 80}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ok-name, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-named, port: {name: http}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ok-unnamed-number, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-unnamed, port: {number: 80}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ok-both-name-wins, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-named, port: {name: http, number: 9999}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ok-default, namespace: app}
+spec:
+  defaultBackend: {service: {name: svc-named, port: {number: 80}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ok-resource, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {resource: {apiGroup: example.io, kind: Bucket, name: b}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ok-no-backend, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ok-empty, namespace: app}
+spec: {}
+---
+# Port absent : compté comme le numéro 0, qui ne correspond à aucun port du Service.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-no-port-field, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-named}}
+---
+# Non conformes : backend de règle absent (un constat par backend absent).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-missing, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: nope, port: {number: 80}}}
+---
+# Deux chemins absents sur trois : deux constats.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-multi, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /a
+        pathType: Prefix
+        backend: {service: {name: nope1, port: {number: 80}}}
+      - path: /b
+        pathType: Prefix
+        backend: {service: {name: nope2, port: {number: 80}}}
+      - path: /c
+        pathType: Prefix
+        backend: {service: {name: svc-named, port: {number: 80}}}
+---
+# Service d'un autre namespace : le namespace est comparé.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-other-ns, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-other, port: {number: 80}}}
+---
+# defaultBackend absent : un constat ; avec une règle absente aussi : deux constats.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-default, namespace: app}
+spec:
+  defaultBackend: {service: {name: nope, port: {number: 80}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-default-and-rule, namespace: app}
+spec:
+  defaultBackend: {service: {name: nope-d, port: {number: 80}}}
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: nope-r, port: {number: 80}}}
+---
+# Port : numéro absent du Service, nom absent du Service, numéro égal au targetPort (non suffisant).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-port-number, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-named, port: {number: 9999}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-port-name, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-named, port: {name: nope}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-target-port-number, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-named, port: {number: 8080}}}
+---
+# Service sans ports : un numéro ou un nom ne peut pas correspondre.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-noport-number, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-noport, port: {number: 80}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-noport-name, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-noport, port: {name: http}}}
+---
+# Nom de port vide : le numéro (0 absent) est comparé ; aucun port 0 n'existe.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-empty-name-named, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-named, port: {name: ""}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-number-zero, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-named, port: {number: 0}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-number-null, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-named, port: {number: null}}}
+---
+# Nom de Service vide : aucun Service ne porte ce nom.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-empty-svc-name, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: "", port: {number: 80}}}
+---
+# Cible d'un groupe tiers homonyme : absente pour le noyau.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-tiers-svc, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: tiers-svc, port: {number: 80}}}
+---
+# Cible mal formée : ignorée comme Service, donc absente.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: ko-malformed-svc, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: svc-malformed, port: {number: 80}}}
+---
+# Hors scope : Ingress extensions/v1beta1, networking v1beta1 et groupe tiers, backends absents ;
+# un Ingress v1 mal formé (service en chaîne) est ignoré en entier.
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata: {name: ext-legacy, namespace: app}
+spec:
+  backend: {serviceName: nope, servicePort: 80}
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata: {name: ext-rules, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        backend: {serviceName: nope, servicePort: 80}
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata: {name: nv1b1-rules, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        backend: {serviceName: nope, servicePort: 80}
+---
+apiVersion: example.io/v1
+kind: Ingress
+metadata: {name: tiers-ingress, namespace: app}
+spec:
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend: {service: {name: nope, port: {number: 80}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: malformed-ingress, namespace: app}
+spec:
+  defaultBackend: {service: {name: nope-d, port: {number: 80}}}
+  rules:
+  - host: a.example.test
+    http:
+      paths:
+      - path: /a
+        backend: {service: "junk"}
+      - path: /b
+        backend: {service: {name: nope, port: {number: 80}}}

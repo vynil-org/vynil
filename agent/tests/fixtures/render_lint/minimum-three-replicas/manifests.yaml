@@ -1,0 +1,153 @@
+# Conforme : trois réplicas.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-dep, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: ok-dep}}
+  template:
+    metadata: {labels: {app: ok-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : deux réplicas.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: two-dep, namespace: app}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: two-dep}}
+  template:
+    metadata: {labels: {app: two-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : un réplica.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: one-dep, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: one-dep}}
+  template:
+    metadata: {labels: {app: one-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : zéro réplica.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: zero-dep, namespace: app}
+spec:
+  replicas: 0
+  selector: {matchLabels: {app: zero-dep}}
+  template:
+    metadata: {labels: {app: zero-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : replicas absent, valeur par défaut de Kubernetes (1).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: default-dep, namespace: app}
+spec:
+  selector: {matchLabels: {app: default-dep}}
+  template:
+    metadata: {labels: {app: default-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : StatefulSet à un réplica.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: db-sts, namespace: app}
+spec:
+  replicas: 1
+  serviceName: db
+  selector: {matchLabels: {app: db-sts}}
+  template:
+    metadata: {labels: {app: db-sts}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+# Non conforme : ReplicaSet à un réplica.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata: {name: rs-one, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: rs-one}}
+  template:
+    metadata: {labels: {app: rs-one}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : ReplicationController à deux réplicas.
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: rc-two, namespace: app}
+spec:
+  replicas: 2
+  selector: {app: rc-two}
+  template:
+    metadata: {labels: {app: rc-two}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Non conforme : apps/v1beta1 est aussi un Deployment du groupe apps.
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata: {name: beta-dep, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: beta-dep}}
+  template:
+    metadata: {labels: {app: beta-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Hors scope : DaemonSet, Job, CronJob, Pod et Service n'ont pas de réplicas.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: agent-ds, namespace: app}
+spec:
+  selector: {matchLabels: {app: agent-ds}}
+  template:
+    metadata: {labels: {app: agent-ds}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: migrate-job, namespace: app}
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata: {labels: {app: migrate-job}}
+    spec: {restartPolicy: Never, containers: [{name: migrate, image: "registry.example.test/migrate:3.1.0"}]}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: nightly-cron, namespace: app}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 300
+      template:
+        metadata: {labels: {app: nightly-cron}}
+        spec: {restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: solo-pod, namespace: app}
+spec:
+  containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: web-svc, namespace: app}
+spec:
+  selector: {app: ok-dep}
+  ports: [{port: 80}]
+---
+# Hors scope : groupe extensions/v1beta1 : les vérifications de charge ne le voient pas.
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: legacy-ext, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: legacy-ext}}
+  template:
+    metadata: {labels: {app: legacy-ext}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}

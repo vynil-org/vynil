@@ -3,6 +3,7 @@
 use crate::testing::{
     lint::{
         finding::{parse_findings, to_rows, to_suppressions},
+        multimap, patterns,
         sections::Sections,
     },
     result::Suppression,
@@ -20,8 +21,9 @@ const SUITE_TEST_NAME: &str = "(suite)";
 const EXECUTION_RULE: &str = "lint:execution";
 /// Budget d'opérations d'un appel : `OPERATIONS_BASE` plus `OPERATIONS_PER_OBJECT` par objet
 /// reçu. Une charge honnête croît avec la taille du rendu ; la borne ne sert qu'à arrêter un
-/// script qui boucle. Valeurs à mesurer sur le script réel de la distribution (décision `[?]`
-/// de runner.sdd).
+/// script qui boucle. Mesuré sur `render_lint::all` avec les soixante vérifications : environ
+/// 16 000 opérations par objet, linéaire de 200 à 800 objets ; la part par objet garde donc une
+/// marge d'un facteur trois.
 const OPERATIONS_BASE: u64 = 10_000_000;
 const OPERATIONS_PER_OBJECT: u64 = 50_000;
 /// Bornes mémoire du moteur : le budget d'opérations ne protège pas d'un `s += s`.
@@ -53,7 +55,7 @@ pub struct LintRunner {
 }
 
 /// Moteur neuf : bibliothèques de données de base, sans horloge, système de fichiers,
-/// réseau ni cluster ; fonctions `schema_*` seulement. Les imports suivent `lint_dir` puis
+/// réseau ni cluster ; fonctions `schema_*` et `regex_is_match` seulement. Les imports suivent `lint_dir` puis
 /// `{script_dir}/lib`. Les sorties (`print`, `debug`) sont avalées pour ne pas polluer le
 /// rapport du test.
 fn build_engine(lint_dir: &Path, script_dir: &Path, schemas: &SchemaRegistry, max_operations: u64) -> Engine {
@@ -82,6 +84,8 @@ fn build_engine(lint_dir: &Path, script_dir: &Path, schemas: &SchemaRegistry, ma
     engine.set_module_resolver(resolver);
 
     schema_rhai_register(&mut engine, schemas.clone());
+    patterns::register(&mut engine);
+    multimap::register(&mut engine);
     engine
 }
 
@@ -313,6 +317,34 @@ mod tests {
         assert_eq!(outcome.rows[0].description.as_deref(), Some("Deployment app/web"));
         assert_eq!(outcome.rows[1].description.as_deref(), Some("Deployment app/api"));
         assert!(outcome.rows.iter().all(|r| !r.passed));
+    }
+
+    #[test]
+    fn the_script_can_call_regex_is_match() {
+        // Le script signale seulement les objets dont le nom correspond au motif.
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) {
+                let out = [];
+                for obj in objs.all {
+                    if regex_is_match("^web$", obj.metadata.name) {
+                        out.push(#{
+                            rule: "name-pattern", severity: "error",
+                            object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
+                            message: "nom réservé"
+                        });
+                    }
+                }
+                out
+            }
+        "#,
+        );
+        let objects = vec![deployment("web"), deployment("api")];
+        let outcome = runner.run_test(&test_ctx("default"), &plain(objects));
+        assert_eq!(outcome.rows.len(), 1, "lignes : {:?}", outcome.rows);
+        assert_eq!(outcome.rows[0].name, "lint:name-pattern");
+        assert_eq!(outcome.rows[0].description.as_deref(), Some("Deployment app/web"));
+        assert!(!outcome.rows[0].passed);
     }
 
     #[test]

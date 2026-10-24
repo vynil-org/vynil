@@ -1,0 +1,88 @@
+# Spec fichier de ./render_lint_network.rhai — le thème « network » du catalogue de vérifications
+# portées de kube-linter. Le contrat commun d'une vérification (signature, nom, sévérité,
+# kinds non concernés) est possédé par ./render_lint.sdd et n'est pas redit ici.
+
+Spec: LibRenderLintNetwork
+
+Platform: librairie de scripts Rhai (moteur vynil-core)
+
+Purpose:
+  Les vérifications dont le sujet est l'exposition réseau : Service, Ingress,
+    NetworkPolicy, ports cibles, sélecteurs de pods, objets pendants qui ne désignent plus
+    aucune cible.
+
+Owns:
+  ./render_lint_network.rhai
+
+References:
+  ./render_lint.sdd — le contrat d'une vérification, les constats et les itérateurs que ce
+    module utilise.
+  /agent/tests/fixtures/render_lint/catalogue.yaml — l'inventaire qui attribue chaque vérification de
+    l'oracle à un thème et à un statut ; la liste des vérifications de ce module est celle des
+    entrées `theme: network` et `status: ported`.
+  /agent/tests/lint_oracle.sdd — le harnais qui compare chaque vérification à l'oracle.
+
+Must:
+  Satisfaire, pour chaque vérification portée du thème, le verdict de l'oracle kube-linter sur
+    les fixtures du catalogue : mêmes objets signalés, même règle, aucun objet signalé en plus
+    ni en moins. Le texte du message est libre mais doit nommer l'objet, la valeur fautive et
+    la correction attendue.
+  Honorer les paramètres de la vérification portant le nom, la casse et la sémantique de ceux
+    de kube-linter, et appliquer les mêmes valeurs par défaut.
+  Ne signaler que ce que la vérification définit : une vérification n'infère aucune règle
+    voisine.
+  Reproduire, pour chaque relation entre objets, ce que l'outil de référence fait, mesuré et non
+    supposé : le groupe d'API compte pour la version (`apps/v1beta1` vaut `apps/v1`) sauf
+    `networking.k8s.io/v1`, `monitoring.coreos.com/v1` et `policy/v1` qui exigent la version
+    exacte ; le namespace est comparé (dangling-service, dangling-ingress, les NetworkPolicy)
+    sauf pour `dangling-servicemonitor` et `dangling-horizontalpodautoscaler` qui l'ignorent ; le
+    groupe `extensions` (Deployment, ReplicaSet, DaemonSet) est compté par `dangling-service` et
+    les deux vérifications de NetworkPolicy, et exclu par `invalid-target-ports` et
+    `non-isolated-pod`.
+  Exposer `index(objs)` : les entrées d'index de ce thème (`net_targets`, `net_service_ports`,
+    `net_service_labels`, `net_policy_selectors`), construites avec les prédicats mêmes des
+    vérifications (`selectable_labels`, `service_well_formed`, `network_policy_well_formed`),
+    de sorte que lire l'index ne change aucun verdict. Les vérifications qui croisent plusieurs
+    objets lisent l'index reçu en deuxième argument et ne parcourent jamais la liste d'objets.
+
+Tasks:
+  [x] Porter les vérifications du thème par lots, chacune avec sa fixture
+      `/agent/tests/fixtures/render_lint/{nom}/` et son statut mis à jour dans le catalogue ; un lot
+      est livrable seul tant que le harnais d'oracle reste vert.
+  [x] `dangling-servicemonitor` est portée sur la seule liste d'objets. Décision issue d'une
+      mesure : l'outil ne lit que les `ServiceMonitor` et les Services présents dans la liste, la
+      CRD n'a pas à exister. Une vérification qui dépend d'une ressource absente de la liste reste
+      `deferred` avec sa raison (`scc-deny-privileged-container`, `non-existent-service-account`).
+
+Done when:
+  Chaque entrée `theme: network` du catalogue est `ported`, `deferred` avec raison, ou
+    `excluded` avec raison, et le harnais d'oracle ne rapporte aucune divergence pour les
+    entrées portées.
+
+Scenario: service selecting no pod is dangling
+  Given un Service dont le sélecteur ne correspond à aucun gabarit de pod de la liste
+  When la vérification `dangling_service` s'exécute
+  Then un constat de règle `dangling-service` nomme le Service
+  Test @service-selecting-no-pod-is-dangling
+
+Scenario: a target port name must follow the IANA rules
+  Given un Service dont `targetPort` est une chaîne qui enfreint les règles de nommage IANA
+    (plus de quinze caractères, majuscules, tiret en tête ou en fin, deux tirets consécutifs,
+    aucune lettre)
+  When la vérification `invalid_target_ports` s'exécute
+  Then un constat par règle enfreinte nomme le Service et le nom de port
+  Test @a-target-port-name-must-follow-the-iana-rules
+
+Scenario: a named target port absent from the containers is not reported
+  Given un Service dont `targetPort` nomme, au format IANA valide, un port que les conteneurs
+    ciblés ne déclarent pas
+  When la vérification `invalid_target_ports` s'exécute
+  Then aucun constat n'est rendu : l'outil de référence n'examine que le format du nom, jamais
+    son existence dans les conteneurs
+  Test @a-named-target-port-absent-from-the-containers-is-not-reported
+
+Scenario: ingress without backend service is dangling
+  Given un Ingress dont le backend nomme un Service absent de la liste
+  When la vérification `dangling_ingress` s'exécute
+  Then un constat nomme l'Ingress
+  Test @ingress-without-backend-service-is-dangling

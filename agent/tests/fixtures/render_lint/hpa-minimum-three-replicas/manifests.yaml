@@ -1,0 +1,117 @@
+# Conforme : minReplicas 3.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: ok-hpa, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: 3
+  maxReplicas: 9
+---
+# Conforme : minReplicas 4.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: four-hpa, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: 4
+  maxReplicas: 9
+---
+# Non conforme : minReplicas 2.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: two-hpa, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: 2
+  maxReplicas: 9
+---
+# Non conforme : minReplicas 1.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: one-hpa, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: 1
+  maxReplicas: 9
+---
+# Non conforme : minReplicas 0.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: zero-hpa, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: 0
+  maxReplicas: 9
+---
+# Non conforme : minReplicas absent, valeur par défaut de Kubernetes (1).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: absent-hpa, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  maxReplicas: 9
+---
+# Non conforme : minReplicas nul, traité comme absent (1).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: null-hpa, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: null
+  maxReplicas: 9
+---
+# Non conforme : autoscaling/v1 est aussi un HorizontalPodAutoscaler du groupe autoscaling.
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata: {name: v1-hpa, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: 2
+  maxReplicas: 9
+---
+# Non conforme : autoscaling/v2beta2 est aussi un HorizontalPodAutoscaler du groupe autoscaling.
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata: {name: v2beta2-hpa, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: 2
+  maxReplicas: 9
+---
+# Hors scope : minReplicas non entier (chaîne) : pas de constat, forme inattendue.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: string-hpa, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: "2"
+  maxReplicas: 9
+---
+# Hors scope : minReplicas fractionnaire : pas de constat, forme inattendue.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: float-hpa, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: 2.5
+  maxReplicas: 9
+---
+# Hors scope : groupe example.io porte un kind HorizontalPodAutoscaler homonyme.
+apiVersion: example.io/v1
+kind: HorizontalPodAutoscaler
+metadata: {name: foreign-hpa, namespace: app}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: 1
+  maxReplicas: 9
+---
+# Hors scope : un Deployment n'est pas un HPA.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}

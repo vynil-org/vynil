@@ -1,0 +1,86 @@
+[
+  {
+    "rule": "latest-tag",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-beta1-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "ds-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "beta1-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "beta2-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "port-registre"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sans-tag"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "tag-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "init-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "ReplicaSet",
+    "namespace": "app",
+    "name": "rs-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "ReplicationController",
+    "namespace": "app",
+    "name": "rc-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "sts-beta1-latest"
+  },
+  {
+    "rule": "latest-tag",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "sts-latest"
+  }
+]

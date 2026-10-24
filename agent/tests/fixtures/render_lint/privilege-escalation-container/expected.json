@@ -1,0 +1,44 @@
+[
+  {
+    "rule": "privilege-escalation-container",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "privilegie"
+  },
+  {
+    "rule": "privilege-escalation-container",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "escalade-autorisee"
+  },
+  {
+    "rule": "privilege-escalation-container",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "sys-admin"
+  },
+  {
+    "rule": "privilege-escalation-container",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "deux-conteneurs"
+  },
+  {
+    "rule": "privilege-escalation-container",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "deux-conteneurs"
+  },
+  {
+    "rule": "privilege-escalation-container",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "privilegie-et-sys-admin"
+  },
+  {
+    "rule": "privilege-escalation-container",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "escalade-init"
+  }
+]

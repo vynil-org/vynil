@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "privileged-container",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-privilegie"
+  },
+  {
+    "rule": "privileged-container",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "privilegie"
+  },
+  {
+    "rule": "privileged-container",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "tache-privilegiee"
+  },
+  {
+    "rule": "privileged-container",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "privilegie-et-escalade"
+  },
+  {
+    "rule": "privileged-container",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "privilegie-init"
+  }
+]

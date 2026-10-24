@@ -1,0 +1,97 @@
+# Conforme : secret monté en fichier (non lu depuis l'environnement), ou configMapKeyRef, ou
+# envFrom (non signalé par kube-linter), ou valeur littérale.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secret-fichier
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: secret-fichier}
+  template:
+    metadata:
+      labels: {app: secret-fichier}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          envFrom:
+            - secretRef: {name: web-secrets}
+          env:
+            - {name: "CONFIG_NAME", valueFrom: {configMapKeyRef: {name: web-config, key: name}}}
+            - {name: "PORT", value: "8080"}
+          volumeMounts:
+            - {name: secrets, mountPath: /run/secrets, readOnly: true}
+      volumes:
+        - name: secrets
+          secret: {secretName: web-secrets}
+---
+# Non conformes : secretKeyRef dans le conteneur principal et dans l'initialisation.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secret-env
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: secret-env}
+  template:
+    metadata:
+      labels: {app: secret-env}
+    spec:
+      initContainers:
+        - name: init
+          image: registry.example.test/init:1.0.0
+          env:
+            - {name: "BOOTSTRAP_KEY", valueFrom: {secretKeyRef: {name: bootstrap, key: key}}}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          env:
+            - {name: "DB_PASSWORD", valueFrom: {secretKeyRef: {name: db, key: password}}}
+            - {name: "API_KEY", valueFrom: {secretKeyRef: {name: api, key: key}}}
+---
+# Non conforme : StatefulSet.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: secret-ss
+  namespace: app
+spec:
+  serviceName: secret-ss
+  replicas: 1
+  selector:
+    matchLabels: {app: secret-ss}
+  template:
+    metadata:
+      labels: {app: secret-ss}
+    spec:
+      containers:
+        - name: db
+          image: registry.example.test/db:16.2
+          env:
+            - {name: "POSTGRES_PASSWORD", valueFrom: {secretKeyRef: {name: pg, key: password}}}
+---
+# Non conforme : pod nu.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-secret-env
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+      env:
+        - {name: "TOKEN", valueFrom: {secretKeyRef: {name: token, key: value}}}
+---
+# Non-workload : silencieux.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-config
+  namespace: app
+data:
+  name: web

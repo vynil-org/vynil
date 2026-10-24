@@ -1,0 +1,80 @@
+[
+  {
+    "rule": "non-existent-service-account",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-missing"
+  },
+  {
+    "rule": "non-existent-service-account",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "ds-missing"
+  },
+  {
+    "rule": "non-existent-service-account",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "w-deprecated-field"
+  },
+  {
+    "rule": "non-existent-service-account",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "w-empty-name-deprecated-set"
+  },
+  {
+    "rule": "non-existent-service-account",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "w-missing"
+  },
+  {
+    "rule": "non-existent-service-account",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "w-name-missing-field-present"
+  },
+  {
+    "rule": "non-existent-service-account",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "w-third-party-account"
+  },
+  {
+    "rule": "non-existent-service-account",
+    "kind": "Deployment",
+    "namespace": "other",
+    "name": "w-other-namespace"
+  },
+  {
+    "rule": "non-existent-service-account",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-missing"
+  },
+  {
+    "rule": "non-existent-service-account",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "p-missing"
+  },
+  {
+    "rule": "non-existent-service-account",
+    "kind": "ReplicaSet",
+    "namespace": "app",
+    "name": "rs-missing"
+  },
+  {
+    "rule": "non-existent-service-account",
+    "kind": "ReplicationController",
+    "namespace": "app",
+    "name": "rc-missing"
+  },
+  {
+    "rule": "non-existent-service-account",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "sts-missing"
+  }
+]

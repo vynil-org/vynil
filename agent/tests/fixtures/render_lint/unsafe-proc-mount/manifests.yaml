@@ -1,0 +1,135 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          securityContext:
+            procMount: Default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proc-non-masque
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: proc-non-masque}
+  template:
+    metadata:
+      labels: {app: proc-non-masque}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          securityContext:
+            procMount: Unmasked
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: proc-non-masque-init
+  namespace: app
+spec:
+  serviceName: proc-non-masque-init
+  replicas: 1
+  selector:
+    matchLabels: {app: proc-non-masque-init}
+  template:
+    metadata:
+      labels: {app: proc-non-masque-init}
+    spec:
+      initContainers:
+        - name: prepare
+          image: registry.example.test/tools:2.0.0
+          securityContext:
+            procMount: Unmasked
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: casse-differente
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: casse-differente}
+  template:
+    metadata:
+      labels: {app: casse-differente}
+    spec:
+      containers:
+        - name: agent
+          image: registry.example.test/agent:3.1.0
+          securityContext:
+            procMount: unmasked
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sans-procmount
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: tache
+          image: registry.example.test/tache:1.0.0
+          securityContext:
+            privileged: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: proc-non-masque-cron
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: tache
+              image: registry.example.test/tache:1.0.0
+              securityContext:
+                procMount: Unmasked
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: un-conteneur-sur-deux
+  namespace: app
+spec:
+  containers:
+    - name: principal
+      image: registry.example.test/web:1.4.2
+      securityContext:
+        procMount: Unmasked
+    - name: secondaire
+      image: registry.example.test/web:1.4.2
+      securityContext:
+        procMount: Default
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pas-un-workload
+  namespace: app
+data:
+  procMount: Unmasked

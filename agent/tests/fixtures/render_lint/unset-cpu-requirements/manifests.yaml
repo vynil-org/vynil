@@ -1,0 +1,169 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: limite-seule
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: limite}
+  template:
+    metadata:
+      labels: {app: limite}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          resources:
+            limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sans-ressources
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: sans}
+  template:
+    metadata:
+      labels: {app: sans}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: request-zero
+  namespace: app
+spec:
+  serviceName: db
+  replicas: 1
+  selector:
+    matchLabels: {app: db}
+  template:
+    metadata:
+      labels: {app: db}
+    spec:
+      containers:
+        - name: db
+          image: registry.example.test/db:16
+          resources:
+            requests: {cpu: "0"}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: init-sans-request
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: agent}
+  template:
+    metadata:
+      labels: {app: agent}
+    spec:
+      initContainers:
+        - name: prepare
+          image: registry.example.test/prepare:1.0.0
+          resources:
+            limits: {cpu: 200m}
+      containers:
+        - name: agent
+          image: registry.example.test/agent:1.0.0
+          resources:
+            requests: {cpu: 50m}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-sans-request
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: task
+              image: registry.example.test/task:1.0.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-cpu-entier
+  namespace: app
+spec:
+  containers:
+    - name: entier
+      image: registry.example.test/entier:1.0.0
+      resources:
+        requests: {cpu: 1}
+    - name: fraction-minuscule
+      image: registry.example.test/fraction:1.0.0
+      resources:
+        requests: {cpu: 1.5m}
+    - name: decimal
+      image: registry.example.test/decimal:1.0.0
+      resources:
+        requests: {cpu: 0.5}
+    - name: infime
+      image: registry.example.test/infime:1.0.0
+      resources:
+        requests: {cpu: 0.0001}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deux-conteneurs
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: deux}
+  template:
+    metadata:
+      labels: {app: deux}
+    spec:
+      containers:
+        - name: avec
+          image: registry.example.test/avec:1.0.0
+          resources:
+            requests: {cpu: 250m}
+        - name: sans
+          image: registry.example.test/sans:1.0.0
+          resources:
+            requests: {memory: 64Mi}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm
+  namespace: app
+data:
+  cpu: "0"
