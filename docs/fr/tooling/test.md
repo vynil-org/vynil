@@ -43,9 +43,86 @@ Le répertoire `tests/` doit exister, sinon l'agent renvoie `MissingTestDirector
 - exécuter un flow (`context → install`, `context → delete`, …) ;
 - **asserter** sur les objets créés, le statut, ou le rendu des templates.
 
-> Le framework de test fait l'objet d'améliorations en cours (variables de contexte
-> d'assertions, surcharge cluster/tenant) — voir les issues du dépôt si un comportement
-> attendu manque.
+### Variables des assertions
+
+Les champs `selector` et `value` des assertions sont des templates Handlebars rendus après
+l'installation, sur le même `context` que celui que `ctx::run()` a transmis aux templates
+et aux scripts du paquet. Les mocks sont rendus plus tôt, avant tout script, et ne voient
+que `package` et `instance`.
+
+| Variable | Source |
+|----------|--------|
+| `values`, `defaults` | Options fusionnées avec les défauts du paquet, défauts bruts |
+| `cluster` | `agent.yaml` et le cluster mocké (storage classes, nodes…) |
+| `tenant` | Nom et namespaces du tenant (paquets tenant) |
+| `controller` | Sortie du `value_script` du paquet |
+| `instance` | `name`, `namespace`, `appslug`, `options` du test, plus les clés de l'instance du contexte (`labels`, `selector`…) |
+| `package` | La définition du paquet (`package.metadata.name`…) |
+| `var` | Variables du testSet référençant (asserts de testSet uniquement) |
+
+Une variable absente du contexte fait échouer le test avec une ligne `execution` qui la nomme.
+
+### Surcharges du cluster
+
+Le contexte est calculé par les scripts du paquet à partir du cluster mocké, exactement
+comme en production. Pour piloter une propriété du cluster, on décrit le cluster plutôt
+que la propriété.
+
+`instance.nodes` mocke un `Node` par nom ; `cluster.ha` est donc dérivé du nombre de
+nodes (plus d'un node signifie HA) :
+
+```yaml
+instance:
+  name: my-app
+  namespace: my-ns
+  nodes: [master01, worker01]
+```
+
+Un `Node` déjà présent dans `mocks.kubernetes` n'est pas dupliqué ; un nom vide fait
+échouer le test.
+
+`instance.config_dir` désigne un sous-dossier de `tests/` utilisé comme répertoire de
+configuration de la course, comme `--config-dir` sur un vrai cluster. Il peut contenir un
+`agent.yaml` (par exemple `ha: true` ou `prefered_storage`) et des modules Rhai. Un
+`agent.yaml` qui fixe `ha` l'emporte sur le nombre de nodes, comme en production.
+
+```yaml
+# tests/ha/agent.yaml
+ha: true
+```
+
+```yaml
+instance:
+  name: my-app
+  namespace: my-ns
+  config_dir: ha
+```
+
+La valeur doit être un chemin relatif à l'intérieur de `tests/` (ni chemin absolu, ni `..`)
+désignant un dossier existant ; sinon le test échoue.
+
+Un tenant ne se déclare pas non plus : c'est l'ensemble des namespaces qui partagent le
+label `vynil.solidite.fr/tenant` (ou la clé fixée par `TENANT_LABEL`). On mocke ces objets
+`Namespace`. Sans namespace labellisé, `tenant.name` est le namespace de l'instance et
+`tenant.namespaces` ne contient que ce namespace.
+
+```yaml
+mocks:
+  kubernetes:
+    - apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: my-ns
+        labels:
+          vynil.solidite.fr/tenant: acme
+    - apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: acme-db
+        labels:
+          vynil.solidite.fr/tenant: acme
+# tenant.name : acme — tenant.namespaces : [my-ns, acme-db]
+```
 
 ### Bonnes pratiques
 

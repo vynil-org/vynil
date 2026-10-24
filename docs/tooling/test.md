@@ -43,8 +43,85 @@ The `tests/` directory must exist, otherwise the agent returns `MissingTestDirec
 - execute a flow (`context → install`, `context → delete`, …);
 - **assert** on created objects, status, or template rendering.
 
-> The test framework is subject to ongoing improvements (assertion context variables,
-> cluster/tenant overrides) — see the repository issues if an expected behavior is missing.
+### Assertion variables
+
+Assertion `selector` and `value` fields are Handlebars templates rendered after the
+install, against the same `context` that `ctx::run()` handed to the package templates and
+scripts. Mocks are rendered earlier, before any script runs, and only see `package` and
+`instance`.
+
+| Variable | Source |
+|----------|--------|
+| `values`, `defaults` | Options merged with the package defaults, raw defaults |
+| `cluster` | `agent.yaml` and the mocked cluster (storage classes, nodes…) |
+| `tenant` | Tenant name and namespaces (tenant packages) |
+| `controller` | Output of the package `value_script` |
+| `instance` | `name`, `namespace`, `appslug`, `options` from the test, plus the context instance keys (`labels`, `selector`…) |
+| `package` | The package definition (`package.metadata.name`…) |
+| `var` | Variables of the referencing testSet (testSet asserts only) |
+
+A variable missing from the context fails the test with an `execution` row naming it.
+
+### Cluster overrides
+
+The context is computed by the package scripts from the mocked cluster, exactly as in
+production. To drive a cluster property, describe the cluster rather than the property.
+
+`instance.nodes` mocks one `Node` per name, so `cluster.ha` is derived from the node
+count (more than one node means HA):
+
+```yaml
+instance:
+  name: my-app
+  namespace: my-ns
+  nodes: [master01, worker01]
+```
+
+A `Node` already present in `mocks.kubernetes` is not duplicated; an empty name fails the
+test.
+
+`instance.config_dir` names a sub-directory of `tests/` used as the configuration
+directory of the run, like `--config-dir` on a real cluster. It may hold an `agent.yaml`
+(for instance `ha: true` or `prefered_storage`) and Rhai modules. An `agent.yaml` setting
+`ha` wins over the node count, as in production.
+
+```yaml
+# tests/ha/agent.yaml
+ha: true
+```
+
+```yaml
+instance:
+  name: my-app
+  namespace: my-ns
+  config_dir: ha
+```
+
+The value must be a relative path inside `tests/` (no absolute path, no `..`) naming an
+existing directory; otherwise the test fails.
+
+A tenant is not declared either: it is the set of namespaces sharing the
+`vynil.solidite.fr/tenant` label (or the key set by `TENANT_LABEL`). Mock those
+`Namespace` objects. Without a labelled namespace, `tenant.name` is the instance namespace
+and `tenant.namespaces` contains only that namespace.
+
+```yaml
+mocks:
+  kubernetes:
+    - apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: my-ns
+        labels:
+          vynil.solidite.fr/tenant: acme
+    - apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: acme-db
+        labels:
+          vynil.solidite.fr/tenant: acme
+# tenant.name: acme — tenant.namespaces: [my-ns, acme-db]
+```
 
 ### Best practices
 
