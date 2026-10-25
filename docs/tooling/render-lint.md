@@ -307,7 +307,7 @@ All keys are optional.
 | `severity` | `"error"` for each check | Map from check name to `"error"` or `"warn"`. Applied after the check runs. |
 | `params` | empty | Map from check name to a map of parameters, using kube-linter parameter names. |
 | `ignore_prefix` | absent | Prefix of the suppression annotations. Without it, no suppression happens at all. |
-| `require_reason` | `false` | When `true`, a suppression with an empty annotation value is not applied. The finding stays, and one `suppression-without-reason` finding of severity `error` is added per object and rule, naming the annotation. When `false`, an empty annotation suppresses with the reason `(aucune raison donnée)`: the engine refuses a suppression without a reason. Set it to `true` in a distribution that wants every suppression justified; the default only keeps the inventory honest. |
+| `require_reason` | `false` | When `true`, a suppression with an empty annotation value is not applied. The finding stays, and one `suppression-without-reason` finding of severity `error` is added per object and rule, naming the annotation. When `false`, an empty annotation suppresses with the reason `(no reason given)`: the engine refuses a suppression without a reason. Set it to `true` in a distribution that wants every suppression justified; the default only keeps the inventory honest. |
 
 Without options, `render_lint::all` runs the checks that kube-linter enables by default, which is what a
 distribution that copies the example will expect. Pass `include_optional: true` to run all sixty.

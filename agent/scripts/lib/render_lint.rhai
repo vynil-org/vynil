@@ -127,7 +127,7 @@ fn suppression_reason(obj, rule, opts) {
 // Marque les constats dont l'objet porte l'annotation de suppression. Sans `ignore_prefix`,
 // rien n'est supprimé. Avec `require_reason`, une annotation vide ne supprime rien et ajoute un
 // constat `suppression-without-reason` (une fois par objet et règle). Sans `require_reason`, une
-// annotation vide supprime avec la raison explicite `(aucune raison donnée)` : le moteur refuse
+// annotation vide supprime avec la raison explicite `(no reason given)` : le moteur refuse
 // une suppression sans raison, et une exception muette doit rester lisible dans le rapport.
 fn apply_suppressions(findings, objs, opts) {
     let prefix = field(opts, "ignore_prefix");
@@ -163,7 +163,7 @@ fn apply_suppressions(findings, objs, opts) {
         }
         let g = f;
         g.suppressed = true;
-        g.reason = if reason != "" { reason } else { "(aucune raison donnée)" };
+        g.reason = if reason != "" { reason } else { "(no reason given)" };
         g.origin = "annotation:" + prefix + f.rule;
         out.push(g);
     }
@@ -172,7 +172,7 @@ fn apply_suppressions(findings, objs, opts) {
 }
 
 // Types attendus des paramètres de chaque vérification (noms de paramètres de kube-linter) :
-// `list` tableau de chaînes, `string`, `int`, `number` (entier ou flottant), ou une énumération
+// `list` tableau de chaînes, `string`, `int` (kube-linter tronque les bornes décimales : on refuse plutôt que de diverger), ou une énumération
 // `a|b|c`. Une vérification absente de la table n'a aucun paramètre.
 private fn param_schema() {
     #{
@@ -195,10 +195,10 @@ private fn param_schema() {
         "required-annotation-email": #{ "key": "string", "value": "string" },
         "required-label-owner": #{ "key": "string" },
         "sensitive-host-mounts": #{ "dirs": "list" },
-        "ssh-port": #{ "port": "number", "protocol": "string" },
+        "ssh-port": #{ "port": "int", "protocol": "string" },
         "unsafe-sysctls": #{ "unsafeSysCtls": "list" },
-        "unset-cpu-requirements": #{ "requirementsType": "request|limit|any", "lowerBoundMillis": "number", "upperBoundMillis": "number" },
-        "unset-memory-requirements": #{ "requirementsType": "request|limit|any", "lowerBoundMB": "number", "upperBoundMB": "number" }
+        "unset-cpu-requirements": #{ "requirementsType": "request|limit|any", "lowerBoundMillis": "int", "upperBoundMillis": "int" },
+        "unset-memory-requirements": #{ "requirementsType": "request|limit|any", "lowerBoundMB": "int", "upperBoundMB": "int" }
     }
 }
 
@@ -213,8 +213,6 @@ private fn check_param(check, key, expected, value) {
         type_of(value) == "string"
     } else if expected == "int" {
         type_of(value) == "i64"
-    } else if expected == "number" {
-        type_of(value) == "i64" || type_of(value) == "f64"
     } else {
         type_of(value) == "string" && value in expected.split("|")
     };
@@ -222,7 +220,6 @@ private fn check_param(check, key, expected, value) {
         let wanted = if expected == "list" { "un tableau de chaînes" }
             else if expected == "string" { "une chaîne" }
             else if expected == "int" { "un entier" }
-            else if expected == "number" { "un nombre" }
             else { `l'une de ${expected.split("|")}` };
         throw `render_lint: params["${check}"].${key} : ${wanted} attendu, reçu ${type_of(value)} (${value})`;
     }

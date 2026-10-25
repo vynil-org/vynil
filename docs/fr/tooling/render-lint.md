@@ -315,7 +315,7 @@ Toutes les clés sont facultatives.
 | `severity` | `"error"` pour chaque vérification | Carte nom de vérification vers `"error"` ou `"warn"`. Appliquée après l'exécution de la vérification. |
 | `params` | vide | Carte nom de vérification vers une carte de paramètres, avec les noms de paramètres de kube-linter. |
 | `ignore_prefix` | absent | Préfixe des annotations de suppression. Sans lui, aucune suppression n'a lieu. |
-| `require_reason` | `false` | Quand `true`, une suppression dont la valeur d'annotation est vide n'est pas appliquée. Le constat reste, et un constat `suppression-without-reason` de sévérité `error` est ajouté, une fois par objet et par règle, nommant l'annotation. Quand `false`, une annotation vide supprime avec la raison `(aucune raison donnée)` : le moteur refuse une suppression sans raison. Mettre `true` dans une distribution qui veut chaque suppression justifiée ; le défaut garde seulement l'inventaire honnête. |
+| `require_reason` | `false` | Quand `true`, une suppression dont la valeur d'annotation est vide n'est pas appliquée. Le constat reste, et un constat `suppression-without-reason` de sévérité `error` est ajouté, une fois par objet et par règle, nommant l'annotation. Quand `false`, une annotation vide supprime avec la raison `(no reason given)` : le moteur refuse une suppression sans raison. Mettre `true` dans une distribution qui veut chaque suppression justifiée ; le défaut garde seulement l'inventaire honnête. |
 
 Sans option, `render_lint::all` exécute les vérifications que kube-linter active par défaut, ce
 qu'attendra une distribution qui recopie l'exemple. `include_optional: true` exécute les soixante.

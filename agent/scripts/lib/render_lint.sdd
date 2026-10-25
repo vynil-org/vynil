@@ -127,7 +127,7 @@ Must:
   Avec `require_reason` vrai, ne pas supprimer un constat dont l'annotation est vide et
     ajouter à sa place un constat `suppression-without-reason` de sévérité `error`
     nommant l'annotation, une seule fois par objet et règle. Sans `require_reason`, une annotation
-    vide supprime avec la raison explicite `(aucune raison donnée)` : le moteur refuse une
+    vide supprime avec la raison explicite `(no reason given)` : le moteur refuse une
     suppression sans raison (/agent/src/testing/lint/finding.sdd).
   Attribuer la logique des vérifications portées à kube-linter (Apache-2.0) : le `NOTICE` du
     dépôt, l'en-tête de chaque module et la documentation le disent, puisque les expressions
@@ -181,7 +181,8 @@ Scenario: a misspelled option is refused
 
 Scenario: an invalid parameter is refused instead of disabling the check
   Given `requirementsType: "requests"`, un `BlockList` qui est une chaîne, un paramètre inconnu,
-    un `minReplicas` chaîne, un `port` chaîne et un `forbiddenServiceTypes` chaîne
+    un `minReplicas` chaîne, un `port` chaîne ou décimal, une borne `lowerBoundMB` ou
+    `upperBoundMillis` décimale (kube-linter les tronque) et un `forbiddenServiceTypes` chaîne
   When @all s'exécute avec chacun
   Then chaque appel est une erreur du script qui nomme le paramètre fautif
   Test @an-invalid-parameter-is-refused-instead-of-disabling-the-check
@@ -195,7 +196,7 @@ Scenario: a valid parameter is still applied
 Scenario: an empty annotation suppresses with an explicit reason
   Given une annotation de suppression à la valeur vide et `require_reason` absent
   When @all s'exécute
-  Then le constat est `suppressed: true` avec `reason: "(aucune raison donnée)"`
+  Then le constat est `suppressed: true` avec `reason: "(no reason given)"`
   Test @an-empty-annotation-suppresses-with-an-explicit-reason
 
 Scenario: a large render stays within the operation budget

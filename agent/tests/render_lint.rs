@@ -2635,7 +2635,16 @@ fn an_invalid_parameter_is_refused_instead_of_disabling_the_check() {
         ),
         (r#"#{"latest-tag": #{BlockLits: ["x"]}}"#, "paramètre inconnu"),
         (r#"#{"minimum-three-replicas": #{minReplicas: "3"}}"#, "un entier"),
-        (r#"#{"ssh-port": #{port: "22"}}"#, "un nombre"),
+        (r#"#{"ssh-port": #{port: "22"}}"#, "un entier"),
+        (r#"#{"ssh-port": #{port: 22.5}}"#, "un entier"),
+        (
+            r#"#{"unset-memory-requirements": #{lowerBoundMB: 122.5}}"#,
+            "un entier",
+        ),
+        (
+            r#"#{"unset-cpu-requirements": #{upperBoundMillis: 0.5}}"#,
+            "un entier",
+        ),
         (
             r#"#{"exposed-services": #{forbiddenServiceTypes: "NodePort"}}"#,
             "un tableau de chaînes",
@@ -2681,7 +2690,7 @@ fn an_empty_annotation_suppresses_with_an_explicit_reason() {
     let items = found.as_array().expect("constats");
     assert_eq!(items.len(), 1);
     assert_eq!(items[0]["suppressed"], json!(true));
-    assert_eq!(items[0]["reason"], json!("(aucune raison donnée)"));
+    assert_eq!(items[0]["reason"], json!("(no reason given)"));
 }
 
 /// Vrai quand la vérification `function` signale le conteneur `web` porteur de `resources`.
