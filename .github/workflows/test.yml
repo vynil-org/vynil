@@ -65,6 +65,18 @@ jobs:
       - name: cargo clippy
         run: cargo clippy -- -D warnings
 
+  parent-manifests:
+    name: Parent manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Test the parent.toml check
+        run: bash .github/scripts/check-parent-manifests.test.sh
+
+      - name: Check parent.toml are in sync with Cargo.toml
+        run: bash .github/scripts/check-parent-manifests.sh
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest

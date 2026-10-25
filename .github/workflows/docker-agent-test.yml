@@ -5,11 +5,25 @@ on:
   push:
     paths:
       - agent/Dockerfile
+      - agent/parent.toml
+      - agent/Cargo.toml
       - operator/Dockerfile
+      - operator/parent.toml
+      - operator/Cargo.toml
+      - common/Cargo.toml
+      - Cargo.toml
+      - Cargo.lock
   pull_request:
     paths:
       - agent/Dockerfile
+      - agent/parent.toml
+      - agent/Cargo.toml
       - operator/Dockerfile
+      - operator/parent.toml
+      - operator/Cargo.toml
+      - common/Cargo.toml
+      - Cargo.toml
+      - Cargo.lock
 
 jobs:
   changes:
@@ -26,8 +40,18 @@ jobs:
           filters: |
             agent:
               - agent/Dockerfile
+              - agent/parent.toml
+              - agent/Cargo.toml
+              - common/Cargo.toml
+              - Cargo.toml
+              - Cargo.lock
             operator:
               - operator/Dockerfile
+              - operator/parent.toml
+              - operator/Cargo.toml
+              - common/Cargo.toml
+              - Cargo.toml
+              - Cargo.lock
 
   docker-build-agent:
     name: Docker Build Agent
