@@ -446,64 +446,69 @@ impl K8sInstanceMock {
     ///
     /// Returns a Rhai error when the mocked object is not a map.
     pub fn get_tenant_name(&mut self) -> RhaiRes<String> {
-        if let Ok(meta) = self.get_sub("metadata")
-            && let Ok(m) = meta.as_map_ref()
-            && let Some(ns) = m.get("namespace")
-            && let Ok(s) = ns.clone().into_string()
-        {
-            let mocks: Vec<Dynamic> = {
-                let guard = self.mocks.lock().unwrap_or_else(PoisonError::into_inner);
-                guard.clone()
-            };
-            for m in mocks {
-                let map: Option<Map> = m.as_map_ref().ok().map(|g| g.clone());
-                let Some(map) = map else {
-                    continue;
-                };
-                let kind_is_namespace = map
-                    .get("kind")
-                    .and_then(|k| k.clone().into_string().ok())
-                    .is_some_and(|k| k == "Namespace");
-                if !kind_is_namespace {
-                    continue;
-                }
-                let meta: Option<Map> = map
-                    .get("metadata")
-                    .and_then(|v| v.as_map_ref().ok().map(|g| g.clone()));
-                let Some(meta) = meta else {
-                    continue;
-                };
-                let name_match = meta
-                    .get("name")
-                    .and_then(|n| n.clone().into_string().ok())
-                    .is_some_and(|n| n == s);
-                if !name_match {
-                    continue;
-                }
-                let labels: Option<Map> = meta
-                    .get("labels")
-                    .and_then(|l| l.as_map_ref().ok().map(|g| g.clone()));
-                if let Some(labels) = labels {
-                    let label_key = std::env::var("TENANT_LABEL")
-                        .unwrap_or_else(|_| "vynil.solidite.fr/tenant".to_string());
-                    if let Some(tenant) = labels.get(label_key.as_str()) {
-                        return Ok(tenant.to_string());
-                    }
-                }
-            }
-            return Ok(s);
-        }
-        Ok(String::new())
+        let Some(own) = self.own_namespace() else {
+            return Ok(String::new());
+        };
+        Ok(tenant_of(&self.namespace_mocks(), &own).unwrap_or(own))
     }
 
-    /// Returns the namespaces of the mocked tenant.
+    /// Returns the namespaces of the mocked tenant: every mocked `Namespace` sharing the
+    /// instance namespace's tenant label, or only the instance namespace when it has none.
     ///
     /// # Errors
     ///
     /// Returns a Rhai error when the mocked object is not a map.
     pub fn get_tenant_namespaces(&mut self) -> RhaiRes<Dynamic> {
-        let ns = self.get_tenant_name()?;
-        Ok(Dynamic::from_array(vec![Dynamic::from(ns)]))
+        let Some(own) = self.own_namespace() else {
+            return Ok(Dynamic::from_array(vec![Dynamic::from(String::new())]));
+        };
+        let entries = self.namespace_mocks();
+        let Some(tenant) = tenant_of(&entries, &own) else {
+            return Ok(Dynamic::from_array(vec![Dynamic::from(own)]));
+        };
+        let mut names: Vec<String> = Vec::new();
+        for (name, label) in entries {
+            if label.as_deref() == Some(tenant.as_str()) && !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        Ok(Dynamic::from_array(
+            names.into_iter().map(Dynamic::from).collect(),
+        ))
+    }
+
+    /// The instance's own `metadata.namespace`, when readable as a string.
+    fn own_namespace(&self) -> Option<String> {
+        let meta = self.get_sub("metadata").ok()?;
+        let map = meta.as_map_ref().ok()?;
+        map.get("namespace")?.clone().into_string().ok()
+    }
+
+    /// `(metadata.name, tenant label display text)` of every mocked `Namespace`, in base order.
+    /// The label key is read from `TENANT_LABEL` on each call.
+    fn namespace_mocks(&self) -> Vec<(String, Option<String>)> {
+        let label_key =
+            std::env::var("TENANT_LABEL").unwrap_or_else(|_| "vynil.solidite.fr/tenant".to_string());
+        lock_clone(&self.mocks)
+            .iter()
+            .filter_map(|m| {
+                let map: Map = m.as_map_ref().ok()?.clone();
+                let is_namespace = map
+                    .get("kind")
+                    .and_then(|k| k.clone().into_string().ok())
+                    .is_some_and(|k| k == "Namespace");
+                if !is_namespace {
+                    return None;
+                }
+                let meta: Map = map.get("metadata")?.as_map_ref().ok()?.clone();
+                let name = meta.get("name")?.clone().into_string().ok()?;
+                let tenant = meta
+                    .get("labels")
+                    .and_then(|l| l.as_map_ref().ok().map(|g| g.clone()))
+                    .and_then(|labels| labels.get(label_key.as_str()).map(ToString::to_string));
+                Some((name, tenant))
+            })
+            .collect()
     }
 
     /// Returns the service names of the mocked tenant (always empty in the mock).
@@ -514,6 +519,13 @@ impl K8sInstanceMock {
     pub fn get_tenant_services_names(&mut self) -> RhaiRes<Dynamic> {
         Ok(Dynamic::from_array(vec![]))
     }
+}
+
+/// Tenant label of the first mocked `Namespace` named `own` that carries one.
+fn tenant_of(entries: &[(String, Option<String>)], own: &str) -> Option<String> {
+    entries
+        .iter()
+        .find_map(|(name, tenant)| if name == own { tenant.clone() } else { None })
 }
 
 fn lock_clone(mocks: &Arc<Mutex<Vec<Dynamic>>>) -> Vec<Dynamic> {
@@ -856,4 +868,74 @@ pub fn k8smock_rhai_register(engine: &mut Engine, mocks: Vec<Dynamic>, created: 
         .register_get("metadata", K8sJukeBoxMock::get_metadata)
         .register_get("spec", K8sJukeBoxMock::get_spec)
         .register_get("status", K8sJukeBoxMock::get_status);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Mock `Namespace` `name`, labellisé `vynil.solidite.fr/tenant: tenant` quand `tenant` est donné.
+    fn namespace(name: &str, tenant: Option<&str>) -> Dynamic {
+        let labels = tenant.map_or_else(|| json!({}), |t| json!({ "vynil.solidite.fr/tenant": t }));
+        to_dynamic(json!({ "apiVersion": "v1", "kind": "Namespace", "metadata": { "name": name, "labels": labels } }))
+            .expect("Namespace convertible")
+    }
+
+    /// `TenantInstance` mockée dans `namespace` (sans `metadata.namespace` si `None`), sur la base `db`.
+    fn tenant_instance(namespace: Option<&str>, db: Vec<Dynamic>) -> K8sInstanceMock {
+        let metadata = namespace.map_or_else(
+            || json!({ "name": "t" }),
+            |ns| json!({ "name": "t", "namespace": ns }),
+        );
+        K8sInstanceMock {
+            obj: to_dynamic(json!({ "kind": "TenantInstance", "metadata": metadata }))
+                .expect("instance convertible"),
+            mocks: Arc::new(Mutex::new(db)),
+        }
+    }
+
+    fn names(list: Dynamic) -> Vec<String> {
+        list.into_array()
+            .expect("tableau")
+            .into_iter()
+            .map(|d| d.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn tenant_namespaces_list_every_namespace_sharing_the_label() {
+        let mut inst = tenant_instance(Some("team-a"), vec![
+            namespace("other", Some("globex")),
+            namespace("team-a", Some("acme")),
+            namespace("team-b", Some("acme")),
+            namespace("team-b", Some("acme")),
+            namespace("plain", None),
+        ]);
+        assert_eq!(inst.get_tenant_name().expect("nom"), "acme");
+        assert_eq!(names(inst.get_tenant_namespaces().expect("namespaces")), [
+            "team-a", "team-b"
+        ]);
+    }
+
+    #[test]
+    fn tenant_namespaces_fall_back_to_the_own_namespace() {
+        let mut unlabelled = tenant_instance(Some("team-a"), vec![namespace("team-a", None)]);
+        assert_eq!(unlabelled.get_tenant_name().expect("nom"), "team-a");
+        assert_eq!(names(unlabelled.get_tenant_namespaces().expect("namespaces")), [
+            "team-a"
+        ]);
+
+        let mut unmocked = tenant_instance(Some("team-a"), vec![namespace("team-b", Some("acme"))]);
+        assert_eq!(names(unmocked.get_tenant_namespaces().expect("namespaces")), [
+            "team-a"
+        ]);
+
+        let mut no_namespace = tenant_instance(None, vec![namespace("team-a", Some("acme"))]);
+        assert_eq!(no_namespace.get_tenant_name().expect("nom"), "");
+        assert_eq!(
+            names(no_namespace.get_tenant_namespaces().expect("namespaces")),
+            [""]
+        );
+    }
 }

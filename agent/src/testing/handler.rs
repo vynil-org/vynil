@@ -200,6 +200,50 @@ fn instance_already_mocked(
     })
 }
 
+/// True when `k8s_mocks` already contains a `Node` mock named `name`.
+fn node_already_mocked(k8s_mocks: &[Dynamic], name: &str) -> bool {
+    k8s_mocks.iter().any(|m| {
+        let Ok(map) = m.as_map_ref() else { return false };
+        let kind_ok = map
+            .get("kind")
+            .and_then(|v| v.clone().into_string().ok())
+            .as_deref()
+            == Some("Node");
+        kind_ok
+            && map
+                .get("metadata")
+                .and_then(|meta| meta.as_map_ref().ok().and_then(|m| m.get("name").cloned()))
+                .and_then(|v| v.into_string().ok())
+                .as_deref()
+                == Some(name)
+    })
+}
+
+/// Appends one `Node` mock per `instance.nodes` name not already mocked, in array order.
+///
+/// # Errors
+///
+/// Returns a [`common::Error`] when a node name is empty or a mock cannot round-trip through JSON.
+fn push_node_mocks(
+    instance: &super::vyniltest::VynilTestInstance,
+    k8s_mocks: &mut Vec<Dynamic>,
+) -> common::Result<()> {
+    for name in instance.nodes.iter().flatten() {
+        if name.is_empty() {
+            return Err(common::Error::Other(
+                "instance.nodes: empty node name".to_string(),
+            ));
+        }
+        if node_already_mocked(k8s_mocks, name) {
+            continue;
+        }
+        let node = serde_json::json!({ "apiVersion": "v1", "kind": "Node", "metadata": { "name": name } });
+        let text = serde_json::to_string(&node).map_err(common::Error::SerializationError)?;
+        k8s_mocks.push(serde_json::from_str(&text).map_err(common::Error::SerializationError)?);
+    }
+    Ok(())
+}
+
 /// Lit le `status` de l'instance mockée du test, tel que l'installation l'a persisté dans la
 /// base de mocks (`fun_name` : `get_<usage>_instance`). L'échec de lecture est rendu à
 /// l'appelant : `lint_sections` en fait une ligne `lint:sections`.
@@ -290,6 +334,14 @@ fn virtual_instance_dynamic(
     });
     let text = serde_json::to_string(&instance_obj).map_err(common::Error::SerializationError)?;
     serde_json::from_str(&text).map_err(common::Error::SerializationError)
+}
+
+/// Mocks and asserts collected by one templating walk over a test and its testSets.
+#[derive(Default)]
+struct Templated {
+    k8s: Vec<Dynamic>,
+    http: Vec<HttpMockItem>,
+    asserts: Vec<VynilAssert>,
 }
 
 // ── TestHandler ─────────────────────────────────────────────────────────────
@@ -448,70 +500,32 @@ impl TestHandler {
 
     /// Returns a fully resolved `VynilTest`: handlebars templates in mocks and
     /// asserts are evaluated, and all referenced testSets are merged in.
+    /// Test-only: asserts are rendered on the base context alone, so `{{values.x}}` fails in
+    /// strict mode; a run templates them on the real rhai context instead.
     ///
     /// # Errors
     ///
     /// Returns a [`common::Error`] when the test or a referenced testSet is missing, when
     /// templating fails, or when the virtual instance mock cannot be serialized.
-    pub fn get_templated_test(&self, name: &str) -> common::Result<VynilTest> {
-        let test = self
-            .tests
-            .get(name)
-            .ok_or_else(|| common::Error::Other(format!("Test '{name}' not found")))?;
+    #[cfg(test)]
+    fn get_templated_test(&self, name: &str) -> common::Result<VynilTest> {
+        self.resolve_test(name, true)
+    }
+
+    /// Resolves a test like `get_templated_test`; with `with_asserts` false, asserts are left
+    /// out so they can be templated later against the real rhai context.
+    fn resolve_test(&self, name: &str, with_asserts: bool) -> common::Result<VynilTest> {
+        let test = self.loaded_test(name)?;
         let package = &self.package;
 
-        let mut hbs = HandleBars::new();
+        let base_ctx = self.base_context(test)?;
+        let Templated {
+            k8s: mut k8s_mocks,
+            http: http_mocks,
+            asserts,
+        } = self.template_sources(test, &base_ctx, true, with_asserts)?;
 
-        // Build base context: package + instance (with appslug)
-        let slug = appslug(&package.metadata.name, &test.instance.name);
-        let mut inst = serde_json::to_value(&test.instance)?
-            .as_object()
-            .cloned()
-            .unwrap_or_default();
-        inst.insert("appslug".to_string(), serde_json::Value::String(slug));
-        let base_ctx = serde_json::json!({
-            "package": serde_json::to_value(package)?,
-            "instance": serde_json::Value::Object(inst),
-        });
-
-        let mut k8s_mocks: Vec<Dynamic> = Vec::new();
-        let mut http_mocks: Vec<HttpMockItem> = Vec::new();
-        let mut asserts: Vec<VynilAssert> = Vec::new();
-
-        // Template test's own mocks/asserts with base context
-        collect_templated(
-            &mut hbs,
-            &base_ctx,
-            test.mocks.as_ref(),
-            test.asserts.as_ref(),
-            &mut k8s_mocks,
-            &mut http_mocks,
-            &mut asserts,
-        )?;
-
-        // Merge each referenced testSet
-        if let Some(refs) = &test.testSets {
-            for ts_ref in refs {
-                let ts = self
-                    .test_sets
-                    .get(&ts_ref.testSet)
-                    .ok_or_else(|| common::Error::Other(format!("TestSet '{}' not found", ts_ref.testSet)))?;
-                let mut ctx = base_ctx.clone();
-                if let Some(obj) = ctx.as_object_mut() {
-                    obj.insert("var".to_string(), build_var_context(ts, ts_ref));
-                }
-
-                collect_templated(
-                    &mut hbs,
-                    &ctx,
-                    ts.mocks.as_ref(),
-                    ts.asserts.as_ref(),
-                    &mut k8s_mocks,
-                    &mut http_mocks,
-                    &mut asserts,
-                )?;
-            }
-        }
+        push_node_mocks(&test.instance, &mut k8s_mocks)?;
 
         // Build a virtual instance mock for the instance being tested,
         // so Rhai scripts can find it via get_{service,system,tenant}_instance().
@@ -548,6 +562,92 @@ impl TestHandler {
             },
             asserts: if asserts.is_empty() { None } else { Some(asserts) },
         })
+    }
+
+    fn loaded_test(&self, name: &str) -> common::Result<&VynilTest> {
+        self.tests
+            .get(name)
+            .ok_or_else(|| common::Error::Other(format!("Test '{name}' not found")))
+    }
+
+    /// Base templating context: `package` plus `instance` (with `appslug`).
+    fn base_context(&self, test: &VynilTest) -> common::Result<serde_json::Value> {
+        let slug = appslug(&self.package.metadata.name, &test.instance.name);
+        let mut inst = serde_json::to_value(&test.instance)?
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        inst.insert("appslug".to_string(), serde_json::Value::String(slug));
+        Ok(serde_json::json!({
+            "package": serde_json::to_value(&self.package)?,
+            "instance": serde_json::Value::Object(inst),
+        }))
+    }
+
+    /// Assert context: the rhai `context` as JSON (empty map when not a map), with `package`
+    /// replaced by the base one and the base `instance` keys merged over `context.instance`.
+    fn assert_context(&self, test: &VynilTest, context: &Dynamic) -> common::Result<serde_json::Value> {
+        let mut ctx = match serde_json::to_value(context).map_err(common::Error::SerializationError)? {
+            serde_json::Value::Object(map) => map,
+            _ => serde_json::Map::new(),
+        };
+        if let serde_json::Value::Object(base) = self.base_context(test)? {
+            for (key, value) in base {
+                match (ctx.get_mut(&key), value) {
+                    (Some(serde_json::Value::Object(existing)), serde_json::Value::Object(over))
+                        if key == "instance" =>
+                    {
+                        existing.extend(over);
+                    }
+                    (_, value) => {
+                        ctx.insert(key, value);
+                    }
+                }
+            }
+        }
+        Ok(serde_json::Value::Object(ctx))
+    }
+
+    /// Templates the test's own sources then each referenced testSet's (with `var`) on `ctx`,
+    /// keeping only the mocks and/or asserts asked for.
+    fn template_sources(
+        &self,
+        test: &VynilTest,
+        ctx: &serde_json::Value,
+        with_mocks: bool,
+        with_asserts: bool,
+    ) -> common::Result<Templated> {
+        let mut hbs = HandleBars::new();
+        let mut out = Templated::default();
+        collect_templated(
+            &mut hbs,
+            ctx,
+            test.mocks.as_ref().filter(|_| with_mocks),
+            test.asserts.as_ref().filter(|_| with_asserts),
+            &mut out.k8s,
+            &mut out.http,
+            &mut out.asserts,
+        )?;
+        for ts_ref in test.testSets.iter().flatten() {
+            let ts = self
+                .test_sets
+                .get(&ts_ref.testSet)
+                .ok_or_else(|| common::Error::Other(format!("TestSet '{}' not found", ts_ref.testSet)))?;
+            let mut ts_ctx = ctx.clone();
+            if let Some(obj) = ts_ctx.as_object_mut() {
+                obj.insert("var".to_string(), build_var_context(ts, ts_ref));
+            }
+            collect_templated(
+                &mut hbs,
+                &ts_ctx,
+                ts.mocks.as_ref().filter(|_| with_mocks),
+                ts.asserts.as_ref().filter(|_| with_asserts),
+                &mut out.k8s,
+                &mut out.http,
+                &mut out.asserts,
+            )?;
+        }
+        Ok(out)
     }
 
     /// Validates that every `TestSet` referenced in a Test's testSets exists.
@@ -611,8 +711,8 @@ impl TestHandler {
         created_objects: &Arc<Mutex<Vec<Dynamic>>>,
         suppressions: &mut Vec<Suppression>,
     ) -> common::Result<Vec<VynilAssertResult>> {
-        // Resolve test: merge testSets, template mocks/asserts
-        let test = self.get_templated_test(name)?;
+        // Resolve test: merge testSets, template mocks only (asserts need the rhai context)
+        let test = self.resolve_test(name, false)?;
 
         // Extract mocks and asserts from resolved test
         let k8s_mocks = test
@@ -632,9 +732,10 @@ impl TestHandler {
             VynilPackageType::System => "system",
             VynilPackageType::Service => "service",
         };
+        let config_dir = self.run_config_dir(&test.instance)?;
         let resolver_path = vec![
             format!("{}/scripts", self.package_dir.display()),
-            self.config_dir.display().to_string(),
+            config_dir.display().to_string(),
             format!("{}/{type_dir}", self.script_dir.display()),
             format!("{}/lib", self.script_dir.display()),
         ];
@@ -671,7 +772,7 @@ impl TestHandler {
         };
 
         // Build args for the rhai script
-        let args = self.build_test_args(&test, &controller_values);
+        let args = self.build_test_args(&test, &config_dir, &controller_values);
         rhai.set_dynamic("args", &args);
 
         // Build instance object for rhai (kept out of the runtime wiring on purpose)
@@ -682,17 +783,30 @@ impl TestHandler {
             VynilPackageType::Service => "get_service_instance",
         };
 
-        // Run the install script
-        let _ = rhai.eval(
+        // Build the context, then run the install script (`instance` and `context` stay in scope)
+        let context = rhai.eval(
             format!(
                 "import(\"context\") as ctx;\n\
             let instance = {fun_name}(args.namespace, args.instance);\n\
             let context = ctx::run(instance, args);\n\
-            import(\"install\") as install;\n\
-            install::run(instance, context);"
+            context"
             )
             .as_str(),
         )?;
+        let _ = rhai.eval("import(\"install\") as install;\ninstall::run(instance, context);")?;
+
+        // Template asserts against the same context the scripts and templates received
+        let loaded = self.loaded_test(name)?;
+        let assert_ctx = self.assert_context(loaded, &context)?;
+        let asserts_tpl = self.template_sources(loaded, &assert_ctx, false, true)?.asserts;
+        let test = VynilTest {
+            asserts: if asserts_tpl.is_empty() {
+                None
+            } else {
+                Some(asserts_tpl)
+            },
+            ..test
+        };
 
         // Validate asserts against created objects, then copy them for the lint lane
         let objects = created_objects
@@ -719,8 +833,50 @@ impl TestHandler {
         Ok(asserts)
     }
 
+    /// Configuration directory of a run: the handler's one, or `<package_dir>/tests/<config_dir>`
+    /// when the instance names a sub-directory of `tests/`.
+    fn run_config_dir(&self, instance: &super::vyniltest::VynilTestInstance) -> common::Result<PathBuf> {
+        let Some(rel) = &instance.config_dir else {
+            return Ok(self.config_dir.clone());
+        };
+        let rel_path = Path::new(rel);
+        let inside = rel_path.components().next().is_some()
+            && rel_path
+                .components()
+                .all(|c| matches!(c, std::path::Component::Normal(_)));
+        if !inside {
+            return Err(common::Error::Other(format!(
+                "instance.config_dir: '{rel}' must be a relative path inside tests/"
+            )));
+        }
+        let tests_dir = self.package_dir.join("tests");
+        let dir = tests_dir.join(rel_path);
+        if !dir.is_dir() {
+            return Err(common::Error::Other(format!(
+                "instance.config_dir: '{rel}' is not a directory"
+            )));
+        }
+        // Resolve symlinks: a link inside tests/ must not lead outside of it
+        let (Ok(root), Ok(resolved)) = (tests_dir.canonicalize(), dir.canonicalize()) else {
+            return Err(common::Error::Other(format!(
+                "instance.config_dir: '{rel}' is not a directory"
+            )));
+        };
+        if !resolved.starts_with(&root) {
+            return Err(common::Error::Other(format!(
+                "instance.config_dir: '{rel}' resolves outside tests/"
+            )));
+        }
+        Ok(resolved)
+    }
+
     /// Builds the rhai `args` object exposed to the install scripts during a test run.
-    fn build_test_args(&self, test: &VynilTest, controller_values: &str) -> serde_json::Value {
+    fn build_test_args(
+        &self,
+        test: &VynilTest,
+        config_dir: &Path,
+        controller_values: &str,
+    ) -> serde_json::Value {
         serde_json::json!({
             "namespace": test.instance.namespace,
             "instance": test.instance.name,
@@ -730,7 +886,7 @@ impl TestHandler {
             "template_dir": self.template_dir.display().to_string(),
             "agent_image": common::DEFAULT_AGENT_IMAGE,
             "tag": "0.1.0",
-            "config_dir": self.config_dir.display().to_string(),
+            "config_dir": config_dir.display().to_string(),
             "controller_values": controller_values,
         })
     }
@@ -1139,5 +1295,466 @@ mod tests {
         assert_eq!(rows.len(), 1, "{rows:?}");
         assert_eq!(rows[0].name, "lint:sections");
         assert!(!rows[0].passed);
+    }
+
+    // ── Contexte d'asserts ──────────────────────────────────────────────────
+
+    /// Comme `fixture`, avec le `context.rhai` donné à la place du contexte vide.
+    fn fixture_with_context(tests: &[(&str, String)], context: &str, install: &str) -> Fixture {
+        let fx = fixture(tests, install, None);
+        fs::write(fx.package.join("scripts").join("context.rhai"), context).expect("context.rhai");
+        fx
+    }
+
+    /// `ctx::run` rend une carte portant toutes les clés du contexte réel d'un paquet.
+    const CONTEXT_FULL: &str = r#"fn run(instance, args) {
+    #{
+        instance: #{
+            name: instance.metadata.name,
+            namespace: instance.metadata.namespace,
+            appslug: "from-context",
+            labels: #{ app: "from-context" }
+        },
+        values: #{ name: "alpha" },
+        defaults: #{ replicas: 3 },
+        cluster: #{ ha: true },
+        tenant: #{ name: "acme" },
+        controller: #{ flavour: "vanilla" }
+    }
+}
+"#;
+
+    /// Installation aux nom et labels littéraux : seul un assert rendu sur `CONTEXT_FULL` les retrouve.
+    const INSTALL_LITERAL_CM: &str = r#"fn run(instance, context) {
+    let h = k8s_resource("configmaps", "app");
+    h.create(#{ apiVersion: "v1", kind: "ConfigMap", metadata: #{
+        name: "cm-alpha", namespace: "app",
+        labels: #{ tenant: "acme", ha: "true", replicas: "3", flavour: "vanilla" }
+    } });
+}
+"#;
+
+    /// Test `default` dont l'instance est `instance_yaml` et les asserts `asserts_yaml`.
+    fn test_doc(instance_yaml: &str, asserts_yaml: &str) -> String {
+        format!(
+            "apiVersion: vinyl.solidite.fr/v1beta1\nkind: Test\nmetadata:\n  name: default\ninstance:\n{instance_yaml}{asserts_yaml}"
+        )
+    }
+
+    const DEMO_INSTANCE: &str = "  name: demo\n  namespace: app\n";
+
+    /// Lignes enregistrées du premier test du collecteur.
+    fn rows(h: &TestHandler) -> Vec<Value> {
+        report(h)["tests"][0]["asserts"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn asserts_resolve_against_the_real_context() {
+        let asserts = "asserts:\n  - name: from-context\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: \"cm-{{values.name}}\"\n      namespace: app\n    value:\n      metadata:\n        labels:\n          tenant: \"{{tenant.name}}\"\n          ha: \"{{cluster.ha}}\"\n          replicas: \"{{defaults.replicas}}\"\n          flavour: \"{{controller.flavour}}\"\n";
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(DEMO_INSTANCE, asserts))],
+            CONTEXT_FULL,
+            INSTALL_LITERAL_CM,
+        );
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "from-context", "{rows:?}");
+        assert_eq!(rows[0]["passed"], true, "{rows:?}");
+    }
+
+    #[test]
+    fn base_instance_keys_win_over_context_instance() {
+        let slug = appslug("demo", "web");
+        let install = format!(
+            r#"fn run(instance, context) {{
+    let h = k8s_resource("configmaps", "app");
+    h.create(#{{ apiVersion: "v1", kind: "ConfigMap", metadata: #{{
+        name: "{slug}-big", namespace: "app", labels: #{{ app: "from-context", pkg: "demo" }}
+    }} }});
+}}
+"#
+        );
+        let instance = "  name: web\n  namespace: app\n  options:\n    size: big\n";
+        let asserts = "asserts:\n  - name: base-wins\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: \"{{instance.appslug}}-{{instance.options.size}}\"\n      namespace: \"{{instance.namespace}}\"\n    value:\n      metadata:\n        labels:\n          app: \"{{instance.labels.app}}\"\n          pkg: \"{{package.metadata.name}}\"\n";
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(instance, asserts))],
+            CONTEXT_FULL,
+            &install,
+        );
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["passed"], true, "{rows:?}");
+    }
+
+    #[test]
+    fn testset_asserts_see_real_context_and_var() {
+        let testset = "apiVersion: vinyl.solidite.fr/v1beta1\nkind: TestSet\nmetadata:\n  name: suffixed\nvariables:\n  suffix:\n    type: string\n    default: none\nasserts:\n  - name: suffixed-cm\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: \"cm-{{values.name}}-{{var.suffix}}\"\n      namespace: app\n".to_string();
+        let test = test_doc(
+            DEMO_INSTANCE,
+            "testSets:\n  - testSet: suffixed\n    variables:\n      suffix: beta\n",
+        );
+        let install = r#"fn run(instance, context) {
+    let h = k8s_resource("configmaps", "app");
+    h.create(#{ apiVersion: "v1", kind: "ConfigMap", metadata: #{ name: "cm-alpha-beta", namespace: "app" } });
+}
+"#;
+        let fx = fixture_with_context(
+            &[("default.yaml", test), ("suffixed.yaml", testset)],
+            CONTEXT_FULL,
+            install,
+        );
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "suffixed-cm", "{rows:?}");
+        assert_eq!(rows[0]["passed"], true, "{rows:?}");
+    }
+
+    #[test]
+    fn non_map_context_keeps_package_and_instance() {
+        let slug = appslug("demo", "web");
+        let asserts = "asserts:\n  - name: base-only\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: \"{{instance.appslug}}\"\n      namespace: \"{{instance.namespace}}\"\n    value:\n      metadata:\n        labels:\n          pkg: \"{{package.metadata.name}}\"\n";
+        let install = format!(
+            r#"fn run(instance, context) {{
+    let h = k8s_resource("configmaps", "app");
+    h.create(#{{ apiVersion: "v1", kind: "ConfigMap", metadata: #{{ name: "{slug}", namespace: "app", labels: #{{ pkg: "demo" }} }} }});
+}}
+"#
+        );
+        let fx = fixture_with_context(
+            &[(
+                "default.yaml",
+                test_doc("  name: web\n  namespace: app\n", asserts),
+            )],
+            "fn run(instance, args) { () }\n",
+            &install,
+        );
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["passed"], true, "{rows:?}");
+    }
+
+    #[test]
+    fn unknown_assert_variable_fails_after_install() {
+        let asserts = "asserts:\n  - name: missing\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: \"{{values.missing}}\"\n";
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(DEMO_INSTANCE, asserts))],
+            CONTEXT_FULL,
+            INSTALL_LITERAL_CM,
+        );
+        let mut h = handler(&fx);
+        let created = sink();
+        h.run_test("default", &created);
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "execution", "{rows:?}");
+        assert_eq!(rows[0]["passed"], false, "{rows:?}");
+        let message = rows[0]["message"].as_str().unwrap_or_default();
+        assert!(message.contains("values.missing"), "{message}");
+        assert_eq!(created.lock().map(|o| o.len()).unwrap_or_default(), 1);
+    }
+
+    // ── Nodes de l'instance ─────────────────────────────────────────────────
+
+    /// `cluster.ha` dérivé du nombre de Nodes listés, comme `build_context.rhai`.
+    const CONTEXT_HA_FROM_NODES: &str = r#"fn run(instance, args) {
+    let nodes = k8s_resource("Node").list_meta().items.map(|c| c.metadata.name);
+    #{ cluster: #{ ha: nodes.len() > 1 } }
+}
+"#;
+
+    /// Installation qui crée `app/ha` seulement quand `cluster.ha`.
+    const INSTALL_HA_ONLY: &str = r#"fn run(instance, context) {
+    if context.cluster.ha {
+        let h = k8s_resource("configmaps", "app");
+        h.create(#{ apiVersion: "v1", kind: "ConfigMap", metadata: #{ name: "ha", namespace: "app" } });
+    }
+}
+"#;
+
+    /// Résultat `(passed, rows)` d'un test à l'unique assert `ha-cm` (`matcher` donné) sur les `nodes` donnés.
+    fn run_ha_test(nodes: &str, matcher: &str) -> (bool, Vec<Value>) {
+        let instance = format!("{DEMO_INSTANCE}  nodes: {nodes}\n");
+        let asserts = format!(
+            "asserts:\n  - name: ha-cm\n    matcher: {matcher}\n    selector:\n      kind: ConfigMap\n      name: ha\n      namespace: app\n"
+        );
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(&instance, &asserts))],
+            CONTEXT_HA_FROM_NODES,
+            INSTALL_HA_ONLY,
+        );
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        let passed = rows.len() == 1 && rows[0]["name"] == "ha-cm" && rows[0]["passed"] == true;
+        (passed, rows)
+    }
+
+    #[test]
+    fn several_nodes_make_the_cluster_ha() {
+        let (passed, rows) = run_ha_test("[m1, w1]", "\n      exact: 1");
+        assert!(passed, "{rows:?}");
+    }
+
+    #[test]
+    fn a_single_node_is_not_ha() {
+        let (passed, rows) = run_ha_test("[m1]", "none");
+        assert!(passed, "{rows:?}");
+        // Sans Nodes du tout, `none` passerait aussi : vérifier que deux Nodes font bien échouer `none`.
+        let (passed, rows) = run_ha_test("[m1, w1]", "none");
+        assert!(!passed, "{rows:?}");
+    }
+
+    /// `(kind, metadata.name)` des mocks k8s d'un test résolu.
+    fn mock_kinds_and_names(test: &VynilTest) -> Vec<(String, String)> {
+        let mocks = test
+            .mocks
+            .as_ref()
+            .and_then(|m| m.kubernetes.clone())
+            .unwrap_or_default();
+        mocks
+            .iter()
+            .map(|d| {
+                let v: Value = serde_json::to_value(d).expect("mock sérialisable");
+                (
+                    v["kind"].as_str().unwrap_or_default().to_string(),
+                    v["metadata"]["name"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn node_mocks_precede_the_virtual_instance_without_duplicates() {
+        let instance = format!("{DEMO_INSTANCE}  nodes: [m1, w1, w1]\n");
+        let mocks = "mocks:\n  kubernetes:\n    - apiVersion: v1\n      kind: Node\n      metadata:\n        name: m1\n";
+        let fx = fixture(
+            &[("default.yaml", test_doc(&instance, mocks))],
+            INSTALL_ONE_CONFIGMAP,
+            None,
+        );
+        let test = handler(&fx).get_templated_test("default").expect("test résolu");
+        let pairs = mock_kinds_and_names(&test);
+        let expected = [("Node", "m1"), ("Node", "w1"), ("TenantInstance", "demo")]
+            .map(|(k, n)| (k.to_string(), n.to_string()));
+        assert_eq!(pairs, expected);
+    }
+
+    #[test]
+    fn an_empty_node_name_is_rejected() {
+        let instance = format!("{DEMO_INSTANCE}  nodes: [m1, \"\"]\n");
+        let fx = fixture(
+            &[("default.yaml", test_doc(&instance, ""))],
+            INSTALL_ONE_CONFIGMAP,
+            None,
+        );
+        let mut h = handler(&fx);
+        let err = h.get_templated_test("default").expect_err("nom vide rejeté");
+        assert!(
+            err.to_string().ends_with("instance.nodes: empty node name"),
+            "{err}"
+        );
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "execution");
+        let message = rows[0]["message"].as_str().unwrap_or_default();
+        assert!(message.ends_with("instance.nodes: empty node name"), "{message}");
+    }
+
+    // ── Répertoire de configuration du test ─────────────────────────────────
+
+    /// `cluster` lu de `agent.yaml` comme `build_context.rhai` : `ha` absent → nombre de Nodes.
+    const CONTEXT_AGENT_YAML: &str = r#"fn run(instance, args) {
+    let path = `${args.config_dir}/agent.yaml`;
+    let cfg = if is_file(path) { yaml_decode(file_read(path)) } else { #{} };
+    if !("ha" in cfg.keys()) {
+        cfg["ha"] = k8s_resource("Node").list_meta().items.len() > 1;
+    }
+    #{ cluster: cfg }
+}
+"#;
+
+    /// Écrit `files` (chemin relatif à `tests/`, contenu) dans le package de la fixture.
+    fn write_test_files(fx: &Fixture, files: &[(&str, &str)]) {
+        for (rel, body) in files {
+            let path = fx.package.join("tests").join(rel);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("dossier de test");
+            }
+            fs::write(path, body).expect("fichier de test");
+        }
+    }
+
+    /// Lance le test `default` (un seul Node, assert `ha-cm` au `matcher` donné) avec
+    /// `config_dir` optionnel ; rend `(passed, rows)`.
+    fn run_config_dir_test(config_dir: Option<&str>, matcher: &str) -> (bool, Vec<Value>) {
+        let dir = config_dir
+            .map(|d| format!("  config_dir: \"{d}\"\n"))
+            .unwrap_or_default();
+        let instance = format!("{DEMO_INSTANCE}  nodes: [m1]\n{dir}");
+        let asserts = format!(
+            "asserts:\n  - name: ha-cm\n    matcher: {matcher}\n    selector:\n      kind: ConfigMap\n      name: ha\n      namespace: app\n"
+        );
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(&instance, &asserts))],
+            CONTEXT_AGENT_YAML,
+            INSTALL_HA_ONLY,
+        );
+        write_test_files(&fx, &[("ha/agent.yaml", "ha: true\n")]);
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        let passed = rows.len() == 1 && rows[0]["name"] == "ha-cm" && rows[0]["passed"] == true;
+        (passed, rows)
+    }
+
+    #[test]
+    fn config_dir_agent_yaml_drives_the_cluster() {
+        let (passed, rows) = run_config_dir_test(Some("ha"), "\n      exact: 1");
+        assert!(passed, "{rows:?}");
+        // Sans `config_dir`, le Node unique laisse `cluster.ha` à `false`.
+        let (passed, rows) = run_config_dir_test(None, "none");
+        assert!(passed, "{rows:?}");
+    }
+
+    #[test]
+    fn config_dir_resolves_rhai_modules() {
+        let install = r#"fn run(instance, context) {
+    import "extra" as extra;
+    let h = k8s_resource("configmaps", "app");
+    h.create(#{ apiVersion: "v1", kind: "ConfigMap", metadata: #{ name: extra::name(), namespace: "app" } });
+}
+"#;
+        let instance = format!("{DEMO_INSTANCE}  config_dir: cfg\n");
+        let asserts = "asserts:\n  - name: from-module\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: from-config\n      namespace: app\n";
+        let fx = fixture(&[("default.yaml", test_doc(&instance, asserts))], install, None);
+        write_test_files(&fx, &[("cfg/extra.rhai", "fn name() { \"from-config\" }\n")]);
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["passed"], true, "{rows:?}");
+    }
+
+    /// Lignes d'un test `default` dont `instance.config_dir` vaut `config_dir`, et taille du sink.
+    fn run_with_config_dir(config_dir: &str) -> (Vec<Value>, usize) {
+        let instance = format!("{DEMO_INSTANCE}  config_dir: \"{config_dir}\"\n");
+        let fx = fixture(
+            &[("default.yaml", test_doc(&instance, ""))],
+            INSTALL_ONE_CONFIGMAP,
+            None,
+        );
+        let mut h = handler(&fx);
+        let created = sink();
+        h.run_test("default", &created);
+        let count = created.lock().map(|o| o.len()).unwrap_or_default();
+        (rows(&h), count)
+    }
+
+    #[test]
+    fn a_config_dir_escaping_tests_is_rejected() {
+        for dir in ["/etc", "../scripts", "ha/../../scripts", ".", ""] {
+            let (rows, created) = run_with_config_dir(dir);
+            assert_eq!(rows.len(), 1, "{dir}: {rows:?}");
+            assert_eq!(rows[0]["name"], "execution", "{dir}: {rows:?}");
+            let message = rows[0]["message"].as_str().unwrap_or_default();
+            let expected = format!("instance.config_dir: '{dir}' must be a relative path inside tests/");
+            assert!(message.ends_with(&expected), "{dir}: {message}");
+            assert_eq!(created, 0, "{dir}: aucun script ne doit tourner");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_config_dir_symlinked_outside_tests_is_rejected() {
+        let instance = |dir: &str| format!("{DEMO_INSTANCE}  config_dir: {dir}\n");
+        let fx = fixture(
+            &[
+                (
+                    "out.yaml",
+                    test_doc(&instance("out"), "").replace("name: default", "name: out"),
+                ),
+                (
+                    "alias.yaml",
+                    test_doc(&instance("alias"), "").replace("name: default", "name: alias"),
+                ),
+            ],
+            INSTALL_ONE_CONFIGMAP,
+            None,
+        );
+        let tests_dir = fx.package.join("tests");
+        let outside = fx.package.parent().expect("racine de la fixture").join("outside");
+        fs::create_dir_all(&outside).expect("dossier extérieur");
+        fs::create_dir_all(tests_dir.join("real")).expect("dossier de tests/");
+        std::os::unix::fs::symlink(&outside, tests_dir.join("out")).expect("lien vers l'extérieur");
+        std::os::unix::fs::symlink(tests_dir.join("real"), tests_dir.join("alias")).expect("lien interne");
+        let mut h = handler(&fx);
+
+        let created = sink();
+        h.run_test("out", &created);
+        let doc = report(&h);
+        let out = &doc["tests"][0]["asserts"];
+        assert_eq!(out.as_array().map(Vec::len), Some(1), "{out}");
+        assert_eq!(out[0]["name"], "execution", "{out}");
+        let message = out[0]["message"].as_str().unwrap_or_default();
+        assert!(
+            message.ends_with("instance.config_dir: 'out' resolves outside tests/"),
+            "{message}"
+        );
+        assert_eq!(created.lock().map(|o| o.len()).unwrap_or_default(), 0);
+
+        let created = sink();
+        h.run_test("alias", &created);
+        let doc = report(&h);
+        let alias = &doc["tests"][1]["asserts"];
+        assert_eq!(
+            alias.as_array().map(Vec::len),
+            Some(0),
+            "lien interne accepté : {alias}"
+        );
+        assert_eq!(created.lock().map(|o| o.len()).unwrap_or_default(), 1);
+    }
+
+    #[test]
+    fn a_missing_config_dir_is_rejected() {
+        let (rows, created) = run_with_config_dir("nope");
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "execution", "{rows:?}");
+        let message = rows[0]["message"].as_str().unwrap_or_default();
+        assert!(
+            message.ends_with("instance.config_dir: 'nope' is not a directory"),
+            "{message}"
+        );
+        assert_eq!(created, 0);
+    }
+
+    #[test]
+    fn mocks_do_not_see_the_rhai_context() {
+        let mocks = "mocks:\n  kubernetes:\n    - apiVersion: v1\n      kind: ConfigMap\n      metadata:\n        name: \"{{values.name}}\"\n        namespace: app\n";
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(DEMO_INSTANCE, mocks))],
+            CONTEXT_FULL,
+            INSTALL_LITERAL_CM,
+        );
+        let mut h = handler(&fx);
+        let created = sink();
+        h.run_test("default", &created);
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "execution", "{rows:?}");
+        let message = rows[0]["message"].as_str().unwrap_or_default();
+        assert!(message.contains("values.name"), "{message}");
+        assert_eq!(created.lock().map(|o| o.len()).unwrap_or_default(), 0);
     }
 }
