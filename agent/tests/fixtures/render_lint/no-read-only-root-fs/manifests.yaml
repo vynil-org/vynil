@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          securityContext:
+            readOnlyRootFilesystem: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sans-security-context
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: sans-security-context}
+  template:
+    metadata:
+      labels: {app: sans-security-context}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: racine-inscriptible
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: racine-inscriptible}
+  template:
+    metadata:
+      labels: {app: racine-inscriptible}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          securityContext:
+            readOnlyRootFilesystem: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: contexte-sans-champ
+  namespace: app
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: contexte-sans-champ}
+  template:
+    metadata:
+      labels: {app: contexte-sans-champ}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          securityContext:
+            runAsNonRoot: true
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-inscriptible
+  namespace: app
+spec:
+  initContainers:
+    - name: prepare
+      image: busybox:1.36
+      securityContext:
+        readOnlyRootFilesystem: true
+    - name: fetch
+      image: busybox:1.36
+  containers:
+    - name: main
+      image: busybox:1.36
+      securityContext:
+        readOnlyRootFilesystem: true
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-conforme
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: task
+              image: alpine:3.20
+              securityContext:
+                readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pas-un-workload
+  namespace: app
+spec:
+  ports:
+    - port: 80

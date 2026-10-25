@@ -1,0 +1,139 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      securityContext:
+        sysctls:
+          - {name: vm.max_map_count, value: "262144"}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reseau-non-sur
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: reseau-non-sur}
+  template:
+    metadata:
+      labels: {app: reseau-non-sur}
+    spec:
+      securityContext:
+        sysctls:
+          - {name: net.core.somaxconn, value: "1024"}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: noyau-deux-entrees
+  namespace: app
+spec:
+  serviceName: noyau-deux-entrees
+  replicas: 1
+  selector:
+    matchLabels: {app: noyau-deux-entrees}
+  template:
+    metadata:
+      labels: {app: noyau-deux-entrees}
+    spec:
+      securityContext:
+        sysctls:
+          - {name: kernel.shm_rmid_forced, value: "1"}
+          - {name: kernel.msgmax, value: "65536"}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: mqueue
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: mqueue}
+  template:
+    metadata:
+      labels: {app: mqueue}
+    spec:
+      securityContext:
+        sysctls:
+          - {name: fs.mqueue.queues_max, value: "256"}
+          - {name: fs.file-max, value: "100000"}
+      containers:
+        - name: agent
+          image: registry.example.test/agent:3.1.0
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: prefixe-proche
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        sysctls:
+          - {name: kernelx.msg, value: "1"}
+      containers:
+        - name: tache
+          image: registry.example.test/tache:1.0.0
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: reseau-cron
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            sysctls:
+              - {name: net.core.somaxconn, value: "1024"}
+              - {name: net.ipv4.ip_forward, value: "1"}
+          containers:
+            - name: tache
+              image: registry.example.test/tache:1.0.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sans-point-ni-casse
+  namespace: app
+spec:
+  securityContext:
+    sysctls:
+      - {name: net, value: "1"}
+      - {name: KERNEL.SEM, value: "1"}
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pas-un-workload
+  namespace: app
+data:
+  sysctl: net.core.somaxconn

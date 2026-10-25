@@ -1,0 +1,44 @@
+[
+  {
+    "rule": "env-value-from",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "ref-manquantes"
+  },
+  {
+    "rule": "env-value-from",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "ref-manquantes"
+  },
+  {
+    "rule": "env-value-from",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "ref-manquantes"
+  },
+  {
+    "rule": "env-value-from",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "ref-manquantes"
+  },
+  {
+    "rule": "env-value-from",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-ref-manquante"
+  },
+  {
+    "rule": "env-value-from",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "ref-mauvais-genre"
+  },
+  {
+    "rule": "env-value-from",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "ref-mauvais-genre"
+  }
+]

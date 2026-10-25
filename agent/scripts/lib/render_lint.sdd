@@ -1,0 +1,277 @@
+# Spec fichier de ./render_lint.rhai — le noyau de la bibliothèque de lint du rendu. Les
+# vérifications elles-mêmes vivent dans les modules thématiques (./render_lint_pod.sdd,
+# ./render_lint_workload.sdd, ./render_lint_network.sdd, ./render_lint_rbac.sdd) ; la
+# validation de schéma dans ./render_lint_schema.sdd.
+
+Spec: LibRenderLint
+
+Platform: librairie de scripts Rhai (moteur vynil-core)
+
+Purpose:
+  Fournir au script de lint d'une distribution les briques communes pour écrire et composer
+    des règles sur la liste d'objets rendus par un test : construire un constat, parcourir les
+    gabarits de pod et les conteneurs, appliquer des suppressions, et exécuter en bloc le
+    catalogue de vérifications portées de kube-linter. La bibliothèque ne choisit rien : aucune
+    vérification ne tourne tant que la distribution ne l'appelle pas, et les suppressions sont
+    désactivées tant qu'un préfixe n'est pas donné.
+
+Owns:
+  ./render_lint.rhai
+
+References:
+  ./render_lint_pod.sdd, ./render_lint_workload.sdd, ./render_lint_network.sdd,
+    ./render_lint_rbac.sdd — les vérifications du catalogue, importées ici par @all.
+  ./render_lint_schema.sdd — la validation de schéma, composée séparément par la distribution.
+  /agent/src/testing/lint/finding.sdd — la forme de constat que ces fonctions produisent et
+    que le moteur analyse strictement.
+  /agent/src/testing/lint/context.sdd — la forme de `ctx` reçue par les vérifications.
+
+Exposes:
+  Via la convention `import "render_lint" as render_lint` (l'alias porte le nom du module,
+    jamais `lint` : c'est le nom du point d'entrée `fn lint(objs, ctx)` du script de la distribution) :
+    @finding(rule, severity, obj, message) et @finding(rule, severity, obj, path, message) —
+      carte constat : `rule`, `severity` (`"error"` ou `"warn"`), `object` (carte
+      `apiVersion`, `kind`, `namespace` si présent, `name`), `message`, `path` si donné.
+    @object_ref(obj) — la carte `object` d'un objet.
+    @api_group_of(api_version) — le groupe d'API d'une `apiVersion` : la partie avant `/`
+      (`apps` pour `apps/v1`), la chaîne vide pour `v1` (groupe du noyau), `()` pour une
+      `apiVersion` sans `/` autre que `v1` (`v1beta1` n'a pas de groupe). Toutes les versions
+      d'un même groupe sont équivalentes.
+    @kind_of_group(obj, kinds, group) — vrai quand `obj` a l'un des kinds de `kinds` dans le
+      groupe `group` (`""` pour le noyau) ; la seule façon pour une vérification de reconnaître
+      un objet, un kind seul ne suffit jamais. Sert aussi à résoudre une référence
+      (`configMapKeyRef`, `secretKeyRef`) vers un objet du seul groupe du noyau.
+    @pod_templates(obj) — tableau de `#{ pod, path }` : `pod` est la carte du gabarit de pod
+      (avec `metadata` et `spec`) et `path` son chemin dans l'objet (`spec.template`,
+      `spec.jobTemplate.spec.template`, ou chaîne vide pour un `Pod`) ; tableau vide pour
+      tout objet qui n'embarque pas de pod. Couvre `Pod`, `Deployment`, `StatefulSet`,
+      `DaemonSet`, `ReplicaSet`, `ReplicationController`, `Job`, `CronJob`.
+    @containers(entry) — tableau de `#{ container, path, init }` pour une entrée de
+      @pod_templates : conteneurs puis conteneurs d'init, `path` complet de la forme
+      `spec.template.spec.containers[0]`, `init` booléen.
+    @suppression_reason(obj, rule, opts) — la valeur (chaîne, éventuellement vide) de
+      l'annotation `{opts.ignore_prefix}{rule}` de l'objet, ou `()` si elle est absente ou
+      si `ignore_prefix` n'est pas donné.
+    @apply_suppressions(findings, objs, opts) — le tableau de constats où chaque constat dont
+      l'objet porte l'annotation de suppression est marqué `suppressed: true`, avec `reason`
+      (si non vide) et `origin` (`annotation:{prefix}{rule}`).
+    @all(objs, ctx, opts) — `objs` est la liste plate (`objs.all` de l'argument du `lint` de la
+      distribution) ; le tableau de constats de toutes les vérifications activées sur
+      tous les objets, suppressions appliquées. Sans option, seules les vérifications actives par
+      défaut chez kube-linter s'exécutent (@default_checks). `ctx` est réservé : aucune
+      vérification portée ne le lit, et le transmettre à soixante vérifications pour chaque objet
+      le copierait 60 x N fois ; les vérifications reçoivent `()`.
+    @index(objs) — l'index de la liste d'objets : une carte de poignées `Multimap`
+      (/agent/src/testing/lint/multimap.sdd) construite par les quatre modules thématiques, que
+      @all passe en deuxième argument aux vérifications. Une distribution qui appelle une
+      vérification directement construit l'index avec cette fonction.
+    @checks() — le tableau trié des noms de vérifications portées (noms kube-linter, tirets).
+    @default_checks() — le tableau trié des noms de vérifications portées actives par défaut chez
+      kube-linter (« Enabled by default : Yes »).
+
+Accepts:
+  @opts, carte facultative, toutes clés facultatives :
+    `exclude` — noms de vérifications à ne pas exécuter (défaut : aucun).
+    `only` — si présent, seules ces vérifications s'exécutent.
+    `severity` — carte nom vers `"error"` ou `"warn"` qui remplace la sévérité de la
+      vérification (défaut de chaque vérification : `"error"`).
+    `params` — carte nom vers carte de paramètres passée à la vérification (mêmes noms de
+      paramètres que kube-linter).
+    `ignore_prefix` — préfixe des annotations de suppression ; absent, aucune suppression.
+    `require_reason` — booléen, défaut `false`.
+    `include_optional` — booléen, défaut `false` : exécuter aussi les vérifications que
+      kube-linter n'active pas par défaut.
+
+Must:
+  Exposer chaque vérification comme une fonction `{nom}(obj, idx, ctx, params)` de son module
+    thématique, où `nom` est le nom kube-linter dont les tirets deviennent des soulignés, et
+    qui retourne un tableau de constats (vide s'il n'y a rien à signaler). Une vérification ne
+    s'applique qu'aux kinds qu'elle concerne et retourne un tableau vide pour les autres.
+  Faire de @all un pur assemblage : pour chaque objet dans l'ordre, chaque vérification
+    activée dans l'ordre alphabétique GLOBAL de son nom, tous thèmes confondus ; l'ordre des
+    constats est donc déterministe et indépendant du thème qui porte la vérification.
+  Lire les seaux de l'index par `count` et `at` (./../../src/testing/lint/multimap.sdd) quand une
+    vérification parcourt le même seau pour chaque objet ou chaque politique — les cibles de
+    réseau, les étiquettes de Service, les cibles de PodDisruptionBudget — plutôt que par
+    `values`, qui recopie tout le seau à chaque appel. Le comportement observable ne change pas :
+    l'oracle reste le juge.
+  Ne signaler aucune anomalie de FORME : une entrée mal formée (une spec qui n'est pas un objet,
+    un `env` de mauvais type) donne un tableau vide. C'est la
+    validation de schéma (`render_lint_schema`) qui les signale ; @all ne l'appelle pas, et
+    l'exemple de script de distribution de la documentation appelle les deux.
+  Importer la bibliothèque dans le corps des fonctions des modules thématiques et non en tête :
+    ./render_lint.rhai importe les modules thématiques, un import en tête ferait un cycle.
+  Prendre pour `rule` d'un constat le nom kube-linter exact, tirets compris, pour qu'une liste
+    `exclude` ou une annotation de suppression soit portable d'un outil à l'autre.
+  Identifier un objet par son groupe d'API ET son kind, jamais par le kind seul : `Pod` et
+    `ReplicationController` du groupe noyau, `Deployment`, `StatefulSet`, `DaemonSet` et
+    `ReplicaSet` du groupe `apps`, `Job` et `CronJob` du groupe `batch`, toutes versions
+    confondues. Un objet de l'ancien groupe `extensions` ou d'un groupe tiers qui porte un kind
+    homonyme (`argoproj.io` `Job`, par exemple) est ignoré par les vérifications de workload, comme
+    l'outil de référence le fait.
+  Ne jamais recopier la liste d'objets par vérification : Rhai passe tout par valeur, et la donner
+    à chacune des soixante vérifications pour chaque objet est quadratique. Les vérifications qui
+    croisent plusieurs objets lisent l'index (@index) ; le coût de @all croît donc linéairement
+    avec le nombre d'objets, et le budget d'opérations du runner
+    (/agent/src/testing/lint/runner.sdd) est proportionnel au rendu.
+  Choisir les vérifications exécutées : avec `only`, exactement celles-là (une vérification
+    facultative nommée s'exécute) ; sinon le jeu actif par défaut, ou toutes avec
+    `include_optional` ; `exclude` retire dans tous les cas.
+  Refuser les options qui ne s'appliquent pas, par une erreur du script (donc une ligne
+    `lint:execution`) : clé d'option inconnue, nom de vérification inconnu dans `exclude`, `only`,
+    `severity` ou `params`, sévérité autre que `"error"` ou `"warn"`, paramètre inconnu d'une
+    vérification, valeur de paramètre du mauvais type ou hors énumération (`requirementsType:
+    "requests"`). Une option qui ne s'applique pas parce qu'elle est mal écrite ne doit jamais
+    passer en silence : `exclude: ["latest_tag"]` n'exclurait rien.
+  Appliquer `severity` après exécution de la vérification, sans qu'elle ait à le savoir.
+  Avec `require_reason` vrai, ne pas supprimer un constat dont l'annotation est vide et
+    ajouter à sa place un constat `suppression-without-reason` de sévérité `error`
+    nommant l'annotation, une seule fois par objet et règle. Sans `require_reason`, une annotation
+    vide supprime avec la raison explicite `(no reason given)` : le moteur refuse une
+    suppression sans raison (/agent/src/testing/lint/finding.sdd).
+  Attribuer la logique des vérifications portées à kube-linter (Apache-2.0) : le `NOTICE` du
+    dépôt, l'en-tête de chaque module et la documentation le disent, puisque les expressions
+    régulières par défaut, les paramètres, les noms et la sémantique mesurée en sont repris.
+  Ne rien produire à l'import : les effets sont derrière les fonctions.
+
+Must not:
+  Lire autre chose que ses arguments : ni cluster, ni fichier, ni variable d'environnement.
+  Lever sur une forme d'objet inattendue (champ absent, type différent) : une vérification
+    qui ne reconnaît pas la structure retourne un tableau vide.
+
+Tasks:
+  [x] Couvrir chaque scénario par un test d'intégration dans
+      `/agent/tests/render_lint.rs`, portant le nom de sa ligne `Test @`.
+  [x] Assembler @all et @checks par une liste explicite écrite à la main dans ./render_lint.rhai :
+      une suite d'appels `thème::nom_de_verification(obj, objs, ctx, params)` par thème, dans
+      l'ordre alphabétique des noms. Décision : Rhai ne ré-exporte pas les fonctions d'un module
+      importé et n'appelle pas une fonction par nom à travers un module ; la liste explicite est
+      le mécanisme le plus lisible et le test de catalogue de /agent/tests/lint_oracle.sdd (une
+      entrée `ported` = une fonction de module = un nom de @checks) détecte tout oubli.
+
+Done when:
+  Chaque scénario a un test passant et la spec de chaque module thématique est satisfaite.
+
+Scenario: the default set is the tool default
+  Given un Deployment d'image `latest`, sans label `owner` et sans sonde de disponibilité
+  When @all s'exécute sans option, puis avec `include_optional: true`
+  Then le premier appel signale `latest-tag` et ni `required-label-owner` ni
+    `no-readiness-probe` ; le second signale les trois
+  Test @the-default-set-is-the-tool-default
+
+Scenario: only runs an optional check it names
+  Given le même Deployment
+  When @all s'exécute avec `only: ["required-label-owner"]`
+  Then seul `required-label-owner` est signalé
+  Test @only-runs-an-optional-check-it-names
+
+Scenario: default checks are a subset of checks
+  Given @checks et @default_checks
+  When on les compare
+  Then chaque nom de @default_checks figure dans @checks
+  Test @default-checks-are-a-subset-of-checks
+
+Scenario: a misspelled option is refused
+  Given une option inconnue, un nom de vérification inconnu dans `exclude`, `only`, `severity`
+    ou `params`, une sévérité hors `error`/`warn`, et un `ignore_prefix` ou un `require_reason`
+    du mauvais type
+  When @all s'exécute avec chacune
+  Then chaque appel est une erreur du script qui nomme l'option fautive
+  Test @a-misspelled-option-is-refused
+
+Scenario: an invalid parameter is refused instead of disabling the check
+  Given `requirementsType: "requests"`, un `BlockList` qui est une chaîne, un paramètre inconnu,
+    un `minReplicas` chaîne, un `port` chaîne ou décimal, une borne `lowerBoundMB` ou
+    `upperBoundMillis` décimale (kube-linter les tronque) et un `forbiddenServiceTypes` chaîne
+  When @all s'exécute avec chacun
+  Then chaque appel est une erreur du script qui nomme le paramètre fautif
+  Test @an-invalid-parameter-is-refused-instead-of-disabling-the-check
+
+Scenario: a valid parameter is still applied
+  Given `params: #{"latest-tag": #{BlockList: ["^never-matches$"]}}`
+  When @all s'exécute sur un Deployment d'image `latest`
+  Then aucun constat `latest-tag`
+  Test @a-valid-parameter-is-still-applied
+
+Scenario: an empty annotation suppresses with an explicit reason
+  Given une annotation de suppression à la valeur vide et `require_reason` absent
+  When @all s'exécute
+  Then le constat est `suppressed: true` avec `reason: "(no reason given)"`
+  Test @an-empty-annotation-suppresses-with-an-explicit-reason
+
+Scenario: a large render stays within the operation budget
+  Given un rendu de quatre cents objets (Deployments, Services, ServiceAccounts, Secrets qui se
+    référencent) et un script de lint qui appelle @all avec `include_optional: true`
+  When @run_test du runner de production s'exécute
+  Then aucune ligne `lint:execution`
+  Test @a-large-render-stays-within-the-operation-budget (/agent/tests/render_lint_load.rs)
+
+Scenario: finding carries the object identity
+  Given un Deployment `web` du namespace `app`
+  When `render_lint::finding("latest-tag", "error", obj, "image uses latest")` est évalué
+  Then la carte porte `rule`, `severity: "error"`, `object` avec `kind: "Deployment"`,
+    `namespace: "app"`, `name: "web"` et `message`
+  Test @finding-carries-the-object-identity
+
+Scenario: pod templates cover every workload shape
+  Given un Deployment, un CronJob, un Pod nu et un ConfigMap
+  When @pod_templates est évalué sur chacun
+  Then les chemins sont `spec.template`, `spec.jobTemplate.spec.template` et une chaîne
+    vide, et le ConfigMap rend un tableau vide
+  Test @pod-templates-cover-every-workload-shape
+
+Scenario: containers include init containers with full paths
+  Given un gabarit avec un conteneur et un conteneur d'init
+  When @containers est évalué
+  Then deux entrées : `...containers[0]` avec `init: false` puis `...initContainers[0]`
+    avec `init: true`
+  Test @containers-include-init-containers-with-full-paths
+
+Scenario: no prefix means no suppression
+  Given un objet portant l'annotation `ignore-check.example/latest-tag: "legacy"`
+  When @all s'exécute sans `ignore_prefix`
+  Then le constat `latest-tag` n'est pas supprimé
+  Test @no-prefix-means-no-suppression
+
+Scenario: annotation suppresses with its reason
+  Given le même objet et `ignore_prefix: "ignore-check.example/"`
+  When @all s'exécute
+  Then le constat est `suppressed: true` avec `reason: "legacy"`
+  Test @annotation-suppresses-with-its-reason
+
+Scenario: an empty reason is refused when required
+  Given l'annotation de suppression à la valeur vide et `require_reason: true`
+  When @all s'exécute
+  Then le constat d'origine reste non supprimé et un constat `suppression-without-reason`
+    est ajouté une seule fois
+  Test @an-empty-reason-is-refused-when-required
+
+Scenario: exclude and only select checks
+  Given un objet qui déclenche `latest-tag` et `no-read-only-root-fs`
+  When @all s'exécute avec `exclude: ["latest-tag"]`, puis avec `only: ["latest-tag"]`
+  Then le premier appel ne rend que `no-read-only-root-fs` et le second que `latest-tag`
+  Test @exclude-and-only-select-checks
+
+Scenario: severity override applies after the check
+  Given `severity: #{"latest-tag": "warn"}`
+  When @all s'exécute
+  Then les constats `latest-tag` sont `warn` et les autres restent `error`
+  Test @severity-override-applies-after-the-check
+
+Scenario: a kind is only recognised in its own API group
+  Given un Deployment `apps/v1`, un Deployment `extensions/v1beta1` et une ressource tierce de
+    groupe `example.io` et de kind `Deployment`, tous trois d'image `nginx:latest`
+  When @pod_templates est évalué sur chacun
+  Then seul le Deployment `apps/v1` porte un gabarit de pod ; les deux autres rendent un
+    tableau vide
+  Test @a-kind-is-only-recognised-in-its-own-api-group
+
+Scenario: the documented distribution script runs
+  Given le script `lint.rhai` de l'exemple de /docs/tooling/render-lint.md, recopié dans le test,
+    et un Deployment sans label `team` dont les conteneurs ont une forme invalide
+  When il s'exécute sur ce Deployment
+  Then il retourne le constat `team-label` de la règle maison, et un constat `schema/invalid`
+    de la validation de schéma : la forme invalide n'est pas silencieuse
+  And une modification de l'exemple de la documentation sans la même modification du test est
+    une dérive à corriger
+  Test @the-documented-distribution-script-runs

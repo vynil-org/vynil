@@ -1,0 +1,116 @@
+[
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-default"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-default-and-rule"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-default-and-rule"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-empty-name-named"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-empty-svc-name"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-malformed-svc"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-missing"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-multi"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-multi"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-no-port-field"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-noport-name"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-noport-number"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-number-null"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-number-zero"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-other-ns"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-port-name"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-port-number"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-target-port-number"
+  },
+  {
+    "rule": "dangling-ingress",
+    "kind": "Ingress",
+    "namespace": "app",
+    "name": "ko-tiers-svc"
+  }
+]

@@ -1,0 +1,400 @@
+# Accès aux secrets (mesuré sur kube-linter v0.8.3) : un RoleBinding désigne un Role de MÊME
+# namespace par son seul nom (roleRef.kind et apiGroup ignorés, jamais un ClusterRole) ; un
+# ClusterRoleBinding désigne un ClusterRole par son seul nom (namespace et apiGroup ignorés, roleRef.kind
+# ignoré, jamais un Role). Une liaison est signalée une fois, quelles que soient ses règles
+# concordantes. Une règle concorde quand un de ses verbes ET une de ses ressources concordent (la
+# paire doit être dans la même règle) ; "*" concorde avec tout ; la liste par défaut contient "^*$",
+# qui concorde avec tout verbe. Les objets v1beta1 et les groupes tiers sont ignorés.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-get, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-list, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-update, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-foo, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["foo"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-star-verb, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-star-resource, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-pods-get, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-configmaps, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-two-rules, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-cross-rule, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["foo"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-apps-group, namespace: app}
+rules:
+- apiGroups: ["apps"]
+  resources: ["secrets"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-no-verbs, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-no-rules, namespace: app}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-get-in-app, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: Role
+metadata: {name: s-beta-only, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cr-secrets-get}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cr-secrets-update}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cr-secrets-star-in-ns, namespace: other}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cr-pods-get}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-get, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-list, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-list}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-update, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-update}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-foo, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-foo}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-star-verb, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-star-verb}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-star-resource, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-star-resource}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-pods-get, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-pods-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-configmaps, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-configmaps}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-two-rules, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-two-rules}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-cross-rule, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-cross-rule}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-apps-group, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-apps-group}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-no-verbs, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-no-verbs}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-no-rules, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-no-rules}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-get-no-subjects, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-get}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-get-two-subjects, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+- {kind: Group, name: ops, apiGroup: rbac.authorization.k8s.io}
+- {kind: ServiceAccount, name: sa-x, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-get-api-other, namespace: app}
+roleRef: {apiGroup: example.com, kind: Role, name: s-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-get-kind-clusterrole, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: s-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-other-namespace, namespace: other}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-get-in-app}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-to-clusterrole, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cr-secrets-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-missing-role, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-absent}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-beta-role, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-beta-only}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata: {name: rb-beta-binding, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: crb-cr-secrets-get}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cr-secrets-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: crb-cr-secrets-star-ns-other}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cr-secrets-star-in-ns}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: crb-kind-role}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: cr-secrets-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: crb-cr-secrets-update-api-other}
+roleRef: {apiGroup: example.com, kind: ClusterRole, name: cr-secrets-update}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: crb-cr-pods-get}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cr-pods-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: crb-role-only-name}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: s-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata: {name: crb-beta}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cr-secrets-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.example.com/v1
+kind: ClusterRoleBinding
+metadata: {name: crb-homonym}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cr-secrets-get}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-pods-update, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-pods-update, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-pods-update}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: s-star-update, namespace: app}
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-s-star-update, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: s-star-update}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}

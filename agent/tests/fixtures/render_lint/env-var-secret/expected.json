@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "env-var-secret",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-secret"
+  },
+  {
+    "rule": "env-var-secret",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "secret-litteral"
+  },
+  {
+    "rule": "env-var-secret",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "secret-litteral"
+  },
+  {
+    "rule": "env-var-secret",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-secret"
+  },
+  {
+    "rule": "env-var-secret",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "secret-init"
+  }
+]

@@ -1,0 +1,56 @@
+[
+  {
+    "rule": "dangling-networkpolicypeer-podselector",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-from-nomatch"
+  },
+  {
+    "rule": "dangling-networkpolicypeer-podselector",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-metadata-only"
+  },
+  {
+    "rule": "dangling-networkpolicypeer-podselector",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-operator"
+  },
+  {
+    "rule": "dangling-networkpolicypeer-podselector",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-other-namespace-target"
+  },
+  {
+    "rule": "dangling-networkpolicypeer-podselector",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-tiers-group"
+  },
+  {
+    "rule": "dangling-networkpolicypeer-podselector",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-two-ingress-peers"
+  },
+  {
+    "rule": "dangling-networkpolicypeer-podselector",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-two-ingress-peers"
+  },
+  {
+    "rule": "dangling-networkpolicypeer-podselector",
+    "kind": "NetworkPolicy",
+    "namespace": "app",
+    "name": "ko-two-ingress-peers"
+  },
+  {
+    "rule": "dangling-networkpolicypeer-podselector",
+    "kind": "NetworkPolicy",
+    "namespace": "solo",
+    "name": "ko-solo-empty-peer"
+  }
+]

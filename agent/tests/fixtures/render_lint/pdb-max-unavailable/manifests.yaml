@@ -1,0 +1,105 @@
+# Conforme : maxUnavailable à 1.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: ok-one, namespace: app}
+spec:
+  maxUnavailable: 1
+  selector: {matchLabels: {app: web}}
+---
+# Conforme : maxUnavailable en pourcentage non nul.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: ok-five-pct, namespace: app}
+spec:
+  maxUnavailable: "5%"
+  selector: {matchLabels: {app: web}}
+---
+# Conforme : maxUnavailable à 100%.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: ok-hundred-pct, namespace: app}
+spec:
+  maxUnavailable: "100%"
+  selector: {matchLabels: {app: web}}
+---
+# Conforme : maxUnavailable absent.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: ok-absent, namespace: app}
+spec:
+  selector: {matchLabels: {app: web}}
+---
+# Conforme : maxUnavailable nul, traité comme absent.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: ok-null, namespace: app}
+spec:
+  maxUnavailable: null
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : maxUnavailable à 0 (entier).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: zero-int, namespace: app}
+spec:
+  maxUnavailable: 0
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : maxUnavailable à 0% (pourcentage nul).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: zero-pct, namespace: app}
+spec:
+  maxUnavailable: "0%"
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : maxUnavailable à 0.0 (décimal nul).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: zero-float, namespace: app}
+spec:
+  maxUnavailable: 0.0
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : entier écrit en chaîne, valeur invalide pour maxUnavailable.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: str-one, namespace: app}
+spec:
+  maxUnavailable: "1"
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : chaîne sans pourcentage.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: str-abc, namespace: app}
+spec:
+  maxUnavailable: "abc"
+  selector: {matchLabels: {app: web}}
+---
+# Non conforme : chaîne vide.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: str-empty, namespace: app}
+spec:
+  maxUnavailable: ""
+  selector: {matchLabels: {app: web}}
+---
+# Hors scope : policy/v1beta1 n'est pas évaluée par l'outil, même invalide.
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata: {name: beta-zero, namespace: app}
+spec:
+  maxUnavailable: 0
+  selector: {matchLabels: {app: web}}
+---
+# Hors scope : un Deployment n'est pas une PodDisruptionBudget.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: app}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}

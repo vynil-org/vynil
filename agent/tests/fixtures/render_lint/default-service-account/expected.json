@@ -1,0 +1,62 @@
+[
+  {
+    "rule": "default-service-account",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-default"
+  },
+  {
+    "rule": "default-service-account",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "ds-default"
+  },
+  {
+    "rule": "default-service-account",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sa-absent"
+  },
+  {
+    "rule": "default-service-account",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sa-default"
+  },
+  {
+    "rule": "default-service-account",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sa-deprecie-default"
+  },
+  {
+    "rule": "default-service-account",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sa-vide"
+  },
+  {
+    "rule": "default-service-account",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "job-absent"
+  },
+  {
+    "rule": "default-service-account",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-absent"
+  },
+  {
+    "rule": "default-service-account",
+    "kind": "ReplicaSet",
+    "namespace": "app",
+    "name": "rs-absent"
+  },
+  {
+    "rule": "default-service-account",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "ss-absent"
+  }
+]

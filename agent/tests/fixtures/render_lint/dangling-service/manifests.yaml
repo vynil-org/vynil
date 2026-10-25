@@ -1,0 +1,373 @@
+# Cibles présentes dans le namespace app : gabarits de pod de chaque genre résoluble par l'outil.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web, tier: front}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata: {name: legacy-apps, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: legacy-apps}}
+  template:
+    metadata: {labels: {app: legacy-apps}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Groupe extensions : un Deployment extensions/v1beta1 est une cible (mesuré pour ce genre).
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: ext-dep, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: ext-dep}}
+  template:
+    metadata: {labels: {app: ext-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: db, namespace: app}
+spec:
+  serviceName: db
+  replicas: 1
+  selector: {matchLabels: {app: db}}
+  template:
+    metadata: {labels: {app: db}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: agent, namespace: app}
+spec:
+  selector: {matchLabels: {app: agent}}
+  template:
+    metadata: {labels: {app: agent}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+apiVersion: extensions/v1beta1
+kind: ReplicaSet
+metadata: {name: rs-ext, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: rs-ext}}
+  template:
+    metadata: {labels: {app: rs-ext}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: migrate, namespace: app}
+spec:
+  template:
+    metadata: {labels: {app: migrate}}
+    spec: {restartPolicy: Never, containers: [{name: migrate, image: "registry.example.test/migrate:3.1.0"}]}
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata: {name: nightly, namespace: app}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: nightly}}
+        spec: {restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: rc-web, namespace: app}
+spec:
+  replicas: 1
+  selector: {app: rc-web}
+  template:
+    metadata: {labels: {app: rc-web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: pod-web, namespace: app, labels: {app: pod-web}}
+spec:
+  containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Pod sans namespace : rapproché seulement d'un Service sans namespace.
+apiVersion: v1
+kind: Pod
+metadata: {name: pod-nons, labels: {app: nons}}
+spec:
+  containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Cibles d'un autre namespace : le namespace est comparé.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: other-dep, namespace: other}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: other-only}}
+  template:
+    metadata: {labels: {app: other-only}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: pod-other, namespace: other, labels: {app: pod-other-ns}}
+spec:
+  containers: [{name: web, image: "registry.example.test/web:1.4.2"}]
+---
+# Labels portés par metadata du Deployment seulement : seul le gabarit de pod compte.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: meta-only, namespace: app, labels: {app: meta-only}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: meta-only}}
+  template:
+    metadata: {labels: {app: tpl-x}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Groupe tiers homonyme d'un Deployment : n'est pas une cible.
+apiVersion: example.io/v1
+kind: Deployment
+metadata: {name: tiers-dep, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: tiers}}
+  template:
+    metadata: {labels: {app: tiers}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Deployment du groupe du noyau : n'est pas une cible.
+apiVersion: v1
+kind: Deployment
+metadata: {name: core-dep, namespace: app}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: core-dep}}
+  template:
+    metadata: {labels: {app: core-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Genre de groupe apps absent du noyau : StatefulSet extensions/v1beta1 n'existe pas, donc ignoré.
+apiVersion: extensions/v1beta1
+kind: StatefulSet
+metadata: {name: ext-sts, namespace: app}
+spec:
+  serviceName: ext-sts
+  selector: {matchLabels: {app: ext-sts}}
+  template:
+    metadata: {labels: {app: ext-sts}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Services conformes.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-subset, namespace: app}
+spec:
+  selector: {app: web}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-legacy, namespace: app}
+spec:
+  selector: {app: legacy-apps}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-ext, namespace: app}
+spec:
+  selector: {app: ext-dep}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-db, namespace: app}
+spec:
+  selector: {app: db}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-agent, namespace: app}
+spec:
+  selector: {app: agent}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-rs-ext, namespace: app}
+spec:
+  selector: {app: rs-ext}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-migrate, namespace: app}
+spec:
+  selector: {app: migrate}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-nightly, namespace: app}
+spec:
+  selector: {app: nightly}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-rc, namespace: app}
+spec:
+  selector: {app: rc-web}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-pod, namespace: app}
+spec:
+  selector: {app: pod-web}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-nons}
+spec:
+  selector: {app: nons}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-other-ns, namespace: other}
+spec:
+  selector: {app: other-only}
+  ports: [{port: 80}]
+---
+# ExternalName : jamais dangling, même sans cible.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-external, namespace: app}
+spec:
+  type: ExternalName
+  externalName: example.com
+  selector: {app: nothing}
+---
+# Non conformes : sélecteur sans cible.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-no-match, namespace: app}
+spec:
+  selector: {app: nothing}
+  ports: [{port: 80}]
+---
+# Sélecteur qui ajoute une clé absente de tout gabarit : pas de sous-ensemble.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-extra-key, namespace: app}
+spec:
+  selector: {app: web, nope: "x"}
+  ports: [{port: 80}]
+---
+# Sélecteur vide : ne correspond à aucun gabarit.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-empty-selector, namespace: app}
+spec:
+  selector: {}
+  ports: [{port: 80}]
+---
+# Sans sélecteur (hors ExternalName) : dangling.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-no-selector, namespace: app}
+spec:
+  ports: [{port: 80}]
+---
+# Le sélecteur ne vise que le namespace other.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-cross-ns, namespace: app}
+spec:
+  selector: {app: other-only}
+  ports: [{port: 80}]
+---
+# Le sélecteur ne vise que le Pod du namespace other.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-pod-other-ns, namespace: app}
+spec:
+  selector: {app: pod-other-ns}
+  ports: [{port: 80}]
+---
+# Le sélecteur ne vise que metadata.labels du Deployment, pas son gabarit.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-metadata-only, namespace: app}
+spec:
+  selector: {app: meta-only}
+  ports: [{port: 80}]
+---
+# Cibles d'un groupe tiers ou du noyau : dangling.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-tiers, namespace: app}
+spec:
+  selector: {app: tiers}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-core-dep, namespace: app}
+spec:
+  selector: {app: core-dep}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-ext-sts, namespace: app}
+spec:
+  selector: {app: ext-sts}
+  ports: [{port: 80}]
+---
+# Sans namespace : ne correspond pas au Pod du namespace app.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-nons-ns, namespace: app}
+spec:
+  selector: {app: nons}
+  ports: [{port: 80}]
+---
+# NodePort : dangling (seul ExternalName est exempté).
+apiVersion: v1
+kind: Service
+metadata: {name: svc-nodeport, namespace: app}
+spec:
+  type: NodePort
+  selector: {app: nothing}
+  ports: [{port: 80}]
+---
+# Casse : seul "ExternalName" exact est exempté.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-externalname-lower, namespace: app}
+spec:
+  type: externalname
+  selector: {app: nothing}
+---
+# Hors scope : un ConfigMap n'est jamais examiné ; un Service mal formé (sélecteur entier) est ignoré.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: cfg, namespace: app}
+data: {app: nothing}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: svc-malformed, namespace: app}
+spec:
+  selector: {app: 5}
+  ports: [{port: 80}]

@@ -1,0 +1,26 @@
+[
+  {
+    "rule": "no-read-only-root-fs",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "contexte-sans-champ"
+  },
+  {
+    "rule": "no-read-only-root-fs",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "racine-inscriptible"
+  },
+  {
+    "rule": "no-read-only-root-fs",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sans-security-context"
+  },
+  {
+    "rule": "no-read-only-root-fs",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "init-inscriptible"
+  }
+]

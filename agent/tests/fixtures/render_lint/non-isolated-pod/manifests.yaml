@@ -1,0 +1,297 @@
+# Namespace open : aucune NetworkPolicy. Chaque gabarit du genre examiné est signalé ; les autres
+# genres et groupes sont silencieux.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: open-dep, namespace: open}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: open-dep}}
+  template:
+    metadata: {labels: {app: open-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata: {name: open-beta, namespace: open}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: open-beta}}
+  template:
+    metadata: {labels: {app: open-beta}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: open-sts, namespace: open}
+spec:
+  serviceName: open-sts
+  replicas: 1
+  selector: {matchLabels: {app: open-sts}}
+  template:
+    metadata: {labels: {app: open-sts}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: open-ds, namespace: open}
+spec:
+  selector: {matchLabels: {app: open-ds}}
+  template:
+    metadata: {labels: {app: open-ds}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata: {name: open-rs, namespace: open}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: open-rs}}
+  template:
+    metadata: {labels: {app: open-rs}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: open-job, namespace: open}
+spec:
+  template:
+    metadata: {labels: {app: open-job}}
+    spec: {restartPolicy: Never, containers: [{name: migrate, image: "registry.example.test/migrate:3.1.0"}]}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: open-cron, namespace: open}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: open-cron}}
+        spec: {restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata: {name: open-cron-beta, namespace: open}
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: open-cron-beta}}
+        spec: {restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+apiVersion: v1
+kind: ReplicationController
+metadata: {name: open-rc, namespace: open}
+spec:
+  replicas: 1
+  selector: {app: open-rc}
+  template:
+    metadata: {labels: {app: open-rc}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: open-pod, namespace: open, labels: {app: open-pod}}
+spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Pod sans labels : non isolé, signalé.
+apiVersion: v1
+kind: Pod
+metadata: {name: open-bare, namespace: open}
+spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Hors scope : groupes extensions et tiers, genres non examinés (Job apps, StatefulSet extensions).
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: {name: open-ext, namespace: open}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: open-ext}}
+  template:
+    metadata: {labels: {app: open-ext}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: v1
+kind: Deployment
+metadata: {name: open-core-dep, namespace: open}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: open-core-dep}}
+  template:
+    metadata: {labels: {app: open-core-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: extensions/v1beta1
+kind: StatefulSet
+metadata: {name: open-ext-sts, namespace: open}
+spec:
+  serviceName: open-ext-sts
+  selector: {matchLabels: {app: open-ext-sts}}
+  template:
+    metadata: {labels: {app: open-ext-sts}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata: {name: open-ext-ds, namespace: open}
+spec:
+  selector: {matchLabels: {app: open-ext-ds}}
+  template:
+    metadata: {labels: {app: open-ext-ds}}
+    spec: {containers: [{name: agent, image: "registry.example.test/agent:2.0.0"}]}
+---
+apiVersion: apps/v1
+kind: Job
+metadata: {name: open-apps-job, namespace: open}
+spec:
+  template:
+    metadata: {labels: {app: open-apps-job}}
+    spec: {restartPolicy: Never, containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: example.io/v1
+kind: Pod
+metadata: {name: open-tiers-pod, namespace: open}
+spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+# Namespace iso : chaque workload visé par une policy de son namespace, par labels ou expression.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: iso-web, namespace: iso}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: iso-web}}
+  template:
+    metadata: {labels: {app: iso-web}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: iso-job, namespace: iso}
+spec:
+  template:
+    metadata: {labels: {app: iso-job}}
+    spec: {restartPolicy: Never, containers: [{name: migrate, image: "registry.example.test/migrate:3.1.0"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: iso-pod, namespace: iso, labels: {app: iso-pod}}
+spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: iso-sts, namespace: iso}
+spec:
+  serviceName: iso-sts
+  replicas: 1
+  selector: {matchLabels: {app: iso-sts}}
+  template:
+    metadata: {labels: {app: iso-sts}}
+    spec: {containers: [{name: db, image: "registry.example.test/db:16.2"}]}
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata: {name: iso-cron, namespace: iso}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: iso-cron}}
+        spec: {restartPolicy: Never, containers: [{name: nightly, image: "registry.example.test/nightly:1.0.0"}]}
+---
+# Isolé par une policy de labels : sous-ensemble et expression.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: iso-web, namespace: iso}
+spec: {podSelector: {matchLabels: {app: iso-web}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: iso-job-expr, namespace: iso}
+spec: {podSelector: {matchExpressions: [{key: app, operator: In, values: [iso-job]}]}}
+---
+# NotIn : isole le seul pod dont le label n'est pas listé ; les autres workloads y échappent.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: iso-pod-notin, namespace: iso}
+spec: {podSelector: {matchExpressions: [{key: app, operator: NotIn, values: [iso-web, iso-job, iso-sts, iso-cron, iso-meta-tpl]}]}}
+---
+# Policy dont le type de trafic n'est pas celui de la cible : l'isolation vaut quand même.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: iso-sts-egress, namespace: iso}
+spec:
+  podSelector: {matchLabels: {app: iso-sts}}
+  policyTypes: [Egress]
+---
+# Isolé seulement dans l'API networking.k8s.io/v1beta1 : sans effet.
+apiVersion: networking.k8s.io/v1beta1
+kind: NetworkPolicy
+metadata: {name: iso-cron-v1b1, namespace: iso}
+spec: {podSelector: {matchLabels: {app: iso-cron}}}
+---
+# Une policy d'un autre namespace n'isole pas le workload de iso.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: other-selects-iso-web, namespace: open}
+spec: {podSelector: {matchLabels: {app: iso-web}}}
+---
+# Labels seulement sur metadata : non isolé par la policy qui vise le label de metadata.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: iso-meta, namespace: iso, labels: {app: iso-meta}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: iso-meta}}
+  template:
+    metadata: {labels: {app: iso-meta-tpl}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: iso-meta-only, namespace: iso}
+spec: {podSelector: {matchLabels: {app: iso-meta}}}
+---
+# Namespace iso-all : une policy au sélecteur vide isole chaque workload de son namespace, même
+# sans labels.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: all-dep, namespace: iso-all}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: all-dep}}
+  template:
+    metadata: {labels: {app: all-dep}}
+    spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: all-bare, namespace: iso-all}
+spec: {containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: iso-all-empty, namespace: iso-all}
+spec: {podSelector: {}}
+---
+# Namespace iso-nospec : policy sans podSelector, qui vise tout le namespace.
+apiVersion: batch/v1
+kind: Job
+metadata: {name: nospec-job, namespace: iso-nospec}
+spec:
+  template:
+    metadata: {labels: {app: nospec-job}}
+    spec: {restartPolicy: Never, containers: [{name: web, image: "registry.example.test/web:1.4.2"}]}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: nospec, namespace: iso-nospec}
+spec:
+  ingress: []
+---
+# Policy malformée : ignorée, n'isole rien.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: malformed, namespace: open}
+spec: {podSelector: "x"}

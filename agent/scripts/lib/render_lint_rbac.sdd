@@ -1,0 +1,83 @@
+# Spec fichier de ./render_lint_rbac.rhai — le thème « rbac » du catalogue de vérifications
+# portées de kube-linter. Le contrat commun d'une vérification (signature, nom, sévérité,
+# kinds non concernés) est possédé par ./render_lint.sdd et n'est pas redit ici.
+
+Spec: LibRenderLintRbac
+
+Platform: librairie de scripts Rhai (moteur vynil-core)
+
+Purpose:
+  Les vérifications dont le sujet est le contrôle d'accès : Role, ClusterRole,
+    RoleBinding, ClusterRoleBinding, comptes de service liés, jokers dans les règles, accès aux
+    secrets, création de pods, liaison à cluster-admin.
+
+Owns:
+  ./render_lint_rbac.rhai
+
+References:
+  ./render_lint.sdd — le contrat d'une vérification, les constats et les itérateurs que ce
+    module utilise.
+  /agent/tests/fixtures/render_lint/catalogue.yaml — l'inventaire qui attribue chaque vérification de
+    l'oracle à un thème et à un statut ; la liste des vérifications de ce module est celle des
+    entrées `theme: rbac` et `status: ported`.
+  /agent/tests/lint_oracle.sdd — le harnais qui compare chaque vérification à l'oracle.
+
+Must:
+  Satisfaire, pour chaque vérification portée du thème, le verdict de l'oracle kube-linter sur
+    les fixtures du catalogue : mêmes objets signalés, même règle, aucun objet signalé en plus
+    ni en moins. Le texte du message est libre mais doit nommer l'objet, la valeur fautive et
+    la correction attendue.
+  Honorer les paramètres de la vérification portant le nom, la casse et la sémantique de ceux
+    de kube-linter, et appliquer les mêmes valeurs par défaut.
+  Ne signaler que ce que la vérification définit : une vérification n'infère aucune règle
+    voisine.
+  Reproduire, pour les relations entre objets, ce que l'outil fait (mesuré) : seul
+    `rbac.authorization.k8s.io/v1` est évalué, `v1beta1` ne donne aucun constat (dérogation
+    assumée à « toutes versions d'un groupe ») ; un RoleBinding résout un Role de son namespace,
+    jamais un ClusterRole, et un ClusterRoleBinding un ClusterRole, par le nom seul (`roleRef.kind`
+    et `roleRef.apiGroup` ignorés) ; une liaison donne un constat au plus.
+  Exposer `index(objs)` : les entrées d'index de ce thème (`rbac_roles`, `rbac_service_accounts`) ;
+    le premier rôle de la liste fait foi pour un nom donné, comme le parcours d'origine. Les
+    vérifications qui croisent plusieurs objets lisent l'index reçu en deuxième argument.
+
+Tasks:
+  [x] Porter les vérifications du thème par lots, chacune avec sa fixture
+      `/agent/tests/fixtures/render_lint/{nom}/` et son statut mis à jour dans le catalogue ; un lot
+      est livrable seul tant que le harnais d'oracle reste vert.
+  [x] `non-existent-service-account` est portée sur la seule liste d'objets : l'outil rapproche le
+      compte des `ServiceAccount` présents dans la liste (mesuré), le compte `default` ou vide
+      n'est jamais signalé.
+
+Done when:
+  Chaque entrée `theme: rbac` du catalogue est `ported`, `deferred` avec raison, ou
+    `excluded` avec raison, et le harnais d'oracle ne rapporte aucune divergence pour les
+    entrées portées.
+
+Scenario: wildcard rule is reported
+  Given un ClusterRole dont une règle porte `verbs: ["*"]`
+  When la vérification `wildcard_in_rules` s'exécute
+  Then un constat de règle `wildcard-in-rules` nomme le ClusterRole ; il y a un constat par
+    élément `*` de `verbs` ou de `resources` (mesuré : `verbs: ["*","*"]` en donne deux), jamais
+    par règle, et un `*` dans `apiGroups` ou `nonResourceURLs` n'en donne aucun
+  Test @wildcard-rule-is-reported
+
+Scenario: cluster-admin binding is reported
+  Given un ClusterRoleBinding vers le ClusterRole `cluster-admin`
+  When la vérification `cluster_admin_role_binding` s'exécute
+  Then un constat nomme le ClusterRoleBinding
+  Test @cluster-admin-binding-is-reported
+
+Scenario: read access to secrets is reported
+  Given un Role autorisant `get` sur la ressource `secrets`, et un RoleBinding qui le référence
+  When la vérification `access_to_secrets` s'exécute
+  Then un constat nomme la LIAISON (le RoleBinding) : un Role sans liaison ne donne aucun
+    constat (mesuré)
+  Test @read-access-to-secrets-is-reported
+
+Scenario: a service account is looked up in the workload namespace only
+  Given un Deployment dont `serviceAccountName` nomme un ServiceAccount absent de la liste, dans
+    le même namespace
+  When la vérification `non_existent_service_account` s'exécute
+  Then un constat nomme le Deployment ; le compte `default` ou vide n'est jamais signalé, et un
+    ServiceAccount présent dans un autre namespace ne compte pas
+  Test @a-service-account-is-looked-up-in-the-workload-namespace-only

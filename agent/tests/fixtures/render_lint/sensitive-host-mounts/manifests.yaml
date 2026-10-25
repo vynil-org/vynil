@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      volumes:
+        - name: journaux
+          hostPath: {path: /var/log/application}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          volumeMounts:
+            - {name: journaux, mountPath: /var/log/application}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: etc-monte
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: etc-monte}
+  template:
+    metadata:
+      labels: {app: etc-monte}
+    spec:
+      volumes:
+        - name: etc
+          hostPath: {path: /etc}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          volumeMounts:
+            - {name: etc, mountPath: /host-etc, readOnly: true}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: proc-init
+  namespace: app
+spec:
+  serviceName: proc-init
+  replicas: 1
+  selector:
+    matchLabels: {app: proc-init}
+  template:
+    metadata:
+      labels: {app: proc-init}
+    spec:
+      volumes:
+        - name: proc
+          hostPath: {path: /proc}
+      initContainers:
+        - name: prepare
+          image: registry.example.test/tools:2.0.0
+          volumeMounts:
+            - {name: proc, mountPath: /host-proc}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: racine-deux-conteneurs
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: racine-deux-conteneurs}
+  template:
+    metadata:
+      labels: {app: racine-deux-conteneurs}
+    spec:
+      volumes:
+        - name: racine
+          hostPath: {path: /}
+      containers:
+        - name: agent
+          image: registry.example.test/agent:3.1.0
+          volumeMounts:
+            - {name: racine, mountPath: /host}
+        - name: relais
+          image: registry.example.test/relais:3.1.0
+          volumeMounts:
+            - {name: racine, mountPath: /racine}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: chemin-avec-slash
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      volumes:
+        - name: etc
+          hostPath: {path: /etc/}
+      containers:
+        - name: tache
+          image: registry.example.test/tache:1.0.0
+          volumeMounts:
+            - {name: etc, mountPath: /etc}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: usr-monte
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          volumes:
+            - name: usr
+              hostPath: {path: /usr}
+          containers:
+            - name: tache
+              image: registry.example.test/tache:1.0.0
+              volumeMounts:
+                - {name: usr, mountPath: /host-usr}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: boot-et-dev
+  namespace: app
+spec:
+  volumes:
+    - name: boot
+      hostPath: {path: /boot}
+    - name: dev
+      hostPath: {path: /dev}
+    - name: etc-non-monte
+      hostPath: {path: /etc}
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+      volumeMounts:
+        - {name: boot, mountPath: /boot}
+        - {name: dev, mountPath: /dev}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pas-un-workload
+  namespace: app
+data:
+  chemin: /etc

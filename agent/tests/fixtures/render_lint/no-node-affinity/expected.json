@@ -1,0 +1,56 @@
+[
+  {
+    "rule": "no-node-affinity",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "nightly-cron"
+  },
+  {
+    "rule": "no-node-affinity",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "agent-ds"
+  },
+  {
+    "rule": "no-node-affinity",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "none-dep"
+  },
+  {
+    "rule": "no-node-affinity",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "pod-aa-only"
+  },
+  {
+    "rule": "no-node-affinity",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "migrate-job"
+  },
+  {
+    "rule": "no-node-affinity",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "solo-pod"
+  },
+  {
+    "rule": "no-node-affinity",
+    "kind": "ReplicaSet",
+    "namespace": "app",
+    "name": "rs-plain"
+  },
+  {
+    "rule": "no-node-affinity",
+    "kind": "ReplicationController",
+    "namespace": "app",
+    "name": "rc-plain"
+  },
+  {
+    "rule": "no-node-affinity",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "db-sts"
+  }
+]

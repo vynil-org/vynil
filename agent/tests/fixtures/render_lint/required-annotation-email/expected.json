@@ -1,0 +1,86 @@
+[
+  {
+    "rule": "required-annotation-email",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "bad-cron"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "bad-ds"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bad-absent"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bad-beta"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bad-empty"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bad-mixed-pair"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bad-other-key"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bad-template-only"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "bad-value"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "Job",
+    "namespace": "app",
+    "name": "bad-job"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "bad-pod"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "ReplicaSet",
+    "namespace": "app",
+    "name": "bad-rs"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "ReplicationController",
+    "namespace": "app",
+    "name": "bad-rc"
+  },
+  {
+    "rule": "required-annotation-email",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "bad-sts"
+  }
+]

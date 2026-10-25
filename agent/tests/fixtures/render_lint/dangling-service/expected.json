@@ -1,0 +1,80 @@
+[
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-core-dep"
+  },
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-cross-ns"
+  },
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-empty-selector"
+  },
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-ext-sts"
+  },
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-externalname-lower"
+  },
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-extra-key"
+  },
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-metadata-only"
+  },
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-no-match"
+  },
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-no-selector"
+  },
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-nodeport"
+  },
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-nons-ns"
+  },
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-pod-other-ns"
+  },
+  {
+    "rule": "dangling-service",
+    "kind": "Service",
+    "namespace": "app",
+    "name": "svc-tiers"
+  }
+]

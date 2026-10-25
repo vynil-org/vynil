@@ -1,0 +1,167 @@
+# Conforme : des noms d'environnement distincts ; un même nom dans deux conteneurs différents
+# (initialisation et conteneur principal) n'est pas un doublon.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: env-distincts
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: env-distincts}
+  template:
+    metadata:
+      labels: {app: env-distincts}
+    spec:
+      initContainers:
+        - name: init
+          image: registry.example.test/init:1.0.0
+          env:
+            - {name: "MODE", value: "init"}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          env:
+            - {name: "MODE", value: "web"}
+            - {name: "PORT", value: "8080"}
+---
+# Non conforme : LOG_LEVEL déclaré deux fois dans le conteneur principal.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: env-doublon
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: env-doublon}
+  template:
+    metadata:
+      labels: {app: env-doublon}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          env:
+            - {name: "LOG_LEVEL", value: "info"}
+            - {name: "LOG_LEVEL", value: "debug"}
+---
+# Non conforme : un nom répété trois fois (un seul constat) et un autre répété deux fois (un constat).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: env-triple
+  namespace: app
+spec:
+  serviceName: env-triple
+  replicas: 1
+  selector:
+    matchLabels: {app: env-triple}
+  template:
+    metadata:
+      labels: {app: env-triple}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          env:
+            - {name: "TOKEN_A", value: "1"}
+            - {name: "TOKEN_A", value: "2"}
+            - {name: "TOKEN_A", value: "3"}
+            - {name: "REGION", value: "eu"}
+            - {name: "REGION", value: "us"}
+            - {name: "ZONE", value: "a"}
+---
+# Non conforme : doublon dans l'initialisation.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: env-init-doublon
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: env-init}
+  template:
+    metadata:
+      labels: {app: env-init}
+    spec:
+      initContainers:
+        - name: init
+          image: registry.example.test/init:1.0.0
+          env:
+            - {name: "SEED", value: "1"}
+            - {name: "SEED", value: "2"}
+      containers:
+        - name: agent
+          image: registry.example.test/agent:2.0.0
+          env:
+            - {name: "SEED", value: "3"}
+---
+# Non conforme : un doublon dans chacun des deux conteneurs (deux constats).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: env-deux-conteneurs
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: env-deux}
+  template:
+    metadata:
+      labels: {app: env-deux}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          env:
+            - {name: "CACHE", value: "on"}
+            - {name: "CACHE", value: "off"}
+        - name: side
+          image: registry.example.test/side:1.0.0
+          env:
+            - {name: "CACHE", value: "on"}
+            - {name: "CACHE", value: "off"}
+---
+# Non conforme : pod nu.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-doublon
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+      env:
+        - {name: "FEATURE", value: "a"}
+        - {name: "FEATURE", value: "b"}
+---
+# Non conforme : CronJob.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-doublon
+  namespace: app
+spec:
+  schedule: "0 6 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: task
+              image: registry.example.test/task:1.0.0
+              env:
+                - {name: "RETRY", value: "3"}
+                - {name: "RETRY", value: "5"}
+---
+# Non-workload : silencieux.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: options
+  namespace: app
+data:
+  LOG_LEVEL: info

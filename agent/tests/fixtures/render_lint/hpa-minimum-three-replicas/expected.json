@@ -1,0 +1,44 @@
+[
+  {
+    "rule": "hpa-minimum-three-replicas",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "absent-hpa"
+  },
+  {
+    "rule": "hpa-minimum-three-replicas",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "null-hpa"
+  },
+  {
+    "rule": "hpa-minimum-three-replicas",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "one-hpa"
+  },
+  {
+    "rule": "hpa-minimum-three-replicas",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "two-hpa"
+  },
+  {
+    "rule": "hpa-minimum-three-replicas",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "v1-hpa"
+  },
+  {
+    "rule": "hpa-minimum-three-replicas",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "v2beta2-hpa"
+  },
+  {
+    "rule": "hpa-minimum-three-replicas",
+    "kind": "HorizontalPodAutoscaler",
+    "namespace": "app",
+    "name": "zero-hpa"
+  }
+]

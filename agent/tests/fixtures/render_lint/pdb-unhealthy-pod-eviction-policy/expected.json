@@ -1,0 +1,20 @@
+[
+  {
+    "rule": "pdb-unhealthy-pod-eviction-policy",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "absent"
+  },
+  {
+    "rule": "pdb-unhealthy-pod-eviction-policy",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "max-absent"
+  },
+  {
+    "rule": "pdb-unhealthy-pod-eviction-policy",
+    "kind": "PodDisruptionBudget",
+    "namespace": "app",
+    "name": "null-policy"
+  }
+]

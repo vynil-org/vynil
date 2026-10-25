@@ -1,0 +1,74 @@
+[
+  {
+    "rule": "startup-port",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "cron-port-non-expose"
+  },
+  {
+    "rule": "startup-port",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "deux-conteneurs"
+  },
+  {
+    "rule": "startup-port",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "deux-handlers"
+  },
+  {
+    "rule": "startup-port",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "grpc-non-expose"
+  },
+  {
+    "rule": "startup-port",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "nom-de-port-absent"
+  },
+  {
+    "rule": "startup-port",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "port-chaine-numerique"
+  },
+  {
+    "rule": "startup-port",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "port-non-expose"
+  },
+  {
+    "rule": "startup-port",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sans-aucun-port"
+  },
+  {
+    "rule": "startup-port",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "sans-port-dans-sonde"
+  },
+  {
+    "rule": "startup-port",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "udp-seul"
+  },
+  {
+    "rule": "startup-port",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "pod-nu-port"
+  },
+  {
+    "rule": "startup-port",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "tcp-non-expose"
+  }
+]

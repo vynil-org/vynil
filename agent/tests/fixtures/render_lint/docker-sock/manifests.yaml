@@ -1,0 +1,154 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      volumes:
+        - name: donnees
+          hostPath: {path: /var/lib/donnees}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          volumeMounts:
+            - {name: donnees, mountPath: /data}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: socket-monte
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: socket-monte}
+  template:
+    metadata:
+      labels: {app: socket-monte}
+    spec:
+      volumes:
+        - name: docker
+          hostPath: {path: /var/run/docker.sock}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          volumeMounts:
+            - {name: docker, mountPath: /var/run/docker.sock}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: socket-init
+  namespace: app
+spec:
+  serviceName: socket-init
+  replicas: 1
+  selector:
+    matchLabels: {app: socket-init}
+  template:
+    metadata:
+      labels: {app: socket-init}
+    spec:
+      volumes:
+        - name: docker
+          hostPath: {path: /var/run/docker.sock}
+      initContainers:
+        - name: prepare
+          image: registry.example.test/tools:2.0.0
+          volumeMounts:
+            - {name: docker, mountPath: /var/run/docker.sock}
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: socket-deux-conteneurs
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: socket-deux-conteneurs}
+  template:
+    metadata:
+      labels: {app: socket-deux-conteneurs}
+    spec:
+      volumes:
+        - name: docker
+          hostPath: {path: /var/run/docker.sock}
+      containers:
+        - name: agent
+          image: registry.example.test/agent:3.1.0
+          volumeMounts:
+            - {name: docker, mountPath: /var/run/docker.sock}
+        - name: relais
+          image: registry.example.test/relais:3.1.0
+          volumeMounts:
+            - {name: docker, mountPath: /docker.sock}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: volume-non-monte
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      volumes:
+        - name: docker
+          hostPath: {path: /var/run/docker.sock}
+      containers:
+        - name: tache
+          image: registry.example.test/tache:1.0.0
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: socket-alternatif
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          volumes:
+            - name: docker
+              hostPath: {path: /run/docker.sock}
+          containers:
+            - name: tache
+              image: registry.example.test/tache:1.0.0
+              volumeMounts:
+                - {name: docker, mountPath: /run/docker.sock}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: chemin-proche
+  namespace: app
+spec:
+  volumes:
+    - name: sauvegarde
+      hostPath: {path: /var/run/docker.sock.bak}
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+      volumeMounts:
+        - {name: sauvegarde, mountPath: /sauvegarde}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pas-un-workload
+  namespace: app
+data:
+  chemin: /var/run/docker.sock

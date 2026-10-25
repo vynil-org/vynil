@@ -1,0 +1,32 @@
+[
+  {
+    "rule": "drop-net-raw-capability",
+    "kind": "CronJob",
+    "namespace": "app",
+    "name": "ajout-all"
+  },
+  {
+    "rule": "drop-net-raw-capability",
+    "kind": "DaemonSet",
+    "namespace": "app",
+    "name": "init-sans-drop"
+  },
+  {
+    "rule": "drop-net-raw-capability",
+    "kind": "Deployment",
+    "namespace": "app",
+    "name": "ajout-sys-admin"
+  },
+  {
+    "rule": "drop-net-raw-capability",
+    "kind": "Pod",
+    "namespace": "app",
+    "name": "capacites-vides"
+  },
+  {
+    "rule": "drop-net-raw-capability",
+    "kind": "StatefulSet",
+    "namespace": "app",
+    "name": "ajout-net-raw"
+  }
+]

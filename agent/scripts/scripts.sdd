@@ -3,7 +3,7 @@ Spec: ScriptsAgent
 Platform: scripts Rhai (moteur vynil-core)
 
 Purpose:
-  Registre directeur des 120 scripts Rhai embarqués de ./ — contrat de couverture
+  Registre directeur des 127 scripts Rhai embarqués de ./ — contrat de couverture
     intégrale, invariants transverses du moteur, et dette de référencement externe.
     Chaque script a UNE spec autoritaire : même-basename, ou nommément Owns d'une spec
     familiale, ou jumeau byte-identique pointé. Aucune zone d'ombre.
@@ -12,7 +12,8 @@ Owns:
   ./ (arborescence des scripts ; aucun .rhai n'est Owned par une spec hors ./)
 
 Structure:
-  ./lib/ — 16 utilitaires importés par tous les lanes (16 specs même-basename).
+  ./lib/ — 23 utilitaires importés par tous les lanes (23 specs même-basename), dont les six modules
+    `render_lint*.rhai` de la bibliothèque de lint du rendu.
   ./packages/ + ./boxes/ — outillage paquet/auteur : scan, build, validate, sandbox
     (6 specs ; `packages/test.rhai` = code mort gelé, `boxes/scan.rhai` = mismatch
     credential gelé).
@@ -57,7 +58,7 @@ Must:
     de ./lib/ sans @import explicite (l'absence d'import in-repo de @gen_package/@apps/
     @resolv_service/@storage_class_selector dans les lanes = appel réservé aux paquets
     tiers qui les fournissent).
-  Geler la posture import-time : les 120 scripts sont sans effet de bord à l'import
+  Geler la posture import-time : les 127 scripts sont sans effet de bord à l'import
     (tout l'effet est derrière @run) — vérifié par les specs mêmes-basename ; un script
     avec effet à l'import est un changement de contrat.
   Consigner l'orthographe : @import_run saute silencieusement un hook `_pre`/`_post`
@@ -78,6 +79,9 @@ Tasks:
       (une cinquantaine de lignes, grep `pending` — certaines sont légitimes : phase K8s,
       décisions ouvertes) — absorbé par la campagne de traduction FR : chaque passe de
       réécriture d'une spec tier-1 corrige ses pointeurs d'abord.
+  [x] Décomptes mis à jour (127 scripts, 23 utilitaires de `./lib/`) à la livraison des six
+      modules `render_lint*.rhai` de `./lib/` (noyau, schéma, quatre thèmes), chacun avec sa
+      spec même-basename.
   [ ] Tenu à jour des References de couverture à chaque script ajouté/retiré/renommé (l'invariant de
       Must est mécanique : la boucle de recensement ne doit jamais retrouver d'orphelin).
   [ ] Décider le sort de `./agent/scripts/packages/test.rhai` (code mort, gelé dans sa
@@ -92,5 +96,5 @@ Scenario: recensement mécanique de la couverture
   When on itère sur chaque @.rhai et qu'on exige soit un @.sdd même-basename, soit une
     mention nominale dans l'Owns ou le corps d'un @.sdd du même répertoire ou d'une spec
     familiale listée en References
-  Then aucun des 120 fichiers ne ressort orphelin
+  Then aucun des 127 fichiers ne ressort orphelin
   And ce résultat est reproduisible par une simple boucle shell, sans lecture subjective

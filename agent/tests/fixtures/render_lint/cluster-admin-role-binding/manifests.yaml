@@ -1,0 +1,71 @@
+# Liaison à cluster-admin (mesuré sur kube-linter v0.8.3) : un ClusterRoleBinding dont le roleRef
+# est de genre ClusterRole et de nom "cluster-admin". Le groupe apiGroup du roleRef, les sujets (y
+# compris absents) et le namespace porté par l'objet ne comptent pas ; un RoleBinding n'est pas
+# examiné ; les objets v1beta1 et les groupes tiers sont ignorés.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: admin-user}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: admin-no-subjects}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: admin-other-api-group}
+roleRef: {apiGroup: example.com, kind: ClusterRole, name: cluster-admin}
+subjects:
+- {kind: Group, name: ops, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: admin-namespaced-metadata, namespace: other}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin}
+subjects:
+- {kind: ServiceAccount, name: deployer, namespace: other}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: view-only}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: view}
+subjects:
+- {kind: User, name: bob, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: admin-role-kind}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: cluster-admin}
+subjects:
+- {kind: User, name: carol, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: admin-name-prefix}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin-readonly}
+subjects:
+- {kind: User, name: dave, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata: {name: beta-admin}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin}
+subjects:
+- {kind: User, name: erin, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.example.com/v1
+kind: ClusterRoleBinding
+metadata: {name: homonym-admin}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin}
+subjects:
+- {kind: User, name: frank, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: rb-to-cluster-admin, namespace: app}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin}
+subjects:
+- {kind: User, name: grace, apiGroup: rbac.authorization.k8s.io}

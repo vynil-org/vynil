@@ -1,0 +1,129 @@
+# Spec du harnais de test de la bibliothèque `render_lint` : vérification des vérifications
+# portées contre des verdicts d'oracle consignés, et inventaire du catalogue contre l'outil de
+# référence. Les fonctions Rhai sont spécifiées dans /agent/scripts/lib/render_lint*.sdd ;
+# ce fichier ne redit pas leur contrat, il possède la façon de le prouver.
+
+Spec: RenderLintOracle
+
+Platform: Rust
+
+Purpose:
+  Garantir que chaque vérification portée de kube-linter dans la bibliothèque `render_lint`
+    rend le même verdict que l'outil d'origine, et que le catalogue des vérifications portées
+    dit honnêtement ce qui est couvert. Un verdict consigné (`expected.json`) est comparé à
+    la sortie de la bibliothèque en test ordinaire, sans dépendance externe ; l'outil de
+    référence, quand il est disponible, sert à régénérer et à contrôler ces verdicts.
+
+Owns:
+  ./lint_oracle.rs
+  ./render_lint.rs
+  ./render_lint_load.rs
+  ./fixtures/render_lint/**
+
+Structure:
+  ./fixtures/render_lint/catalogue.yaml: l'inventaire des vérifications de l'oracle — par entrée
+    `name` (nom kube-linter), `theme` (`pod`, `workload`, `network` ou `rbac`), `status`
+    (`ported`, `deferred` ou `excluded`), `default` (la vérification est active par défaut chez
+    kube-linter, champ « Enabled by default » de `kube-linter checks list`) et `reason`
+    (obligatoire hors `ported`)
+  ./fixtures/render_lint/{nom}/manifests.yaml: manifestes multi-documents écrits pour ce dépôt,
+    couvrant le cas conforme et chaque cas non conforme de la vérification
+  ./fixtures/render_lint/{nom}/expected.json: le verdict de l'oracle sur ces manifestes, tableau de
+    `{rule, kind, namespace, name}` trié
+  ./render_lint.rs: tests d'intégration du noyau et du schéma (scénarios de
+    /agent/scripts/lib/render_lint.sdd et render_lint_schema.sdd)
+  ./lint_oracle.rs: tests de verdicts et de catalogue
+  ./render_lint_load.rs: tenue en charge de @all sur le vrai moteur du lint (budget d'opérations,
+    moteur restreint) ; les autres tests tournent sur le moteur complet, sans borne
+
+References:
+  /agent/scripts/lib/render_lint.sdd — le noyau et @all.
+  /agent/scripts/lib/render_lint_pod.sdd, /agent/scripts/lib/render_lint_workload.sdd,
+    /agent/scripts/lib/render_lint_network.sdd, /agent/scripts/lib/render_lint_rbac.sdd — les
+    modules thématiques vérifiés ici.
+
+Must:
+  Générer chaque `expected.json` avec le binaire de l'outil de référence, jamais à la main :
+    un verdict écrit à la main vérifierait le code contre ce que son auteur croit. Le binaire
+    est téléchargé hors du dépôt, sa somme sha256 vérifiée contre celle publiée par la release,
+    et n'est lancé que sur les `manifests.yaml` écrits pour ce dépôt.
+  Écrire les manifestes de fixtures pour ce dépôt : un manifeste n'est jamais copié depuis
+    les sources de l'outil de référence, seul son verdict est consigné.
+  Comparer, pour chaque entrée `ported`, la sortie de `render_lint::all` avec
+    `only: [nom]` sur `manifests.yaml` au contenu de `expected.json` comme ensembles de
+    `(rule, kind, namespace, name)` : test ordinaire, sans binaire externe.
+  Vérifier le catalogue sans binaire externe : chaque entrée `ported` a une fonction dans le
+    module de son thème et est listée par `render_lint::checks()` ; chaque fonction ou nom de
+    `checks()` a une entrée `ported` ; chaque entrée `deferred` ou `excluded` a une `reason`
+    non vide ; chaque entrée `ported` a un répertoire de fixtures complet.
+  Avec la variable d'environnement `KUBE_LINTER_BIN` posée, et dans des tests marqués
+    `#[ignore]` sinon, exécuter l'outil de référence sur chaque `manifests.yaml` avec la seule
+    vérification en cause et comparer sa sortie JSON à `expected.json` ; comparer aussi
+    l'inventaire de l'outil (`checks list`) au catalogue : une vérification de l'outil absente
+    du catalogue est une divergence.
+  Vérifier que `render_lint::default_checks()` liste exactement les entrées `ported` dont
+    `default` est vrai, sans binaire externe.
+  Ne jamais exiger le binaire de référence dans l'exécution ordinaire de `cargo test`.
+
+Must not:
+  Régénérer `expected.json` implicitement : la régénération est une action explicite
+    (variable d'environnement dédiée), jamais un effet de bord d'un test en échec.
+
+Tasks:
+  [x] Établir `catalogue.yaml` à partir de l'inventaire de l'outil de référence, thème par
+      thème, avec le statut `deferred` et une raison pour tout ce qui n'est pas encore porté.
+  [x] Ajouter pour chaque vérification portée son répertoire de fixtures et son verdict.
+  [x] Couvrir les scénarios de `render_lint.sdd` et `render_lint_schema.sdd` dans
+      `render_lint.rs`.
+  [?] Version de l'outil de référence à épingler (sortie JSON et inventaire changent entre
+      versions). Décider de l'épingler dans le catalogue (`oracle_version`) et du moment de
+      sa montée.
+  [?] Provenance et licence : confirmer qu'aucune règle ou fixture de l'outil n'est reprise
+      littéralement, seul le comportement l'étant.
+
+Done when:
+  Le catalogue est complet vis-à-vis de l'inventaire de l'oracle à la version épinglée, tous
+    les tests ordinaires passent sans binaire externe et les tests d'oracle passent avec lui.
+
+Scenario: a ported check matches its recorded verdict
+  Given l'entrée `latest-tag` au statut `ported` et ses fixtures
+  When le test de verdict s'exécute
+  Then l'ensemble des constats de la bibliothèque égale celui de `expected.json`
+  Test @a-ported-check-matches-its-recorded-verdict
+
+Scenario: the default set matches the catalogue
+  Given le catalogue réel et `render_lint::default_checks()`
+  When on les compare
+  Then les deux listes contiennent exactement les entrées `ported` à `default: true`, triées
+  Test @the-default-set-matches-the-catalogue
+
+Scenario: a check without a function is a catalogue error
+  Given une entrée `ported` dont le module thématique ne définit pas la fonction
+  When le test de catalogue s'exécute
+  Then il échoue en nommant la vérification
+  Test @a-check-without-a-function-is-a-catalogue-error
+
+Scenario: an unlisted function is a catalogue error
+  Given une fonction de vérification dans un module sans entrée `ported`
+  When le test de catalogue s'exécute
+  Then il échoue en nommant la fonction
+  Test @an-unlisted-function-is-a-catalogue-error
+
+Scenario: a deferred check carries its reason
+  Given une entrée `deferred` sans `reason`
+  When le test de catalogue s'exécute
+  Then il échoue en nommant l'entrée
+  Test @a-deferred-check-carries-its-reason
+
+Scenario: the oracle inventory drifts
+  Given `KUBE_LINTER_BIN` posée et une vérification présente dans l'outil mais absente du
+    catalogue
+  When le test d'inventaire s'exécute
+  Then il échoue en nommant la vérification manquante
+  Test @the-oracle-inventory-drifts
+
+Scenario: ordinary test run needs no external tool
+  Given `KUBE_LINTER_BIN` non posée
+  When `cargo test -p agent` s'exécute
+  Then les tests d'oracle sont ignorés et les tests de verdict et de catalogue passent
+  Test @ordinary-test-run-needs-no-external-tool

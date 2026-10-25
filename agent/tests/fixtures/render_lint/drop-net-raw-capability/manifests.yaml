@@ -1,0 +1,181 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conforme
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: conforme}
+  template:
+    metadata:
+      labels: {app: conforme}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          securityContext:
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drop-net-raw
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: drop-net-raw}
+  template:
+    metadata:
+      labels: {app: drop-net-raw}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          securityContext:
+            capabilities:
+              drop: [NET_RAW]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sans-security-context
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: sans-security-context}
+  template:
+    metadata:
+      labels: {app: sans-security-context}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          securityContext:
+            runAsNonRoot: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ajout-sys-admin
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: ajout-sys-admin}
+  template:
+    metadata:
+      labels: {app: ajout-sys-admin}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          securityContext:
+            capabilities:
+              add: [SYS_ADMIN]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ajout-net-raw
+  namespace: app
+spec:
+  serviceName: ajout-net-raw
+  replicas: 1
+  selector:
+    matchLabels: {app: ajout-net-raw}
+  template:
+    metadata:
+      labels: {app: ajout-net-raw}
+    spec:
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          securityContext:
+            capabilities:
+              add: [NET_RAW]
+              drop: [ALL]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: init-sans-drop
+  namespace: app
+spec:
+  selector:
+    matchLabels: {app: init-sans-drop}
+  template:
+    metadata:
+      labels: {app: init-sans-drop}
+    spec:
+      initContainers:
+        - name: prepare
+          image: registry.example.test/tools:2.0.0
+          securityContext:
+            capabilities:
+              drop: [CHOWN]
+      containers:
+        - name: web
+          image: registry.example.test/web:1.4.2
+          securityContext:
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: drop-prefixe-cap
+  namespace: app
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: tache
+          image: registry.example.test/tache:1.0.0
+          securityContext:
+            capabilities:
+              drop: [CAP_NET_RAW]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ajout-all
+  namespace: app
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: tache
+              image: registry.example.test/tache:1.0.0
+              securityContext:
+                capabilities:
+                  add: [ALL]
+                  drop: [ALL]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: capacites-vides
+  namespace: app
+spec:
+  containers:
+    - name: web
+      image: registry.example.test/web:1.4.2
+      securityContext:
+        capabilities: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pas-un-workload
+  namespace: app
+data:
+  capabilities: "drop: [NET_RAW]"
