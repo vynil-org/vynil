@@ -116,7 +116,10 @@ Must:
     `round {k}: {n} finding(s)` par exécution et, à l'arrêt sans progrès,
     `stop: no progress, package.yaml restored to its state before round {k}`. Le résumé, le JUnit et le dump de template ne sont produits qu'une fois,
     depuis la dernière exécution, et le verdict est celui de cette dernière exécution : un fix qui
-    a tout corrigé donne exit 0 dès que `--fix-rounds` vaut au moins 2.
+    a tout corrigé donne exit 0 dès que `--fix-rounds` vaut au moins 2. Le fix appliqué après la
+    dernière exécution autorisée n'est suivi d'aucune exécution : son effet n'est jamais mesuré et
+    il n'est jamais défait, donc `--fix-rounds N` mesure au plus `N - 1` fix (documenté dans
+    `docs/tooling/test.md` et son miroir français).
   Porte `--verbose` (pas de court, pas d'env), booléen, champ Rust @verbose, déclaré `requires`
     `lint-dir`. Avec lui, après les étapes de fix de la dernière exécution (ou sans fix, si
     `--fix` est absent), appeler @TestHandler::run_hints avec le document courant et pour `skip`

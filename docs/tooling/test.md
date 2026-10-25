@@ -171,6 +171,9 @@ agent package test -p ./my-package --all \
   than the previous one (it then applies no fix: the fixes are not converging). Each run prints
   `round {k}: {n} finding(s)` on stderr. The summary, the JUnit file and the template dump are produced
   once, from the last run, and so is the exit code: a fix that cleared everything exits `0` with `N >= 2`.
+  The fix applied after the last allowed run is never measured, since no run follows it: it stays in
+  `package.yaml` even if it made the findings worse, so `N` runs measure at most `N - 1` fixes. Run the
+  command again to check the result.
 - **With `--verbose`**: for each rule that still has findings, `hint {rule}:` followed by the text of the
   script's `hint` function, indented by two spaces, on stderr. A rule that a fix has just corrected has no
   hint. See [Hints](render-lint.md#hints-hint).
