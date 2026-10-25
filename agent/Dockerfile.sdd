@@ -18,6 +18,9 @@ Must:
   Installer, à des versions vérifiées épinglées, `kubectl`, `helm`, `opentofu` (sous `terraform`),
     `mongodump`/`mongorestore`, `restic`, `cosign`, et la chaîne d'outils clients de bases de
     données et d'archives.
+  Fournir un client PostgreSQL (`pg_dump`/`pg_dumpall`/`psql`) issu du dépôt PGDG, de version
+    majeure `PG_VERSION` au moins égale à celle du plus récent serveur sauvegardé : `pg_dump`
+    refuse un serveur de version majeure supérieure à la sienne (client 18 : serveurs 9.2 à 18).
   Pré-alimenter les providers OpenTofu depuis `./providers.tf` dans le cache du runtime.
   Copier `./scripts` et `./templates` dans `/usr/lib/vynil` et exporter `SCRIPT_DIRECTORY`,
     `TEMPLATE_DIRECTORY`, `PACKAGE_DIRECTORY`, `CONFIG_DIR`, et `XDG_CACHE_HOME`.
