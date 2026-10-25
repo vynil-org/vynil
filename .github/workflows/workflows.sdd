@@ -11,7 +11,7 @@ Purpose:
   de parité des docs sur les bons triggers.
 
 Structure:
-  ./test.yml: Ensemble de jobs de gate — test, fmt, clippy, coverage
+  ./test.yml: Ensemble de jobs de gate — test, fmt, clippy, parent manifests, specdd lint, coverage
   ./agent.yml: Construit et publie l'image de l'agent sur tag
   ./operator.yml: Construit et publie l'image de l'opérateur sur tag
   ./server.yml: Construit et publie l'image du server sur tag
@@ -33,6 +33,8 @@ Owns:
 Must:
   Lancer `cargo test`, `cargo fmt --check` sur nightly, `cargo clippy -- -D warnings`, et une
     gate de couverture `cargo tarpaulin` sur chaque push vers `main` et chaque pull request.
+  Lancer `specdd lint` sur chaque push vers `main` et chaque pull request, avec l'outil npm
+    `specdd` installé à une version épinglée et sans script d'installation (`--ignore-scripts`).
   Publier les images uniquement sur `ghcr.io` (tags préfixés `ghcr.io/${{ github.repository }}-<crate>`,
     authentification `GITHUB_TOKEN`) pour `linux/amd64` et `linux/arm64` au push de tag.
   Épingler la toolchain Rust de chaque job de gate à celle de la CI de `vynil-core` (1.99.0).
