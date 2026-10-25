@@ -93,7 +93,7 @@ Must:
     `fix {rule}: {applied|not applicable|failed}` suivie de ` — {message}` quand le message
     n'est pas vide — puis, si `changed` et pas `--dry-run`, réécrire `package.yaml` par
     @YamlDoc::to_yaml_string, précédé du marqueur `---` quand le fichier lu en avait un, via un
-    fichier temporaire du même répertoire puis `rename` (jamais de fichier tronqué). Avec `--dry-run`, ne rien écrire et, si `changed`, afficher sur stderr le document
+    fichier temporaire du même répertoire (celui de la cible quand `package.yaml` est un lien symbolique, qui reste un lien) qui reprend les permissions du fichier d'origine, puis `rename` (jamais de fichier tronqué). Avec `--dry-run`, ne rien écrire et, si `changed`, afficher sur stderr le document
     qui serait écrit, après les lignes d'étapes (sans changement, il n'y a rien à écrire donc rien
     à afficher). Un fichier dont rien n'a changé n'est jamais
     réécrit : sa mise en forme (commentaires, quoting), que @YamlDoc ne conserve pas, reste intacte.
@@ -495,6 +495,19 @@ Scenario: the leading document marker survives a rewrite
   When @run tourne avec `--fix`
   Then le fichier réécrit commence par `---`, une seule fois
   Test @the-leading-document-marker-survives-a-rewrite
+
+Scenario: a rewrite keeps the permissions of package.yaml
+  Given un `package.yaml` en mode `0600` et un `fix` qui change le document
+  When @run tourne avec `--fix`
+  Then le fichier réécrit est toujours en mode `0600`
+  Test @a-rewrite-keeps-the-permissions-of-package-yaml
+
+Scenario: a rewrite follows a symlinked package.yaml
+  Given un `package.yaml` qui est un lien symbolique vers un autre fichier et un `fix` qui change
+    le document
+  When @run tourne avec `--fix`
+  Then `package.yaml` est toujours un lien symbolique et c'est sa cible qui porte le document réécrit
+  Test @a-rewrite-follows-a-symlinked-package-yaml
 
 Scenario: the default is a single pass
   Given `--fix` sans `--fix-rounds`
