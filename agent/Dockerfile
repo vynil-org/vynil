@@ -31,11 +31,18 @@ ARG KUBECTL_VERSION=v1.34.4
 ARG TF_VERSION=1.11.6
 ARG MONGODB_TOOLS_VERSION=100.12.2
 ARG COSIGN_VERSION=v2.4.1
-ARG DEB_PACKAGES="git jq curl tar gzip unzip openssl openssh-client ca-certificates postgresql-client-17 mariadb-client-compat restic redis-tools"
+ARG PG_VERSION=18
+ARG DEB_PACKAGES="git jq curl tar gzip unzip openssl openssh-client ca-certificates mariadb-client-compat restic redis-tools"
 # hadolint ignore=DL3008,DL4006,SC2035
 RUN DEBIAN_FRONTEND=noninteractive apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade \
- && DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends ${DEB_PACKAGES} \
+ && DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends curl ca-certificates \
+ && install -d /usr/share/postgresql-common/pgdg \
+ && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+ && . /etc/os-release \
+ && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+ && DEBIAN_FRONTEND=noninteractive apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends ${DEB_PACKAGES} postgresql-client-${PG_VERSION} \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /package /etc/vynil /work /nonexistent/.ssh \
