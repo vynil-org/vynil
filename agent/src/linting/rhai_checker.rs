@@ -3,7 +3,7 @@ use common::{
     rhaihandler::{AST, ASTNode, Engine, Expr, ParseError, Stmt},
     vynilpackage::{VynilPackageSource, VynilPackageType},
 };
-use rhai::OptimizationLevel;
+use rhai::{OptimizationLevel, Position};
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
@@ -592,9 +592,7 @@ fn check_empty_catch(
         if let Some(ASTNode::Stmt(Stmt::TryCatch(data, pos))) = nodes.last() {
             if data.branch.statements().is_empty() {
                 let line = pos.line().unwrap_or(0);
-                let disabled = inline_disables
-                    .get(&line)
-                    .is_some_and(|rules| rules.contains("rhai/empty-catch"));
+                let disabled = empty_catch_disabled(line, data.branch.end_position(), inline_disables);
                 if !disabled {
                     findings.push(LintFinding {
                         rule: "rhai/empty-catch".to_string(),
@@ -615,6 +613,21 @@ fn check_empty_catch(
     findings
 }
 
+/// Vrai quand une directive `vynil-lint-disable rhai/empty-catch` se trouve sur une ligne du
+/// bloc `try { } catch { }`, du `try` (où le constat est rapporté) à la fin du `catch`.
+fn empty_catch_disabled(
+    try_line: usize,
+    catch_end: Position,
+    inline_disables: &HashMap<usize, HashSet<String>>,
+) -> bool {
+    let last = catch_end.line().unwrap_or(try_line).max(try_line);
+    (try_line..=last).any(|line| {
+        inline_disables
+            .get(&line)
+            .is_some_and(|rules| rules.contains("rhai/empty-catch"))
+    })
+}
+
 fn check_stmts_for_empty_catch(
     stmts: &[Stmt],
     file: &Path,
@@ -626,9 +639,7 @@ fn check_stmts_for_empty_catch(
             Stmt::TryCatch(data, pos) => {
                 if data.branch.statements().is_empty() {
                     let line = pos.line().unwrap_or(0);
-                    let disabled = inline_disables
-                        .get(&line)
-                        .is_some_and(|rules| rules.contains("rhai/empty-catch"));
+                    let disabled = empty_catch_disabled(line, data.branch.end_position(), inline_disables);
                     if !disabled {
                         findings.push(LintFinding {
                             rule: "rhai/empty-catch".to_string(),
@@ -1689,6 +1700,55 @@ mod tests {
         assert!(
             !findings.iter().any(|f| f.rule == "rhai/empty-catch"),
             "inline disable should suppress rhai/empty-catch"
+        );
+    }
+
+    #[test]
+    fn inline_disable_on_the_catch_line_suppresses_empty_catch() {
+        let base_dir = get_fixture_dir("rhai-checks");
+        let pkg = read_package_yaml(&base_dir.join("package.yaml")).expect("Failed to load package");
+        let config = LintConfig::default();
+        let mut checker = RhaiChecker::new(&base_dir, &base_dir, None, &pkg, &config);
+
+        let source = "let x = 0;\ntry {\n    x = 1;\n} catch {} // vynil-lint-disable rhai/empty-catch\n";
+        let findings = checker.check_file(&PathBuf::from("test.rhai"), source);
+
+        assert!(
+            !findings.iter().any(|f| f.rule == "rhai/empty-catch"),
+            "la directive sur la ligne du catch doit supprimer rhai/empty-catch : {findings:?}"
+        );
+    }
+
+    #[test]
+    fn inline_disable_inside_the_try_block_suppresses_empty_catch() {
+        let base_dir = get_fixture_dir("rhai-checks");
+        let pkg = read_package_yaml(&base_dir.join("package.yaml")).expect("Failed to load package");
+        let config = LintConfig::default();
+        let mut checker = RhaiChecker::new(&base_dir, &base_dir, None, &pkg, &config);
+
+        let source = "let x = 0;\ntry {\n    x = 1; // vynil-lint-disable rhai/empty-catch\n} catch {}\n";
+        let findings = checker.check_file(&PathBuf::from("test.rhai"), source);
+
+        assert!(
+            !findings.iter().any(|f| f.rule == "rhai/empty-catch"),
+            "la directive entre le try et le catch doit supprimer rhai/empty-catch : {findings:?}"
+        );
+    }
+
+    #[test]
+    fn inline_disable_after_the_catch_does_not_suppress_empty_catch() {
+        let base_dir = get_fixture_dir("rhai-checks");
+        let pkg = read_package_yaml(&base_dir.join("package.yaml")).expect("Failed to load package");
+        let config = LintConfig::default();
+        let mut checker = RhaiChecker::new(&base_dir, &base_dir, None, &pkg, &config);
+
+        let source =
+            "let x = 0;\ntry {\n    x = 1;\n} catch {}\nx = 2; // vynil-lint-disable rhai/empty-catch\n";
+        let findings = checker.check_file(&PathBuf::from("test.rhai"), source);
+
+        assert!(
+            findings.iter().any(|f| f.rule == "rhai/empty-catch"),
+            "une directive après le bloc ne doit rien supprimer"
         );
     }
 

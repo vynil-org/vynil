@@ -89,7 +89,7 @@ Exposes:
     @collect_used_vars_stmts, @collect_used_vars_stmt, @check_shadowing_scoped,
     @check_dead_code, @check_statements_for_dead_code, @collect_declared_vars_stmts,
     @collect_declared_vars_stmt, @check_undefined_variables, @check_empty_catch,
-    @check_stmts_for_empty_catch, @extract_position, @check_unused_variables,
+    @check_stmts_for_empty_catch, @empty_catch_disabled, @extract_position, @check_unused_variables,
     @check_unused_parameters, @is_core_script, @first_property_in_dot_chain,
     @check_wrong_package_type, @check_context_hook_no_return, @check_k8s_resource_plural,
     @const @ENTRY_POINT_PATTERNS, @K8S_RESOURCE_PLURAL_KINDS, @ENTRY_POINT_FUNCTIONS,
@@ -303,7 +303,9 @@ Must:
   — `rhai/empty-catch` @Warn (codé en dur, directives par ligne) : @Stmt::TryCatch dont le
     bloc de branche a ZÉRO déclaration ; trouvé via @AST::walk au niveau externe plus
     récursion manuelle dans try/catch, block, if, corps while/do/for imbriqués ; un catch AVEC
-    binding mais sans déclarations est quand même marqué.
+    binding mais sans déclarations est quand même marqué. Le constat est rapporté à la ligne du
+    `try` ; la directive `vynil-lint-disable rhai/empty-catch` le supprime sur n'importe quelle
+    ligne du `try` à la fin du `catch` (@empty_catch_disabled), pas au-delà.
   — `rhai/wrong-api-mode` @Warn (codé en dur, sans lane) : @is_core_script(file) (nom de
     fichier exactement `build.rhai` ou `validate.rhai`, ou le texte lossy du chemin CONTIENT
     `handlebars/helpers/`) ET un @Expr::FnCall nu (les appels de méthode ne comptent jamais)
@@ -497,8 +499,13 @@ Scenario: empty catch — the only hardcoded rule with a working directive lane
   Given un corps de catch avec un appel print → propre ; le cas vide avec la directive
     empty-catch sur cette ligne → supprimé (lookup par-ligne brut, la config ne peut rien
     faire dans un sens ni l'autre)
+  Given la directive sur la ligne du `catch` d'un bloc `try { } catch {}` multi-ligne, ou sur une
+    ligne entre les deux → supprimé ; sur une ligne APRÈS la fin du `catch` → le @Warn reste
   Tests mappés @empty_catch_warns, @non_empty_catch_no_warning,
-    @inline_disable_suppresses_empty_catch
+    @inline_disable_suppresses_empty_catch,
+    @inline_disable_on_the_catch_line_suppresses_empty_catch,
+    @inline_disable_inside_the_try_block_suppresses_empty_catch,
+    @inline_disable_after_the_catch_does_not_suppress_empty_catch
 
 Scenario: core-mode API policy
   Given un appel full-API sous un chemin `handlebars/helpers/` → le @Warn core-mode, ligne
