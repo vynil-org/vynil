@@ -13,21 +13,45 @@ updates:
       interval: "weekly"
     labels:
       - "cargo"
+    groups:
+      kube-stack:
+        patterns:
+          - "kube"
+          - "kube-*"
+          - "k8s-openapi"
   - package-ecosystem: "cargo"
     directory: "/agent"
     schedule:
       interval: "weekly"
     labels:
       - "agent"
+    groups:
+      kube-stack:
+        patterns:
+          - "kube"
+          - "kube-*"
+          - "k8s-openapi"
   - package-ecosystem: "cargo"
     directory: "/operator"
     schedule:
       interval: "weekly"
     labels:
       - "operator"
+    groups:
+      kube-stack:
+        patterns:
+          - "kube"
+          - "kube-*"
+          - "k8s-openapi"
   - package-ecosystem: "cargo"
     directory: "/common"
     schedule:
       interval: "weekly"
     labels:
       - "common"
+    groups:
+      kube-stack:
+        patterns:
+          - "kube"
+          - "kube-*"
+          - "k8s-openapi"
