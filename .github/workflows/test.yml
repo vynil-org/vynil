@@ -77,6 +77,22 @@ jobs:
       - name: Check parent.toml are in sync with Cargo.toml
         run: bash .github/scripts/check-parent-manifests.sh
 
+  specdd-lint:
+    name: SpecDD lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install specdd
+        run: npm install --global --ignore-scripts specdd@1.2.0
+
+      - name: specdd lint
+        run: specdd lint
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
