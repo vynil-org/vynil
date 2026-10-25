@@ -122,8 +122,13 @@ Must:
     @rhai::Dynamic et @YamlDoc → @crate::RhaiRes<@rhai::ImmutableString>, et @YamlDoc via
     @rhai::Engine::register_type_with_name sous le nom visible en script `"map"` avec
     @YamlDoc::idx_get / @YamlDoc::idx_set liés en get/set d'indexeur plus les fonctions membres
-    `keys`, `values`, `len`, `is_empty`, `contains` (liée à @YamlDoc::contains_key) et
-    `to_string` dont l'échec de dump devient `""` via @Result::unwrap_or_default.
+    `keys`, `values`, `len`, `is_empty`, `contains` (liée à @YamlDoc::contains_key),
+    `remove` (liée à @YamlDoc::remove) et `to_string` dont l'échec de dump devient `""` via @Result::unwrap_or_default.
+  Enregistrer `len`, `is_empty` et `contains` par des fermetures prenant `&mut YamlDoc` qui
+    appellent @YamlDoc::len, @YamlDoc::is_empty et @YamlDoc::contains_key : Rhai ne résout pas
+    une méthode enregistrée directement avec un récepteur `&self`, si bien que `doc.contains("k")`,
+    `doc.len()`, `doc.is_empty()` et `"k" in doc` échouaient avec `Function not found`. Les
+    signatures Rust publiques de ces trois méthodes ne changent pas.
   La traversée Rhai aplatit les erreurs : @crate::rhai_err cuit @crate::Error::YamlError en chaîne
     @rhai::EvalAltResult, donc les scripts ne voient que le préfixe de texte
     `YamlError: <backend message>` — tandis que la surface Rust directe (@std::str::FromStr,
@@ -183,6 +188,12 @@ Exposes:
     support du setter enregistré.
   @YamlDoc::keys — `pub fn keys(&mut self) -> @rhai::Array` de valeurs @rhai::ImmutableString.
   @YamlDoc::values — `pub fn values(&mut self) -> @rhai::Array`.
+  @YamlDoc::remove — `pub fn remove(&mut self, key: @rhai::ImmutableString) -> @bool` ; retire
+    la clé d'une racine mapping et rend `true` si elle y était. Les autres clés gardent leur
+    ordre d'insertion (retrait par décalage, jamais par échange avec la dernière entrée).
+    Sur une clé absente, ou une racine non-mapping, le document est inchangé et le retour est
+    `false`. Comme @idx_get rend une copie, retirer une clé imbriquée demande de ré-assigner le
+    parent (voir « Nested mutation needs re-assignment »).
   @YamlDoc::contains_key — `#[must_use] pub fn contains_key(&self, key: @rhai::ImmutableString) -> @bool`.
   @YamlDoc::len — `#[must_use] pub fn len(&self) -> @i64`.
   @YamlDoc::is_empty — `#[must_use] pub fn is_empty(&self) -> @bool`.
@@ -526,3 +537,20 @@ Scenario: Dynamic fallbacks at the Rhai boundary
   But un @Dynamic que le repli @serde_json refuse (ou dont le JSON ne peut être relu)
     se convertit en @Value::Null silencieusement, s'imprimant `null`
   Aucun test mappé n'existe.
+
+Scenario: Removing a key keeps the order of the others
+  Given `z: 1\na: 2\nm: 3\n` décodé dans un @YamlDoc sur un engine enregistré
+  When un script exécute `doc.remove("a")` puis encode le document
+  Then l'appel rend `true` et l'encodage est `z: 1\nm: 3\n`, `z` toujours avant `m`
+  And un second `doc.remove("a")` rend `false` et laisse le document identique
+  And `remove` sur un @YamlDoc à racine séquence ou scalaire rend `false` et laisse le texte
+    identique octet pour octet
+  Test @removing-a-key-keeps-the-order-of-the-others
+
+Scenario: Read-only members resolve in scripts
+  Given `a: 1\nb: 2\n` décodé dans un @YamlDoc sur un engine enregistré
+  When un script évalue `doc.contains("a")`, `doc.contains("z")`, `"a" in doc`, `doc.len()` et
+    `doc.is_empty()`
+  Then les résultats sont `true`, `false`, `true`, `2` et `false`, sans erreur de fonction inconnue
+  And sur un document vide `is_empty()` rend `true` et `len()` rend `0`
+  Test @read-only-members-resolve-in-scripts

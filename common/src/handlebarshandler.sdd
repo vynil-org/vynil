@@ -30,6 +30,21 @@ Must:
     `have_system_service`→@have_system_service, `have_tenant_service`→@have_tenant_service,
     `render_template`→@render_template, `render_file`→@render_file, plus deux script
     helpers Rhai `image_from_ctx` et `resources_from_ctx` ; rien d'autre n'est ajouté.
+  @HandleBars::new_restricted construit sur @vynil_core::hbs::HandleBars::new_restricted, qui retire
+    `read_to_str`, `env_var`, `canonicalize`, `parent`, `file_name` et `extension`,
+    retire en plus `http_get` et `gitignore_io` (helpers réseau, enregistrés par la feature par
+    défaut `http_attohttpc` de `handlebars_misc_helpers`, que le constructeur du cœur ne retire
+    pas) et `jsonnet` (le helper évalue un snippet Jsonnet dans une machine virtuelle
+    aux imports par défaut : `importstr "/chemin"` lit n'importe quel fichier, ce que le
+    constructeur du cœur ne retire pas), puis enregistre les mêmes helpers de vynil que
+    @HandleBars::new SAUF `render_file` (qui lit n'importe quel chemin) : six macro helpers et
+    les deux script helpers. `render_template` y est enregistré en variante dont le moteur
+    interne est lui-même @HandleBars::new_restricted ; avec le helper de @HandleBars::new, dont
+    le moteur interne est complet, un gabarit imbriqué rouvrirait tous les helpers retirés
+    (`{{render_template "{{env_var \"PATH\"}}" this}}` rendait le PATH de l'hôte). Pour un modèle de
+    menace où les gabarits viennent d'un tiers, c'est la construction à utiliser ; la
+    restriction ne couvre que ce que ce constructeur retire, le champ `pub` et
+    `register_helper_dir` permettant de tout remettre.
   Les deux enregistrements de script sur @vynil_core::hbs::HandleBars::engine_mut passent
     par @handlebars::Handlebars::register_script_helper, qui compile la source Rhai de
     façon eagerly, et leur @Result::Ok(()) est jeté avec `let _` — un échec de compilation
@@ -201,6 +216,8 @@ Exposes:
     `ctx_have_crd`, `have_system_service`, `have_tenant_service`, `image_from_ctx`,
     `resources_from_ctx`, `render_template`, `render_file` ; la documentation le positionne
     comme l'addition par-dessus @vynil_core::hbs::CORE_HBS_HELPERS.
+  @HandleBars::new_restricted — `#[must_use] pub fn new_restricted() -> @HandleBars<'static>` ;
+    le moteur de @HandleBars::new privé de tout helper qui touche l'hôte (voir la `Must`).
   @is_native_hbs_helper — `#[must_use] pub fn is_native_hbs_helper(name: &str) -> bool` ;
     `true` pour tout nom dans @vynil_core::hbs::CORE_HBS_HELPERS ou @VYNIL_HBS_HELPERS
     (appartenance const, moteur non consulté).
@@ -498,3 +515,14 @@ Scenario: Strict mode turns missing args into render errors
     les macro structs, et les script helpers sans exigence de type
     missing-`comp` continuent de répondre
   Aucun test mappé n'existe.
+
+Scenario: A restricted engine has no host helpers
+  Given un @HandleBars::new_restricted
+  When il rend `{{render_file "x" this}}`, `{{read_to_str "x"}}`, `{{env_var "PATH"}}`,
+    `{{canonicalize "."}}`, `{{http_get "http://127.0.0.1:9/"}}`, `{{gitignore_io "rust"}}` et `{{#jsonnet}}importstr "/etc/hostname"{{/jsonnet}}`
+  Then chaque rendu est une @Error::HbsRenderError, et aucun contenu de l'hôte n'est rendu
+  And `{{render_template "{{env_var \"PATH\"}}" this}}` ne rend pas le PATH : le moteur du
+    gabarit imbriqué est lui aussi restreint, et l'échec du rendu imbriqué est avalé en chaîne vide
+  And `{{concat "a" "b"}}`, `{{render_template "x" this}}` et `{{labels_from_ctx this}}`
+    rendent normalement, comme avec @HandleBars::new
+  Test @a-restricted-engine-has-no-host-helpers

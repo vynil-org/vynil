@@ -33,6 +33,10 @@ agent package test -p ./my-package --all --format json \
 | `--template-output-filename <file>` | Dump du rendu (test unique uniquement). |
 | `--lint-dir <dir>` | Répertoire du script de lint de la distribution (`lint.rhai`). Active le lint du rendu. |
 | `--schemas-dir <dir>` | Répertoire de schémas de la distribution. Exige `--lint-dir`. |
+| `--fix` | Applique à `package.yaml` les fix de la distribution (voir [Lint du rendu](render-lint.md#corriger-les-constats-fix)). Exige `--lint-dir`. |
+| `--dry-run` | Avec `--fix`, montre ce qui serait écrit sans l'écrire. Exige `--fix`. |
+| `--fix-rounds <n>` | Avec `--fix`, nombre maximal d'exécutions de la suite (défaut `1`). Exige `--fix`. |
+| `--verbose` | Affiche sur stderr les hints des règles qui ont encore des constats. Exige `--lint-dir`. |
 
 Le répertoire `tests/` doit exister, sinon l'agent renvoie `MissingTestDirectory`.
 
@@ -158,6 +162,20 @@ agent package test -p ./my-package --all \
   réussie préfixée de `warning: ` et ne fait jamais échouer l'exécution. Une erreur du script donne une
   ligne en échec `lint:execution`, et un constat invalide une ligne en échec `lint:invalid-finding`.
 - **Sans `--lint-dir`** : rien ne change. Aucune ligne de lint ni aucune suppression n'est produite.
+- **Avec `--fix`** : après le résumé, chaque règle qui a produit des constats est confiée à la fonction `fix`
+  du script, et `package.yaml` est réécrit si un fix s'est appliqué. L'ordre des clés est conservé ; les
+  commentaires et le quoting du fichier ne le sont pas (un fichier où aucun fix ne s'est appliqué n'est jamais réécrit). Le rapport va sur stderr, donc un
+  `--format json` sur stdout reste exploitable. Avec le défaut d'une seule exécution, le code de sortie est celui
+  de l'exécution *avant* le fix : relancer la commande pour vérifier que les constats ont disparu.
+- **Avec `--fix-rounds N`** : après un fix appliqué, la suite s'exécute à nouveau sur le `package.yaml`
+  réécrit, jusqu'à `N` exécutions. La boucle s'arrête quand aucun fix n'a rien changé, ou quand une
+  exécution n'a pas strictement moins de constats que la précédente (elle n'applique alors aucun fix : les
+  fix ne convergent pas). Chaque exécution écrit `round {k}: {n} finding(s)` sur stderr. Le résumé, le
+  fichier JUnit et le dump de template ne sont produits qu'une fois, depuis la dernière exécution, de même
+  que le code de sortie : un fix qui a tout corrigé sort en `0` avec `N >= 2`.
+- **Avec `--verbose`** : pour chaque règle qui a encore des constats, `hint {rule}:` suivi du texte de la
+  fonction `hint` du script, indenté de deux espaces, sur stderr. Une règle qu'un fix vient de corriger n'a
+  pas de hint. Voir [Hints](render-lint.md#hints-hint).
 
 ### Suppressions
 

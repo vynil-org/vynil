@@ -1,0 +1,125 @@
+# Spec fichier de ./templates.rs — les templates Handlebars offerts au script de lint, bornés
+# au répertoire de la distribution.
+
+Spec: LintTemplates
+
+Platform: Rust
+
+Purpose:
+  Laisser le script de lint de la distribution (`lint`, `fix`, `hint`) composer ses textes avec
+    Handlebars, et ranger ses gabarits en fichiers `.hbs` dans le répertoire de lint plutôt que
+    dans des chaînes. C'est la seule entorse à la pureté du script (./lint.sdd) : une lecture,
+    jamais une écriture, des fichiers `.hbs` du répertoire de la distribution, et rien d'autre
+    du système de fichiers, de l'environnement ou du réseau.
+
+Owns:
+  ./templates.rs
+
+Can modify:
+  ./mod.rs: déclaration `pub mod templates;`
+
+References:
+  /common/src/handlebarshandler.sdd — @HandleBars et sa variante restreinte, dont ce fichier
+    n'expose que la partie qui ne touche pas à l'hôte.
+  ./runner.sdd — l'appelant : il enregistre ces fonctions dans le moteur de chaque appel.
+  ./lint.sdd — la règle de pureté que ce fichier assouplit, et seulement ici.
+
+Exposes:
+  @register — `(engine: &mut Engine, lint_dir: &Path)` ; enregistre le type `HandleBars` et
+    les cinq fonctions suivantes sur le moteur du script.
+  Surface vue par le script :
+    - `new_hbs()` → un `HandleBars` neuf, construit par @HandleBars::new_restricted.
+    - `register_template(h, name, template)` → enregistre un gabarit donné en chaîne.
+    - `register_partial_dir(h, dir)` → enregistre chaque fichier `*.hbs` du répertoire `dir`,
+      sous son nom sans le suffixe, comme partial et comme gabarit.
+    - `render_from(h, template, data)` → rend une chaîne de gabarit avec la carte `data`.
+    - `render_named(h, name, template, data)` → idem, en enregistrant le gabarit sous `name`.
+
+Accepts:
+  @lint_dir : le répertoire de la distribution, tel que le runner le connaît.
+  `dir` de `register_partial_dir` : un chemin RELATIF à @lint_dir (`"templates"`, `"hints/fr"`),
+    ou `"."` pour @lint_dir lui-même.
+
+Raises:
+  Erreurs de script, jamais de panique :
+    - `dir` absolu, ou contenant un composant `..` : erreur qui nomme le chemin.
+    - `dir` qui, une fois résolu (liens symboliques suivis), sort de @lint_dir : même erreur.
+    - `dir` qui contient (récursivement) un lien symbolique de fichier dont la cible sort de
+      @lint_dir : même erreur, qui nomme le fichier lié. Les liens de répertoire ne sont pas
+      suivis par le parcours de `handlebars` et ne sont pas examinés.
+    - `dir` introuvable ou qui n'est pas un répertoire : erreur qui nomme le chemin. Le
+      comportement par défaut de @HandleBars est un succès silencieux ; ici une faute de frappe
+      ne doit pas donner un hint vide sans bruit.
+    - gabarit qui ne compile pas, ou rendu en échec (clé manquante en mode strict) : l'erreur
+      de @HandleBars, telle quelle.
+
+Must:
+  Construire chaque `HandleBars` du script par @HandleBars::new_restricted : aucun helper de
+    gabarit ne lit un fichier, une variable d'environnement ou le système de fichiers, y compris
+    `render_file`, `read_to_str`, `env_var`, `canonicalize`, `parent`, `file_name`,
+    `extension` et `jsonnet` (dont `importstr` lit n'importe quel fichier). Un gabarit qui les
+    appelle échoue au rendu, y compris depuis un gabarit imbriqué par `render_template`.
+  N'enregistrer NI `register_helper_dir` NI aucune autre voie qui charge du code : un helper
+    est du Rhai exécuté hors des bornes du moteur de lint.
+  Ne lire que des fichiers `.hbs` situés directement dans le répertoire demandé, sans
+    récursion, sous @lint_dir.
+  Ne rien écrire, nulle part.
+  Ne retenir aucun état entre deux appels du script : les `HandleBars` vivent dans le moteur
+    neuf de l'appel.
+
+Handles:
+  Fichier du répertoire qui n'est pas en `.hbs` — ignoré.
+  Deux fichiers qui donnent le même nom — le dernier enregistré gagne, comme dans @HandleBars.
+
+Tasks:
+  [ ] Couvrir chaque scénario par un test de même nom.
+  [?] Un gabarit ou un partial qui s'inclut lui-même n'est borné par rien dans `handlebars` :
+      la pile peut déborder et tuer le processus, sans message. Borner la profondeur du rendu,
+      ou le documenter comme limite, quand un cas réel se présente.
+
+Done when:
+  Chaque scénario a un test passant et le harnais statique est vert.
+
+Scenario: a script renders a template from a string
+  Given un moteur sur lequel @register s'est exécuté
+  When un script appelle `new_hbs()` puis `render_from(h, "Bonjour {{name}}", #{ name: "Zoé" })`
+  Then le résultat est `Bonjour Zoé`
+  And `register_template` puis `render_named` rendent un gabarit enregistré sous son nom
+  Test @a-script-renders-a-template-from-a-string
+
+Scenario: partials come from the lint directory
+  Given un répertoire de lint dont `templates/` contient `hint.hbs` valant
+    `{{> intro}} : {{rule}}` et `intro.hbs` valant `Hint`, plus un fichier `notes.txt`
+  When un script appelle `register_partial_dir(h, "templates")` puis rend `{{> hint}}`
+    avec `#{ rule: "no-cpu-limits" }`
+  Then le résultat est `Hint : no-cpu-limits` et `notes.txt` n'a rien enregistré
+  Test @partials-come-from-the-lint-directory
+
+Scenario: the directory is bounded to the lint directory
+  Given un répertoire de lint, un répertoire frère hors de lui, et un lien symbolique du
+    premier vers le second
+  When un script appelle `register_partial_dir` avec `".."`, avec un chemin absolu, avec
+    `"../frère"`, avec le nom du lien symbolique, puis avec un répertoire absent
+  Then chaque appel est une erreur de script qui nomme le chemin, et aucun fichier n'a été lu
+  Test @the-directory-is-bounded-to-the-lint-directory
+
+Scenario: a partial file linking outside the lint directory is refused
+  Given un `.hbs` de `templates/` qui est un lien symbolique vers un fichier hors du répertoire de lint
+  When un script appelle `register_partial_dir(h, "templates")`
+  Then l'appel est une erreur de script qui nomme le fichier lié
+  Test @a-partial-file-linking-outside-the-lint-directory-is-refused
+
+Scenario: host helpers are gone
+  Given un `HandleBars` obtenu par `new_hbs()`
+  When un gabarit appelle `{{render_file "x" data}}`, `{{read_to_str "x"}}`, `{{env_var "PATH"}}`,
+    `{{canonicalize "."}}`, `{{http_get "http://127.0.0.1/"}}`, `{{gitignore_io "rust"}}` ou `{{#jsonnet}}importstr "/etc/hostname"{{/jsonnet}}`
+  Then chaque rendu est une erreur de script, et aucun contenu de l'hôte n'est rendu
+  And `{{render_template "{{env_var \"PATH\"}}" data}}` ne rend pas le PATH
+  And `{{concat "a" "b"}}` et `{{base64_encode "a"}}` rendent normalement
+  Test @host-helpers-are-gone
+
+Scenario: no way to load code
+  Given un moteur sur lequel @register s'est exécuté
+  When un script appelle `register_helper_dir(h, "templates")`
+  Then l'erreur est une fonction inconnue
+  Test @no-way-to-load-code

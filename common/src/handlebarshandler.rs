@@ -87,6 +87,16 @@ handlebars_helper!(render_template: |template: String, data: Value| {
     })
 });
 
+// Variante de `render_template` pour le moteur restreint : le gabarit imbriqué est lui aussi
+// rendu par un moteur restreint, sinon il rouvrirait les helpers qui touchent à l'hôte.
+handlebars_helper!(render_template_restricted: |template: String, data: Value| {
+    let mut hbs = HandleBars::new_restricted();
+    hbs.render(&template, &data).unwrap_or_else(|e| {
+        warn!("handlebars::render_template failed with: {:?}",e);
+        String::new()
+    })
+});
+
 handlebars_helper!(render_file: |file: String, data: Value| {
     let mut hbs = HandleBars::new();
     match std::fs::read_to_string(file.clone()) {
@@ -122,17 +132,45 @@ impl std::ops::DerefMut for HandleBars<'_> {
 }
 
 impl HandleBars<'_> {
+    /// Moteur complet : tous les helpers de vynil, `render_file` compris.
     #[must_use]
     pub fn new() -> HandleBars<'static> {
-        let mut inner = vynil_core::hbs::HandleBars::new();
+        Self::with_base(vynil_core::hbs::HandleBars::new(), true)
+    }
+
+    /// Moteur de @new privé des helpers qui touchent à l'hôte (voir la spec de ce module) :
+    /// les mêmes helpers de vynil, sauf `render_file`, et sans `jsonnet` (son `importstr`
+    /// lit n'importe quel fichier) ni les helpers réseau (`http_get`,
+    /// `gitignore_io`). `render_template` imbriqué reste restreint.
+    #[must_use]
+    pub fn new_restricted() -> HandleBars<'static> {
+        let mut inner = vynil_core::hbs::HandleBars::new_restricted();
+        // `http_get` et `gitignore_io` viennent de la feature par défaut `http_attohttpc` de
+        // `handlebars_misc_helpers` : ils ouvrent des connexions sortantes.
+        for helper in ["jsonnet", "http_get", "gitignore_io"] {
+            inner.engine_mut().unregister_helper(helper);
+        }
+        Self::with_base(inner, false)
+    }
+
+    /// Ajoute les helpers de vynil à `inner`. `host_file_render` vrai : `render_template` et
+    /// `render_file` au moteur complet ; faux : `render_template` au moteur restreint seulement.
+    fn with_base(
+        mut inner: vynil_core::hbs::HandleBars<'static>,
+        host_file_render: bool,
+    ) -> HandleBars<'static> {
         let engine = inner.engine_mut();
         engine.register_helper("labels_from_ctx", Box::new(labels));
         engine.register_helper("ctx_have_crd", Box::new(have_crd));
         engine.register_helper("selector_from_ctx", Box::new(selector));
         engine.register_helper("have_system_service", Box::new(have_system_service));
         engine.register_helper("have_tenant_service", Box::new(have_tenant_service));
-        engine.register_helper("render_template", Box::new(render_template));
-        engine.register_helper("render_file", Box::new(render_file));
+        if host_file_render {
+            engine.register_helper("render_template", Box::new(render_template));
+            engine.register_helper("render_file", Box::new(render_file));
+        } else {
+            engine.register_helper("render_template", Box::new(render_template_restricted));
+        }
         let _ = engine.register_script_helper("image_from_ctx",
             "let root = params[0];let name = params[1];\n\
             let im = root[\"instance\"][\"images\"][name];\n\
@@ -444,5 +482,61 @@ mod tests {
             out, "app=demo",
             "new_hbs() en rhai ne voit pas selector_from_ctx — le binding doit produire common::HandleBars"
         );
+    }
+
+    // ── new_restricted : aucun helper qui touche à l'hôte ─────────────────────
+
+    #[test]
+    fn a_restricted_engine_has_no_host_helpers() {
+        let mut hbs = HandleBars::new_restricted();
+        let data = serde_json::json!({ "this": 1 });
+        for template in [
+            r#"{{render_file "x" this}}"#,
+            r#"{{read_to_str "x"}}"#,
+            r#"{{env_var "PATH"}}"#,
+            r#"{{canonicalize "."}}"#,
+            r#"{{http_get "http://127.0.0.1:9/"}}"#,
+            r#"{{gitignore_io "rust"}}"#,
+            r#"{{#jsonnet}}importstr "/etc/hostname"{{/jsonnet}}"#,
+        ] {
+            let result = hbs.render(template, &data);
+            assert!(
+                matches!(result, Err(vynil_core::Error::HbsRenderError(_))),
+                "{template} doit échouer en rendu, obtenu {result:?}"
+            );
+        }
+        assert_eq!(hbs.render(r#"{{concat "a" "b"}}"#, &data).unwrap(), "ab");
+        assert!(hbs.render(r#"{{render_template "x" this}}"#, &data).is_ok());
+        assert!(hbs.render("{{labels_from_ctx this}}", &data).is_ok());
+    }
+
+    #[test]
+    fn a_restricted_engine_does_not_reopen_host_helpers_through_render_template() {
+        let mut hbs = HandleBars::new_restricted();
+        let data = serde_json::json!({});
+        let path = std::env::var("PATH").expect("PATH de test");
+        assert!(!path.is_empty());
+        let out = hbs
+            .render(r#"{{render_template "{{env_var \"PATH\"}}" this}}"#, &data)
+            .expect("le helper avale l'échec imbriqué");
+        assert!(!out.contains(&path), "le PATH de l'hôte est rendu : {out}");
+    }
+
+    #[test]
+    fn a_restricted_engine_cannot_import_host_files_through_jsonnet() {
+        let file = tempfile::NamedTempFile::new().expect("fichier temporaire");
+        let secret = "SECRET_HOTE_JSONNET_42";
+        std::fs::write(file.path(), secret).expect("écriture");
+        let template = format!(
+            r#"{{{{#jsonnet}}}}importstr "{}"{{{{/jsonnet}}}}"#,
+            file.path().display()
+        );
+        let mut hbs = HandleBars::new_restricted();
+        let result = hbs.render(&template, &serde_json::json!({}));
+        assert!(
+            matches!(result, Err(vynil_core::Error::HbsRenderError(_))),
+            "importstr doit échouer en rendu, obtenu {result:?}"
+        );
+        assert!(!format!("{result:?}").contains(secret));
     }
 }

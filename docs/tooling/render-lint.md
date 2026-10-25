@@ -60,6 +60,10 @@ The script may define one or both of these functions. A function that is not def
 `lint` is not called for a test whose `value_script` or install step failed: the failure is already
 reported on the test, and a partial render would produce misleading findings.
 
+A third, optional function, `fix`, turns findings into a corrected `package.yaml` (see
+[Fixing findings](#fixing-findings-fix)). It is only called with `agent package test --fix`. A fourth one, `hint`, says how to correct what `fix`
+could not (see [Hints](#hints-hint)); it is only called with `--verbose`.
+
 ### The `objs` map
 
 `objs` is a map with a fixed set of keys. Every key is always present; a key with no object holds an
@@ -83,8 +87,10 @@ section is empty and every object is in `unsectioned`; the test is not failed fo
 
 Each call runs in a fresh Rhai engine, with no state shared between tests. The script receives copies:
 it cannot modify the objects of the test. The available functions are the data-manipulation functions
-of the base engine and the `schema_*` functions. No Kubernetes, HTTP, S3, shell or file function is
-registered: a script that calls one fails with an unknown-function error.
+of the base engine, the `schema_*` functions and the Handlebars [templates](#templates). No Kubernetes,
+HTTP, S3 or shell function is registered, nothing can be written, and the only files a script can read are
+the `.hbs` files of the lint directory: a script that calls anything else fails with an unknown-function
+error.
 
 Execution is bounded by an operation limit so that a looping script cannot block the run. The limit
 value is not fixed by the contract yet.
@@ -393,8 +399,211 @@ A Deployment without a `team` label produces a failed row `lint:team-label`. An 
 rule builds its finding directly and does not go through `render_lint::apply_suppressions`. To make a house rule
 suppressible, pass its findings through `render_lint::apply_suppressions(findings, objs.all, opts)`.
 
+## Fixing findings: `fix`
+
+A finding carries what is needed to correct it. When the command runs with `--fix`, the script's
+`fix` function is called **once per rule** that produced at least one finding, in alphabetical order
+of the rules:
+
+```rhai
+fn fix(rule, findings, pkg) { ... }
+```
+
+| Argument | Content |
+|---|---|
+| `rule` | Name of the rule. |
+| `findings` | All the findings of that rule, from every test and from the suite, suppressed ones included, in order of arrival. Same shape as a finding returned by `lint`. |
+| `pkg` | The `package.yaml` as an ordered document (`yaml_decode_ordered`). `package` is a reserved word in Rhai, hence `pkg`. |
+
+It returns a map:
+
+| Key | Content |
+|---|---|
+| `status` | `"applied"` or `"not_applicable"`. |
+| `pkg` | The complete, modified document. Required with `applied`. |
+| `message` | Optional text, shown in the report. |
+
+Anything else (an error, an unknown status, `applied` without `pkg`, a return that is not a map) is a
+failed fix: the document is left as it was and the following rules still run. A distribution without
+`fix` is not an error: its rules simply have no fix. Each rule sees the document as the previous rule
+left it. Vynil ships no fix: the catalogue is the distribution's.
+
+The script stays pure: it receives the document and returns the new one, only the command writes
+`package.yaml`. The key order is kept at every level. Comments and quoting are not (the same limit as
+`agent package update`), so `package.yaml` is only rewritten when a fix changed the document: a fix
+that answers `applied` with an identical document leaves the file untouched. A leading `---` is kept when
+the file had one, and the write goes through a temporary file then a rename, so an interruption never
+leaves a truncated file.
+
+One trap of the document type: reading a nested key returns a copy, so to change it, read the parent,
+modify the copy and assign it back. `keys()`, `contains(key)`, `len()`, `is_empty()` and `remove(key)` work
+on the document.
+
+Key order also matters for a **new** map: a Rhai literal (`#{…}`) inserted into the document is written in
+alphabetical key order. Build it with `yaml_decode_ordered(...)` when the order must be kept.
+
+A suppressed finding is passed to `fix` on purpose. A fix that edits the whole package should not
+override an author's explicit decision: the example below declines when any finding is suppressed.
+
+### Example: no CPU limits
+
+The rule (`lint`) reports every container with a CPU limit; the fix removes `limits.cpu` from the
+`resources` of the package, and the `limits` block when it becomes empty. The rule is global to the
+package, so the fix is too: it declines when a finding is suppressed, to not override an explicit
+decision.
+
+```rhai
+fn lint(objs, ctx) {
+    let out = [];
+    for obj in objs.all {
+        if obj.kind == "Deployment" {
+            for c in obj.spec.template.spec.containers {
+                if "resources" in c && "limits" in c.resources && "cpu" in c.resources.limits {
+                    out.push(#{
+                        rule: "no-cpu-limits", severity: "error",
+                        object: #{ apiVersion: obj.apiVersion, kind: obj.kind, namespace: obj.metadata.namespace, name: obj.metadata.name },
+                        message: "cpu limit on " + c.name
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
+fn fix(rule, findings, pkg) {
+    for f in findings {
+        if f.suppressed { return #{ status: "not_applicable", message: "an object is suppressed" }; }
+    }
+    let resources = pkg["resources"];
+    if type_of(resources) != "map" { return #{ status: "not_applicable" }; }
+    let changed = false;
+    for name in resources.keys() {
+        let component = resources[name];
+        let limits = component["limits"];
+        if type_of(limits) == "map" && limits.keys().contains("cpu") {
+            limits.remove("cpu");
+            if limits.keys().len() == 0 {
+                component.remove("limits");
+            } else {
+                component["limits"] = limits;
+            }
+            resources[name] = component;
+            changed = true;
+        }
+    }
+    if !changed { return #{ status: "not_applicable" }; }
+    pkg["resources"] = resources;
+    #{ status: "applied", pkg: pkg }
+}
+```
+
+```bash
+agent package test -p ./my-package --all --lint-dir ./distribution/lint --fix
+# stderr: fix no-cpu-limits: applied
+```
+
+The run above still exits with code 3, since the finding existed when the suite ran. Run it again, or
+let the command do it with `--fix-rounds`:
+
+```bash
+agent package test -p ./my-package --all --lint-dir ./distribution/lint --fix --fix-rounds 3
+# stderr: round 1: 2 finding(s)
+#         fix no-cpu-limits: applied
+#         round 2: 0 finding(s)
+```
+
+The suite runs again on the rewritten `package.yaml`, and the exit code is the one of the last run.
+`--fix-rounds` is a ceiling: the loop also stops when nothing changed, or when a run does not have
+strictly fewer findings than the previous one. In that case the fix written by the previous round is
+undone: `package.yaml` is restored to its content before that round (comments included), `stop: no progress,
+package.yaml restored …` is printed on stderr, and the verdict is the one of the round that was kept.
+
+## Hints: `hint`
+
+A fix cannot always correct a finding: the value may be hard-coded in a template, or the right value
+may need a decision. `hint` is the text that tells the reader, a person or an LLM, how to correct it.
+
+```rhai
+fn hint(rule, findings, pkg) { ... }
+```
+
+It receives what `fix` receives and returns a string. A non-empty string is the hint; an empty string,
+or no `hint` function, means no hint; an error, or a return that is not a string, is shown as a failed
+hint. It is only called with `--verbose`, once per rule that still has at least one finding which is not
+suppressed, and not for a rule that a fix has just corrected.
+
+```rhai
+fn hint(rule, findings, pkg) {
+    if rule != "no-cpu-limits" { return ""; }
+    let names = [];
+    for f in findings { if !f.suppressed { names.push(f.object.name); } }
+    `Remove the CPU limit of the containers of ${names}. The limits are not in package.yaml: look for
+    "cpu" under "limits" in the templates of this package. Keep the memory limit. Run the tests again
+    to check.`
+}
+```
+
+```text
+hint no-cpu-limits:
+  Remove the CPU limit of the containers of ["web"]. ...
+```
+
+The template literal is the template: the hint is built from the same data as the fix, so it can quote
+the findings and any part of `pkg`. The output is plain text on stderr, meant to be handed as is to
+whoever corrects the package. For a longer text, keep it in a file: see [Templates](#templates).
+
+## Templates
+
+A script can build its texts with Handlebars and keep its templates as files in the lint directory, which
+lets a distribution organise them as it likes. It is the only thing a script reads from the disk.
+
+| Function | Role |
+|---|---|
+| `new_hbs()` | A new Handlebars engine. |
+| `register_template(h, name, template)` | Registers a template given as a string. |
+| `register_partial_dir(h, dir)` | Registers every `*.hbs` file directly in `dir`, under its name without the suffix, as a template and a partial. `dir` is relative to the lint directory (`"."` for the directory itself). |
+| `render_from(h, template, data)` | Renders a template string with the map `data`. |
+| `render_named(h, name, template, data)` | The same, registering the template under `name`. |
+
+With `hints/cpu_limits.hbs` in the lint directory:
+
+```handlebars
+Remove the CPU limit of the containers of {{#each names}}{{this}} {{/each}}and keep the memory limit.
+```
+
+```rhai
+fn hint(rule, findings, pkg) {
+    if rule != "no-cpu-limits" { return ""; }
+    let names = [];
+    for f in findings { if !f.suppressed { names.push(f.object.name); } }
+    let h = new_hbs();
+    h.register_partial_dir("hints");
+    h.render_from("{{> cpu_limits}}", #{ names: names })
+}
+```
+
+The reading is bounded, and the engine is restricted:
+
+- `dir` must be a relative path that stays inside the lint directory: an absolute path, a `..`
+  component, or a directory that resolves outside (a symbolic link, for instance) is a script error that
+  names the path. So is a missing directory: a typo must not give an empty hint without a word.
+- The Handlebars helpers that reach the host are not available: `read_to_str`, `env_var`, `canonicalize`,
+  `parent`, `file_name`, `extension`, `render_file` and `jsonnet` (whose `importstr` reads any file). This
+  also holds inside a template nested with `render_template`.
+- There is no `register_helper_dir`: a helper is Rhai code, and it would run outside the limits of the lint
+  engine.
+
 ## Limits
 
+- A template or a partial that includes itself is not bounded: the stack overflows and the process dies
+  without a message. Handlebars has no recursion guard.
+- A `.hbs` file that is itself a symbolic link to the outside of the lint directory is followed; only the
+  directory is checked.
+- A fix only edits `package.yaml`. A value hard-coded in a template or a script is not reachable by
+  `fix`; its finding remains on the next run.
+- `package.yaml` loses its comments when a fix applies it. `--dry-run` prints the resulting document,
+  not a diff.
 - Three kube-linter checks are not ported (see the status note).
 - The values of the operation budget and their configuration are not fixed yet. The budget is
   proportional to the number of objects, and `render_lint::all` costs about sixteen thousand

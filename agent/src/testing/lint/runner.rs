@@ -2,21 +2,27 @@
 
 use crate::testing::{
     lint::{
-        finding::{parse_findings, to_rows, to_suppressions},
+        finding::{Finding, findings_to_dynamic, parse_findings, to_rows, to_suppressions},
         multimap, patterns,
         sections::Sections,
+        templates,
     },
     result::Suppression,
     schema::{registry::SchemaRegistry, rhai::schema_rhai_register},
     vyniltestset::VynilAssertResult,
 };
-use common::rhaihandler::{AST, Dynamic, Engine, FileModuleResolver, ModuleResolversCollection, Scope};
+use common::{
+    rhaihandler::{AST, Dynamic, Engine, FileModuleResolver, Map, ModuleResolversCollection, Scope},
+    yamlhandler::{YamlDoc, yaml_ordered_rhai_register},
+};
 use rhai::packages::Package;
 use std::path::{Path, PathBuf};
 
 const ENTRY_FILE: &str = "lint.rhai";
 const TEST_HOOK: &str = "lint";
 const SUITE_HOOK: &str = "lint_suite";
+const FIX_HOOK: &str = "fix";
+const HINT_HOOK: &str = "hint";
 const SUITE_TEST_NAME: &str = "(suite)";
 const EXECUTION_RULE: &str = "lint:execution";
 /// Budget d'opérations d'un appel : `OPERATIONS_BASE` plus `OPERATIONS_PER_OBJECT` par objet
@@ -36,14 +42,51 @@ const fn operations_budget(object_count: usize) -> u64 {
     OPERATIONS_BASE.saturating_add(OPERATIONS_PER_OBJECT.saturating_mul(object_count as u64))
 }
 
-/// Résultat d'un appel du script : lignes de verdict et inventaire de suppressions.
+/// Résultat d'un appel du script : lignes de verdict, inventaire de suppressions, et tous les
+/// constats valides dans l'ordre de retour (supprimés compris) pour `fix`.
 #[derive(Clone, Debug, Default)]
 pub struct LintOutcome {
     pub rows: Vec<VynilAssertResult>,
     pub suppressions: Vec<Suppression>,
+    pub findings: Vec<Finding>,
 }
 
-/// Charge le script de lint d'une distribution et l'appelle par test ou par suite.
+/// Issue d'un appel de `fix`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FixStatus {
+    Applied,
+    NotApplicable,
+    Failed,
+}
+
+/// Résultat de `fix` : le `package` corrigé seulement si `Applied`.
+#[derive(Clone, Debug)]
+pub struct FixOutcome {
+    pub status: FixStatus,
+    pub package: Option<YamlDoc>,
+    pub message: String,
+}
+
+impl FixOutcome {
+    const fn failed(message: String) -> Self {
+        Self {
+            status: FixStatus::Failed,
+            package: None,
+            message,
+        }
+    }
+}
+
+/// Résultat de `hint` : le texte qui dit comment corriger, aucun texte, ou l'échec du script.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HintOutcome {
+    Text(String),
+    None,
+    Failed(String),
+}
+
+/// Charge le script de lint d'une distribution et l'appelle par test, par suite, par fix ou
+/// par hint.
 #[derive(Clone, Debug)]
 pub struct LintRunner {
     lint_dir: PathBuf,
@@ -52,12 +95,14 @@ pub struct LintRunner {
     ast: AST,
     has_test_hook: bool,
     has_suite_hook: bool,
+    has_fix_hook: bool,
 }
 
 /// Moteur neuf : bibliothèques de données de base, sans horloge, système de fichiers,
-/// réseau ni cluster ; fonctions `schema_*` et `regex_is_match` seulement. Les imports suivent `lint_dir` puis
-/// `{script_dir}/lib`. Les sorties (`print`, `debug`) sont avalées pour ne pas polluer le
-/// rapport du test.
+/// réseau ni cluster ; fonctions `schema_*` et `regex_is_match` seulement, plus les gabarits
+/// Handlebars de `templates` (seule lecture de fichiers, bornée à `lint_dir`). Les imports
+/// suivent `lint_dir` puis `{script_dir}/lib`. Les sorties (`print`, `debug`) sont avalées pour
+/// ne pas polluer le rapport du test.
 fn build_engine(lint_dir: &Path, script_dir: &Path, schemas: &SchemaRegistry, max_operations: u64) -> Engine {
     let mut engine = Engine::new_raw();
     engine.register_global_module(rhai::packages::CorePackage::new().as_shared_module());
@@ -85,6 +130,7 @@ fn build_engine(lint_dir: &Path, script_dir: &Path, schemas: &SchemaRegistry, ma
 
     schema_rhai_register(&mut engine, schemas.clone());
     patterns::register(&mut engine);
+    templates::register(&mut engine, lint_dir);
     multimap::register(&mut engine);
     engine
 }
@@ -98,6 +144,7 @@ fn execution_outcome(message: String) -> LintOutcome {
             message,
         }],
         suppressions: Vec::new(),
+        findings: Vec::new(),
     }
 }
 
@@ -120,6 +167,7 @@ impl LintRunner {
             .map_err(|e| common::Error::Other(format!("{}: {e}", path.display())))?;
         let has_test_hook = ast.iter_functions().any(|f| f.name == TEST_HOOK);
         let has_suite_hook = ast.iter_functions().any(|f| f.name == SUITE_HOOK);
+        let has_fix_hook = ast.iter_functions().any(|f| f.name == FIX_HOOK);
         if !has_test_hook && !has_suite_hook {
             return Err(common::Error::Other(format!(
                 "{}: neither `{TEST_HOOK}` nor `{SUITE_HOOK}` is defined",
@@ -133,6 +181,7 @@ impl LintRunner {
             ast,
             has_test_hook,
             has_suite_hook,
+            has_fix_hook,
         })
     }
 
@@ -178,8 +227,104 @@ impl LintRunner {
         }
     }
 
-    /// Évalue le script dans un moteur neuf puis appelle `name` avec `objs` (si présent)
-    /// puis `ctx`.
+    /// Appelle `fix(rule, findings, package)` ; `findings` porte aussi les constats supprimés.
+    /// Le `package` reçu n'est jamais modifié : le script en reçoit une copie.
+    #[must_use]
+    pub fn run_fix(&self, rule: &str, findings: &[Finding], package: &YamlDoc) -> FixOutcome {
+        if !self.has_fix_hook {
+            return FixOutcome {
+                status: FixStatus::NotApplicable,
+                package: None,
+                message: String::new(),
+            };
+        }
+        match self.fix_call(rule, findings, package) {
+            Ok(value) => Self::fix_outcome(&value),
+            Err(message) => FixOutcome::failed(message),
+        }
+    }
+
+    fn fix_call(&self, rule: &str, findings: &[Finding], package: &YamlDoc) -> Result<Dynamic, String> {
+        let args = vec![
+            Dynamic::from(rule.to_string()),
+            findings_to_dynamic(findings),
+            Dynamic::from(package.clone()),
+        ];
+        self.invoke(FIX_HOOK, args, operations_budget(0), true)
+    }
+
+    fn fix_outcome(value: &Dynamic) -> FixOutcome {
+        let Some(map) = value.clone().try_cast::<Map>() else {
+            return FixOutcome::failed(format!(
+                "the return of `{FIX_HOOK}` must be a map, got {}",
+                value.type_name()
+            ));
+        };
+        let message = match map.get("message") {
+            None => String::new(),
+            Some(message) => match message.clone().into_string() {
+                Ok(message) => message,
+                Err(_) => return FixOutcome::failed("`message` must be a string".to_string()),
+            },
+        };
+        let status = map.get("status").and_then(|s| s.clone().into_string().ok());
+        match status.as_deref() {
+            Some("applied") => {
+                let Some(package) = map.get("pkg").and_then(|p| p.clone().try_cast::<YamlDoc>()) else {
+                    return FixOutcome::failed("`applied` requires a `pkg` of type YamlDoc".to_string());
+                };
+                FixOutcome {
+                    status: FixStatus::Applied,
+                    package: Some(package),
+                    message,
+                }
+            }
+            Some("not_applicable") => FixOutcome {
+                status: FixStatus::NotApplicable,
+                package: None,
+                message,
+            },
+            Some(other) => FixOutcome::failed(format!("unknown `status`: `{other}`")),
+            None => FixOutcome::failed("`status` missing or not a string".to_string()),
+        }
+    }
+
+    /// Appelle `hint(rule, findings, pkg)` ; `findings` porte aussi les constats supprimés.
+    /// Le `package` reçu n'est jamais modifié : le script en reçoit une copie.
+    #[must_use]
+    pub fn run_hint(&self, rule: &str, findings: &[Finding], package: &YamlDoc) -> HintOutcome {
+        if !self.has_hint_hook() {
+            return HintOutcome::None;
+        }
+        let args = vec![
+            Dynamic::from(rule.to_string()),
+            findings_to_dynamic(findings),
+            Dynamic::from(package.clone()),
+        ];
+        match self.invoke(HINT_HOOK, args, operations_budget(0), true) {
+            Ok(value) => Self::hint_outcome(&value),
+            Err(message) => HintOutcome::Failed(message),
+        }
+    }
+
+    /// Vrai si `lint.rhai` définit `hint`. Détecté à l'appel, pas stocké : la structure n'a
+    /// déjà que trois booléens (`struct_excessive_bools` de clippy pedantic).
+    fn has_hint_hook(&self) -> bool {
+        self.ast.iter_functions().any(|f| f.name == HINT_HOOK)
+    }
+
+    fn hint_outcome(value: &Dynamic) -> HintOutcome {
+        match value.clone().into_string() {
+            Ok(text) if text.is_empty() => HintOutcome::None,
+            Ok(text) => HintOutcome::Text(text),
+            Err(_) => HintOutcome::Failed(format!(
+                "the return of `{HINT_HOOK}` must be a string, got {}",
+                value.type_name()
+            )),
+        }
+    }
+
+    /// Appelle `name` avec `objs` (si présent) puis `ctx`.
     fn call(
         &self,
         name: &str,
@@ -191,7 +336,22 @@ impl LintRunner {
         let mut args = Vec::with_capacity(2);
         args.extend(objs);
         args.push(ctx);
-        let engine = build_engine(&self.lint_dir, &self.script_dir, &self.schemas, max_operations);
+        self.invoke(name, args, max_operations, false)
+    }
+
+    /// Évalue le script dans un moteur neuf puis appelle `name` avec `args`. `yaml_ordered`
+    /// ajoute la surface `YamlDoc` (`fix` et `hint` en ont besoin, `lint` non).
+    fn invoke(
+        &self,
+        name: &str,
+        args: Vec<Dynamic>,
+        max_operations: u64,
+        yaml_ordered: bool,
+    ) -> Result<Dynamic, String> {
+        let mut engine = build_engine(&self.lint_dir, &self.script_dir, &self.schemas, max_operations);
+        if yaml_ordered {
+            yaml_ordered_rhai_register(&mut engine);
+        }
         // `call_fn` évalue déjà les instructions de premier niveau (`eval_ast` vrai par défaut) :
         // une évaluation préalable du script les exécuterait une seconde fois.
         let mut scope = Scope::new();
@@ -211,6 +371,7 @@ impl LintRunner {
         LintOutcome {
             rows: to_rows(&parsed.findings, &parsed.invalid),
             suppressions: to_suppressions(test_name, &parsed.findings),
+            findings: parsed.findings,
         }
     }
 }
@@ -218,8 +379,9 @@ impl LintRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::lint::finding::{ObjectRef, Severity};
     use serde_json::json;
-    use std::{fs, path::PathBuf};
+    use std::{fs, path::PathBuf, str::FromStr};
 
     /// Répertoires de test : `lint/` (lint.rhai) et `scripts/lib/` (modules de la bibliothèque).
     struct Fixture {
@@ -515,5 +677,367 @@ mod tests {
         assert_eq!(outcome.rows.len(), 1);
         assert_eq!(outcome.rows[0].name, "lint:execution");
         assert!(!outcome.rows[0].passed);
+    }
+
+    #[test]
+    fn outcome_carries_every_finding_suppressed_included() {
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) { [
+                #{
+                    rule: "latest-tag", severity: "error",
+                    object: #{ apiVersion: "apps/v1", kind: "Deployment", name: "web" },
+                    message: "image uses the latest tag"
+                },
+                #{
+                    rule: "latest-tag", severity: "error",
+                    object: #{ apiVersion: "apps/v1", kind: "Deployment", name: "api" },
+                    message: "image uses the latest tag", suppressed: true, reason: "legacy image"
+                }
+            ] }
+            "#,
+        );
+        let outcome = runner.run_test(
+            &test_ctx("default"),
+            &plain(vec![deployment("web"), deployment("api")]),
+        );
+        assert_eq!(outcome.findings.len(), 2);
+        assert_eq!(outcome.findings[0].object.name, "web");
+        assert!(!outcome.findings[0].suppressed);
+        assert_eq!(outcome.findings[1].object.name, "api");
+        assert!(outcome.findings[1].suppressed);
+        assert_eq!(outcome.rows.len(), 1);
+        assert_eq!(outcome.suppressions.len(), 1);
+    }
+
+    /// Règle maison `no-cpu-limits` : `lint` ne constate rien (ces tests n'exercent que `fix`) ;
+    /// `fix` retire toutes les `limits.cpu` du package, et le bloc `limits` s'il devient vide.
+    /// Un constat supprimé rend le fix global non applicable.
+    const NO_CPU_LIMITS_FIX: &str = r#"
+        fn lint(objs, ctx) { [] }
+        fn fix(rule, findings, pkg) {
+            for f in findings {
+                if f.suppressed {
+                    return #{ status: "not_applicable", message: "un objet est supprimé : " + f.object.name };
+                }
+            }
+            let changed = false;
+            if pkg.keys().contains("resources") {
+                let resources = pkg["resources"];
+                for name in resources.keys() {
+                    let component = resources[name];
+                    if component.keys().contains("limits") && component["limits"].keys().contains("cpu") {
+                        let limits = component["limits"];
+                        limits.remove("cpu");
+                        if limits.keys().len() == 0 {
+                            component.remove("limits");
+                        } else {
+                            component["limits"] = limits;
+                        }
+                        resources[name] = component;
+                        changed = true;
+                    }
+                }
+                pkg["resources"] = resources;
+            }
+            if changed {
+                #{ status: "applied", pkg: pkg }
+            } else {
+                #{ status: "not_applicable", message: "aucune limits.cpu à retirer" }
+            }
+        }
+    "#;
+
+    /// Le `package.yaml` de test : `z` précède `a` au premier niveau, et `zapp` précède `app`
+    /// dans `resources` ; seul `app` porte un `cpu`.
+    const PACKAGE_YAML: &str = "z: eu\na: 1\nresources:\n  zapp:\n    limits:\n      memory: 256Mi\n  app:\n    limits:\n      memory: 512Mi\n      cpu: 500m\n";
+
+    fn package() -> YamlDoc {
+        YamlDoc::from_str(PACKAGE_YAML).expect("package.yaml de test")
+    }
+
+    fn encoded(doc: &YamlDoc) -> String {
+        doc.to_yaml_string().expect("encodage du package")
+    }
+
+    fn finding(rule: &str, suppressed: bool) -> Finding {
+        Finding {
+            rule: rule.to_string(),
+            severity: Severity::Error,
+            object: ObjectRef {
+                api_version: "apps/v1".to_string(),
+                kind: "Deployment".to_string(),
+                namespace: Some("app".to_string()),
+                name: "web".to_string(),
+            },
+            path: Some("spec.template.spec.containers[0].resources.limits.cpu".to_string()),
+            message: "limits.cpu défini".to_string(),
+            source: None,
+            suppressed,
+            reason: suppressed.then(|| "choix explicite".to_string()),
+            origin: None,
+        }
+    }
+
+    #[test]
+    fn a_fix_returns_the_modified_package() {
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) { [] }
+            fn fix(rule, findings, pkg) {
+                let resources = pkg["resources"];
+                let app = resources["app"];
+                let limits = app["limits"];
+                limits.remove("cpu");
+                app["limits"] = limits;
+                resources["app"] = app;
+                pkg["resources"] = resources;
+                #{ status: "applied", pkg: pkg }
+            }
+            "#,
+        );
+        let input = package();
+        let before = encoded(&input);
+        let outcome = runner.run_fix("no-cpu-limits", &[finding("no-cpu-limits", false)], &input);
+        assert_eq!(outcome.status, FixStatus::Applied, "{}", outcome.message);
+        let rendered = outcome.package.expect("package rendu");
+        // Le texte attendu est lu dans l'ordre d'écriture : `z` avant `a`, `zapp` avant `app`.
+        let expected = YamlDoc::from_str(
+            "z: eu\na: 1\nresources:\n  zapp:\n    limits:\n      memory: 256Mi\n  app:\n    limits:\n      memory: 512Mi\n",
+        )
+        .expect("rendu attendu");
+        assert_eq!(
+            encoded(&rendered),
+            encoded(&expected),
+            "cpu retiré, ordre conservé"
+        );
+        assert_eq!(
+            encoded(&input),
+            before,
+            "le package d'entrée ne doit pas être modifié"
+        );
+    }
+
+    #[test]
+    fn a_distribution_without_fix_is_not_applicable() {
+        let (_fx, runner) = runner(r"fn lint(objs, ctx) { [] }");
+        let outcome = runner.run_fix("no-cpu-limits", &[], &package());
+        assert_eq!(outcome.status, FixStatus::NotApplicable);
+        assert!(outcome.package.is_none());
+    }
+
+    #[test]
+    fn a_fix_declares_itself_not_applicable() {
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) { [] }
+            fn fix(rule, findings, pkg) { #{ status: "not_applicable", message: "rien à retirer" } }
+            "#,
+        );
+        let outcome = runner.run_fix("no-cpu-limits", &[], &package());
+        assert_eq!(outcome.status, FixStatus::NotApplicable);
+        assert_eq!(outcome.message, "rien à retirer");
+        assert!(outcome.package.is_none());
+    }
+
+    #[test]
+    fn a_throwing_fix_fails_without_changing_anything() {
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) { [] }
+            fn fix(rule, findings, pkg) { throw "boom from the fix"; }
+            "#,
+        );
+        let outcome = runner.run_fix("no-cpu-limits", &[], &package());
+        assert_eq!(outcome.status, FixStatus::Failed);
+        assert!(
+            outcome.message.contains("boom from the fix"),
+            "{}",
+            outcome.message
+        );
+        assert!(outcome.package.is_none());
+    }
+
+    #[test]
+    fn a_malformed_fix_return_fails() {
+        let cases = [
+            (r"fn fix(rule, findings, pkg) { [] }", "map"),
+            (
+                r#"fn fix(rule, findings, pkg) { #{ status: "maybe" } }"#,
+                "status",
+            ),
+            (r#"fn fix(rule, findings, pkg) { #{ status: "applied" } }"#, "pkg"),
+            (
+                r#"fn fix(rule, findings, pkg) { #{ status: "applied", pkg: #{ a: 1 } } }"#,
+                "YamlDoc",
+            ),
+        ];
+        for (script, expected) in cases {
+            let (_fx, runner) = runner(&format!("fn lint(objs, ctx) {{ [] }}\n{script}"));
+            let outcome = runner.run_fix("no-cpu-limits", &[], &package());
+            assert_eq!(outcome.status, FixStatus::Failed, "script : {script}");
+            assert!(outcome.package.is_none(), "script : {script}");
+            assert!(
+                outcome.message.contains(expected),
+                "script : {script} : {}",
+                outcome.message
+            );
+        }
+    }
+
+    #[test]
+    fn a_fix_cannot_touch_the_cluster_or_loop_forever() {
+        let (_fx, cluster) = runner(
+            r#"
+            fn lint(objs, ctx) { [] }
+            fn fix(rule, findings, pkg) { k8s_resource("Deployment", "web", "app"); #{ status: "applied", pkg: pkg } }
+            "#,
+        );
+        let outcome = cluster.run_fix("no-cpu-limits", &[], &package());
+        assert_eq!(outcome.status, FixStatus::Failed);
+        assert!(outcome.message.contains("not found"), "{}", outcome.message);
+
+        let (_fx, looping) = runner(r"fn lint(objs, ctx) { [] } fn fix(rule, findings, pkg) { loop {} }");
+        let outcome = looping.run_fix("no-cpu-limits", &[], &package());
+        assert_eq!(outcome.status, FixStatus::Failed);
+        assert!(outcome.package.is_none());
+    }
+
+    #[test]
+    fn the_cpu_limit_fix_is_idempotent() {
+        let (_fx, runner) = runner(NO_CPU_LIMITS_FIX);
+        let input = YamlDoc::from_str(
+            "resources:\n  app:\n    limits:\n      cpu: 500m\n      memory: 256Mi\n  sidecar:\n    limits:\n      cpu: 100m\n",
+        )
+        .expect("package de test");
+        let first = runner.run_fix("no-cpu-limits", &[finding("no-cpu-limits", false)], &input);
+        assert_eq!(first.status, FixStatus::Applied, "{}", first.message);
+        let rendered = first.package.expect("package rendu");
+        let text = encoded(&rendered);
+        assert!(!text.contains("cpu"), "plus aucune limits.cpu : {text}");
+        assert!(text.contains("memory: 256Mi"), "memory reste en place : {text}");
+        assert!(
+            !text.contains("sidecar:\n    limits"),
+            "le bloc limits vide disparaît : {text}"
+        );
+
+        let second = runner.run_fix("no-cpu-limits", &[finding("no-cpu-limits", false)], &rendered);
+        assert_eq!(second.status, FixStatus::NotApplicable, "{}", second.message);
+        assert!(second.package.is_none());
+    }
+
+    #[test]
+    fn a_suppressed_finding_makes_the_cpu_limit_fix_not_applicable() {
+        let (_fx, runner) = runner(NO_CPU_LIMITS_FIX);
+        let outcome = runner.run_fix("no-cpu-limits", &[finding("no-cpu-limits", true)], &package());
+        assert_eq!(outcome.status, FixStatus::NotApplicable);
+        assert!(outcome.message.contains("supprimé"), "{}", outcome.message);
+        assert!(outcome.package.is_none());
+    }
+
+    #[test]
+    fn a_hint_returns_the_text_built_from_the_findings() {
+        let (_fx, runner) = runner(
+            r#"
+            fn lint(objs, ctx) { [] }
+            fn hint(rule, findings, pkg) {
+                let has = pkg.keys().contains("resources");
+                let state = if has { "présent" } else { "absent" };
+                "règle " + rule + " : " + findings.len().to_string() + " constats, resources " + state
+            }
+            "#,
+        );
+        let input = package();
+        let before = encoded(&input);
+        let findings = [finding("no-cpu-limits", false), finding("no-cpu-limits", true)];
+        let outcome = runner.run_hint("no-cpu-limits", &findings, &input);
+        assert_eq!(
+            outcome,
+            HintOutcome::Text("règle no-cpu-limits : 2 constats, resources présent".to_string())
+        );
+        assert_eq!(
+            encoded(&input),
+            before,
+            "le package d'entrée ne doit pas être modifié"
+        );
+    }
+
+    #[test]
+    fn a_missing_or_empty_hint_is_none() {
+        let (_fx, bare) = runner(r"fn lint(objs, ctx) { [] }");
+        assert_eq!(bare.run_hint("no-cpu-limits", &[], &package()), HintOutcome::None);
+
+        let (_fx, empty) = runner(r#"fn lint(objs, ctx) { [] } fn hint(rule, findings, pkg) { "" }"#);
+        assert_eq!(
+            empty.run_hint("no-cpu-limits", &[], &package()),
+            HintOutcome::None
+        );
+    }
+
+    #[test]
+    fn a_hint_renders_a_template_file_from_the_lint_directory() {
+        let script = r#"
+            fn lint(objs, ctx) { [] }
+            fn hint(rule, findings, pkg) {
+                let h = new_hbs();
+                register_partial_dir(h, "templates");
+                render_from(h, "{{> hint}}", #{ count: findings.len(), rule: rule })
+            }
+        "#;
+        let fx = fixture(Some(script));
+        let templates = fx.lint_dir.join("templates");
+        fs::create_dir_all(&templates).expect("templates/");
+        fs::write(
+            templates.join("hint.hbs"),
+            "Retirer {{count}} limite(s) : {{rule}}",
+        )
+        .expect("hint.hbs");
+        let registry = SchemaRegistry::new(None, None).expect("registre natif");
+        let runner = LintRunner::new(&fx.lint_dir, &fx.script_dir, registry).expect("runner");
+        let findings = [finding("no-cpu-limits", false), finding("no-cpu-limits", false)];
+        assert_eq!(
+            runner.run_hint("no-cpu-limits", &findings, &package()),
+            HintOutcome::Text("Retirer 2 limite(s) : no-cpu-limits".to_string())
+        );
+
+        fs::write(
+            fx.lint_dir.join("lint.rhai"),
+            r#"
+            fn lint(objs, ctx) { [] }
+            fn hint(rule, findings, pkg) {
+                let h = new_hbs();
+                register_partial_dir(h, "..");
+                "non"
+            }
+            "#,
+        )
+        .expect("lint.rhai");
+        let registry = SchemaRegistry::new(None, None).expect("registre natif");
+        let runner = LintRunner::new(&fx.lint_dir, &fx.script_dir, registry).expect("runner");
+        let outcome = runner.run_hint("no-cpu-limits", &findings, &package());
+        assert!(
+            matches!(outcome, HintOutcome::Failed(ref m) if m.contains("..")),
+            "un répertoire hors lint doit échouer : {outcome:?}"
+        );
+    }
+
+    #[test]
+    fn a_broken_hint_fails_without_a_text() {
+        let scripts = [
+            r#"fn hint(rule, findings, pkg) { throw "boom from the hint"; }"#,
+            r#"fn hint(rule, findings, pkg) { #{ text: "x" } }"#,
+            r"fn hint(rule, findings, pkg) { loop {} }",
+        ];
+        for script in scripts {
+            let (_fx, runner) = runner(&format!("fn lint(objs, ctx) {{ [] }} {script}"));
+            let outcome = runner.run_hint("no-cpu-limits", &[], &package());
+            let HintOutcome::Failed(message) = outcome else {
+                panic!("script : {script}, reçu {outcome:?}");
+            };
+            assert!(!message.is_empty(), "script : {script}");
+            if script.contains("throw") {
+                assert!(message.contains("boom from the hint"), "{message}");
+            }
+        }
     }
 }
