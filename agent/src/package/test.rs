@@ -250,9 +250,17 @@ fn keep_document_marker(original: &str, yaml: String) -> String {
 /// Écrit `content` dans `path` sans jamais laisser un fichier tronqué : fichier temporaire du
 /// même répertoire, puis `rename`.
 fn write_atomic(path: &Path, content: &str) -> Result<()> {
-    let tmp = path.with_extension("yaml.tmp");
-    fs::write(&tmp, content).map_err(Error::Stdio)?;
-    fs::rename(&tmp, path).map_err(|e| {
+    // Un lien symbolique est suivi : c'est sa cible qu'on remplace, le lien reste en place.
+    let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let tmp = target.with_extension("yaml.tmp");
+    let write = || -> std::io::Result<()> {
+        fs::write(&tmp, content)?;
+        if let Ok(meta) = fs::metadata(&target) {
+            fs::set_permissions(&tmp, meta.permissions())?;
+        }
+        fs::rename(&tmp, &target)
+    };
+    write().map_err(|e| {
         let _ = fs::remove_file(&tmp);
         Error::Stdio(e)
     })
@@ -944,6 +952,53 @@ fn fix(rule, findings, pkg) { #{ status: "applied", pkg: pkg } }
         run(&args).expect_err("le constat reste");
         let text = read(&t.package.join("package.yaml"));
         assert_eq!(text, PACKAGE_COMMENTED_NO_CPU, "commentaires conservés : {text}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_rewrite_keeps_the_permissions_of_package_yaml() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = tree_with(
+            Some(NO_CPU_LIMITS_DISTRO),
+            INSTALL_DEPLOYMENT_WITH_CPU,
+            PACKAGE_WITH_CPU_LIMITS,
+        );
+        let file = t.package.join("package.yaml");
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).expect("chmod");
+        let args = params(&t, &[
+            "--all",
+            "--lint-dir",
+            &t.lint.display().to_string(),
+            "--fix",
+        ]);
+        run(&args).expect_err("une seule exécution");
+        assert!(!read(&file).contains("cpu"), "le fichier a bien été réécrit");
+        let mode = fs::metadata(&file).expect("stat").permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_rewrite_follows_a_symlinked_package_yaml() {
+        let t = tree_with(
+            Some(NO_CPU_LIMITS_DISTRO),
+            INSTALL_DEPLOYMENT_WITH_CPU,
+            PACKAGE_WITH_CPU_LIMITS,
+        );
+        let link = t.package.join("package.yaml");
+        let real = t.package.join("real-package.yaml");
+        fs::rename(&link, &real).expect("déplacement");
+        std::os::unix::fs::symlink("real-package.yaml", &link).expect("lien");
+        let args = params(&t, &[
+            "--all",
+            "--lint-dir",
+            &t.lint.display().to_string(),
+            "--fix",
+        ]);
+        run(&args).expect_err("une seule exécution");
+        let meta = fs::symlink_metadata(&link).expect("stat du lien");
+        assert!(meta.file_type().is_symlink(), "package.yaml reste un lien");
+        assert!(!read(&real).contains("cpu"), "la cible porte le document réécrit");
     }
 
     #[test]
