@@ -23,7 +23,7 @@ actix-web.workspace = true
 base64.workspace = true
 thiserror = "2.0.3"
 handlebars = { version = "6.2.0", features = ["script_helper", "string_helpers"] }
-handlebars_misc_helpers = { version = "0.17.0", features = ["string", "json", "jsonnet", "regex", "uuid"] }
+handlebars_misc_helpers = { version = "0.17.0", default-features = false, features = ["string", "json", "jsonnet", "regex", "uuid"] }
 rhai = { version = "1.20.0", features = ["sync", "serde", "internals"] }
 reqwest = { version = "0.12.24", features = ["rustls-tls"] }
 futures = "0.3"
