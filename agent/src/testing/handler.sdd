@@ -98,6 +98,11 @@ Must:
     d'abord, mocks de chaque testSet référé dans l'ordre du tableau @testSets, Nodes de
     @instance.nodes, instance virtuelle en dernier).
   # voie templating / fusion — @TestHandler::get_templated_test et helpers
+  Réserver @TestHandler::get_templated_test(@name) -> @common::Result<@VynilTest> aux tests
+    (`#[cfg(test)]`, hors de la surface de la crate) : il rend les asserts sur le contexte de
+    base seul, où un `{{values…}}` échoue en mode strict, et n'a aucun appelant de production.
+    @run_test_inner partage sa résolution privée en sautant les asserts, templatés ensuite sur
+    le contexte d'asserts.
   Résout un test dans cet ordre : contexte de base = {`package`: @VynilPackageSource sérialisé,
     `instance`: @VynilTestInstance sérialisé plus une chaîne `appslug` injectée depuis
     @appslug(@package.metadata.name, @test.instance.name)}; template les mocks et asserts du
@@ -161,7 +166,10 @@ Must:
     normaux (ni racine, ni `.`, ni `..`) — sinon @Err
     un @Error::Other `instance.config_dir: '{config_dir}' must be a relative path inside tests/`
     — et qu'il désigne un répertoire existant — sinon @Err un @Error::Other
-    `instance.config_dir: '{config_dir}' is not a directory`. Ce répertoire remplace le
+    `instance.config_dir: '{config_dir}' is not a directory` — et que sa forme canonique (liens
+    symboliques résolus) reste sous la forme canonique de `<package_dir>/tests`, sinon @Err un
+    @Error::Other `instance.config_dir: '{config_dir}' resolves outside tests/` ; la forme
+    canonique est celle utilisée ensuite. Ce répertoire remplace le
     @config_dir du handler partout dans la course (chemin de résolution et `args.config_dir`),
     comme le `--config-dir` d'un vrai cluster : il peut porter un `agent.yaml` lu par `ctx::run`
     et des modules rhai. Rien n'est copié ni écrit.
@@ -182,8 +190,8 @@ Must:
   Publie le global rhai `args` via @Script::set_dynamic avec les clés `namespace`
     (namespace de l'instance), `instance` (nom de l'instance), `vynil_namespace` figé
     `"vynil-system"`, `package_dir`, `script_dir`, `template_dir`, `config_dir` (celui de la
-    course) (affichages de chemins), `agent_image` = @DEFAULT_AGENT_IMAGE, `tag` figé `"0.1.0"`, puis
-    la chaîne `controller_values`.
+    course) (affichages de chemins), `agent_image` = @DEFAULT_AGENT_IMAGE, `tag` figé
+    `"0.1.0"`, puis la chaîne `controller_values`.
   Résout les mocks de la course sans templater aucun assert : mocks du test puis de chaque
     réf @testSets sur le contexte de base de la voie templating (plus `var` pour les testSets),
     instance virtuelle en dernier — les mocks ne voient jamais le contexte rhai, qui n'existe
@@ -269,10 +277,6 @@ Exposes:
   @TestHandler::get_test(@name) et @TestHandler::get_test_set(@name) -> @Option, `#[must_use]`
     avec aucun appelant nulle part dans le workspace (Tasks).
   @TestHandler::list_tests -> @Vec<@String> — `#[must_use]`, noms ascendants.
-  @TestHandler::get_templated_test(@name) -> @common::Result<@VynilTest> — @&self, pur ;
-    `pub`, asserts rendus sur le contexte de base ; @run_test_inner ne l'appelle pas mais
-    partage sa résolution privée en sautant les asserts, templatés ensuite sur le contexte
-    d'asserts.
   @TestHandler::validate_refs -> @common::Result<@()> — parcourt @tests en ordre ascendant,
     la première réf non résolue @Err `Test '{test_name}' references unknown TestSet '{name}'` ;
     aucun appelant n'existe (Tasks).
@@ -305,8 +309,11 @@ Raises:
     YAML (scan) et de schéma (parse), `{file}: duplicate Test '{name}'`, et
     `{file}: duplicate TestSet '{name}'` (un gabarit partagé par les deux loaders).
   @Error::Other — ratés de la voie de résolution : `Test '{name}' not found`,
-    `TestSet '{name}' not found`, `instance.nodes: empty node name`, `instance.config_dir: '{config_dir}' must be a relative
-    path inside tests/`, `instance.config_dir: '{config_dir}' is not a directory`, et de la surface morte `Test '{test_name}' references unknown
+    `TestSet '{name}' not found`, `instance.nodes: empty node name`,
+    `instance.config_dir: '{config_dir}' must be a relative path inside tests/`,
+    `instance.config_dir: '{config_dir}' is not a directory`,
+    `instance.config_dir: '{config_dir}' resolves outside tests/`, et de la surface morte
+    `Test '{test_name}' references unknown
     TestSet '{name}'`, plus @Error::Other("expected map after templating").
   @Error::SerializationError — tout aller-retour @serde_json dans @template_dynamic,
     @virtual_instance_dynamic, la sérialisation du contexte de @get_templated_test ou la
@@ -340,6 +347,8 @@ Tasks:
   [x] Substituer @instance.config_dir au répertoire de configuration, couvert par les tests de
       même nom que les scénarios config-dir-agent-yaml-drives-the-cluster à
       a-missing-config-dir-is-rejected.
+  [x] Résoudre les liens symboliques de @instance.config_dir avant le contrôle de préfixe,
+      couvert par le test de même nom que a-config-dir-symlinked-outside-tests-is-rejected.
   [ ] Couvrir ce fichier par des tests — pas de module #[cfg(test)] ici et les seuls tests
       côté agent siègent aujourd'hui dans ./result.rs ; mapper chaque scénario vers un test du même nom :
       scan-apiVersion-gate-skips-correct-spelling, duplicate-names-abort-load-later-file-named,
@@ -349,9 +358,10 @@ Tasks:
       install-failure-replaces-collected-asserts-with-one-execution-row,
       controller-values-is-a-json-string, template-dump-sink-poison-recovered.
   [?] @TestHandler::validate_refs n'a aucun appelant nulle part (./../package/test.sdd signale
-      déjà la conséquence), et @get_test/@get_test_set plus l'usage externe de
-      @get_templated_test n'en ont pas non plus. Décider de brancher le pré-contrôle au chargement,
-      supprimer les accesseurs morts, ou les figer comme surface crate intentionnelle.
+      déjà la conséquence), et @get_test/@get_test_set n'en ont pas non plus
+      (@get_templated_test est réservé aux tests). Décider de brancher le pré-contrôle au
+      chargement, supprimer les accesseurs morts, ou les figer comme surface crate
+      intentionnelle.
   [?] Les branches @None de liste vide des mocks renvoyés par @get_templated_test sont inatteignables, car
       l'injection d'instance virtuelle laisse toujours @kubernetes non vide. Décider de
       simplifier les branches ou rendre l'injection conditionnelle pour que le vide survienne vraiment.
@@ -458,6 +468,15 @@ Scenario: a config dir escaping tests is rejected
     `instance.config_dir: '{config_dir}' must be a relative path inside tests/` et aucun
     script n'a tourné
   Test @a-config-dir-escaping-tests-is-rejected
+
+Scenario: a config dir symlinked outside tests is rejected
+  Given @instance.config_dir désignant un lien symbolique de `tests/` vers un dossier extérieur
+    au package
+  When @run_test exécute le test
+  Then @results reçoit l'unique ligne `execution` en échec
+    `instance.config_dir: '{config_dir}' resolves outside tests/` et aucun script n'a tourné
+  But un lien symbolique vers un autre dossier de `tests/` est accepté
+  Test @a-config-dir-symlinked-outside-tests-is-rejected
 
 Scenario: a missing config dir is rejected
   Given @instance.config_dir désignant un dossier absent de `tests/`

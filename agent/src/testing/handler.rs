@@ -500,12 +500,15 @@ impl TestHandler {
 
     /// Returns a fully resolved `VynilTest`: handlebars templates in mocks and
     /// asserts are evaluated, and all referenced testSets are merged in.
+    /// Test-only: asserts are rendered on the base context alone, so `{{values.x}}` fails in
+    /// strict mode; a run templates them on the real rhai context instead.
     ///
     /// # Errors
     ///
     /// Returns a [`common::Error`] when the test or a referenced testSet is missing, when
     /// templating fails, or when the virtual instance mock cannot be serialized.
-    pub fn get_templated_test(&self, name: &str) -> common::Result<VynilTest> {
+    #[cfg(test)]
+    fn get_templated_test(&self, name: &str) -> common::Result<VynilTest> {
         self.resolve_test(name, true)
     }
 
@@ -846,13 +849,25 @@ impl TestHandler {
                 "instance.config_dir: '{rel}' must be a relative path inside tests/"
             )));
         }
-        let dir = self.package_dir.join("tests").join(rel_path);
+        let tests_dir = self.package_dir.join("tests");
+        let dir = tests_dir.join(rel_path);
         if !dir.is_dir() {
             return Err(common::Error::Other(format!(
                 "instance.config_dir: '{rel}' is not a directory"
             )));
         }
-        Ok(dir)
+        // Resolve symlinks: a link inside tests/ must not lead outside of it
+        let (Ok(root), Ok(resolved)) = (tests_dir.canonicalize(), dir.canonicalize()) else {
+            return Err(common::Error::Other(format!(
+                "instance.config_dir: '{rel}' is not a directory"
+            )));
+        };
+        if !resolved.starts_with(&root) {
+            return Err(common::Error::Other(format!(
+                "instance.config_dir: '{rel}' resolves outside tests/"
+            )));
+        }
+        Ok(resolved)
     }
 
     /// Builds the rhai `args` object exposed to the install scripts during a test run.
@@ -1658,6 +1673,57 @@ mod tests {
             assert!(message.ends_with(&expected), "{dir}: {message}");
             assert_eq!(created, 0, "{dir}: aucun script ne doit tourner");
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_config_dir_symlinked_outside_tests_is_rejected() {
+        let instance = |dir: &str| format!("{DEMO_INSTANCE}  config_dir: {dir}\n");
+        let fx = fixture(
+            &[
+                (
+                    "out.yaml",
+                    test_doc(&instance("out"), "").replace("name: default", "name: out"),
+                ),
+                (
+                    "alias.yaml",
+                    test_doc(&instance("alias"), "").replace("name: default", "name: alias"),
+                ),
+            ],
+            INSTALL_ONE_CONFIGMAP,
+            None,
+        );
+        let tests_dir = fx.package.join("tests");
+        let outside = fx.package.parent().expect("racine de la fixture").join("outside");
+        fs::create_dir_all(&outside).expect("dossier extérieur");
+        fs::create_dir_all(tests_dir.join("real")).expect("dossier de tests/");
+        std::os::unix::fs::symlink(&outside, tests_dir.join("out")).expect("lien vers l'extérieur");
+        std::os::unix::fs::symlink(tests_dir.join("real"), tests_dir.join("alias")).expect("lien interne");
+        let mut h = handler(&fx);
+
+        let created = sink();
+        h.run_test("out", &created);
+        let doc = report(&h);
+        let out = &doc["tests"][0]["asserts"];
+        assert_eq!(out.as_array().map(Vec::len), Some(1), "{out}");
+        assert_eq!(out[0]["name"], "execution", "{out}");
+        let message = out[0]["message"].as_str().unwrap_or_default();
+        assert!(
+            message.ends_with("instance.config_dir: 'out' resolves outside tests/"),
+            "{message}"
+        );
+        assert_eq!(created.lock().map(|o| o.len()).unwrap_or_default(), 0);
+
+        let created = sink();
+        h.run_test("alias", &created);
+        let doc = report(&h);
+        let alias = &doc["tests"][1]["asserts"];
+        assert_eq!(
+            alias.as_array().map(Vec::len),
+            Some(0),
+            "lien interne accepté : {alias}"
+        );
+        assert_eq!(created.lock().map(|o| o.len()).unwrap_or_default(), 1);
     }
 
     #[test]
