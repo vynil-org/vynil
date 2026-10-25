@@ -173,6 +173,9 @@ agent package test -p ./my-package --all \
   fix ne convergent pas). Chaque exécution écrit `round {k}: {n} finding(s)` sur stderr. Le résumé, le
   fichier JUnit et le dump de template ne sont produits qu'une fois, depuis la dernière exécution, de même
   que le code de sortie : un fix qui a tout corrigé sort en `0` avec `N >= 2`.
+  Le fix appliqué après la dernière exécution autorisée n'est jamais mesuré, aucune exécution ne le suivant :
+  il reste dans `package.yaml` même s'il a aggravé les constats, donc `N` exécutions mesurent au plus
+  `N - 1` fix. Relancer la commande pour vérifier le résultat.
 - **Avec `--verbose`** : pour chaque règle qui a encore des constats, `hint {rule}:` suivi du texte de la
   fonction `hint` du script, indenté de deux espaces, sur stderr. Une règle qu'un fix vient de corriger n'a
   pas de hint. Voir [Hints](render-lint.md#hints-hint).
