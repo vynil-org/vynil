@@ -13,7 +13,10 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use k8s_openapi::api::{batch::v1::Job, core::v1::Pod};
+use k8s_openapi::api::{
+    batch::v1::Job,
+    core::v1::{Namespace, Pod},
+};
 use kube::{
     Client,
     api::{Api, DynamicObject, ListParams, Patch, PatchParams},
@@ -188,6 +191,20 @@ pub async fn run_jukebox_scan(name: &str, args: JukeboxScanArgsRef<'_>, context:
     scan_jukebox_and_wait(&client, name, args.package, args.vynil_namespace, args.timeout).await
 }
 
+/// Contexte de l'erreur de lecture d'une instance. `namespace_exists` vaut `Some(false)` quand
+/// le namespace est introuvable (le 404 vient alors de lui, pas de l'instance), `Some(true)` quand
+/// il existe, `None` quand on ne sait pas (autre erreur que 404, ou lecture du namespace refusée).
+fn instance_read_error(namespace: &str, name: &str, namespace_exists: Option<bool>) -> String {
+    match namespace_exists {
+        Some(false) => format!("SCAN-ERR-11: namespace \"{namespace}\" not found"),
+        Some(true) => format!("SCAN-ERR-07: failed to read instance \"{name}\" in namespace \"{namespace}\""),
+        None => format!(
+            "SCAN-ERR-07: failed to read instance \"{name}\" in namespace \"{namespace}\" \
+             (check the instance name and that the namespace exists)"
+        ),
+    }
+}
+
 /// `kubectl-vynil <kind> -n <ns> <inst> scan`: resolve the referenced package and
 /// trigger a partial scan on its `JukeBox`.
 ///
@@ -207,10 +224,22 @@ pub async fn run_instance_scan(
         .context("SCAN-ERR-01: failed to create kube client")?;
     let ar = vynil_api_resource(info.kind, info.plural);
     let inst_api: Api<DynamicObject> = Api::namespaced_with(client.clone(), namespace, &ar);
-    let obj = inst_api
-        .get(name)
-        .await
-        .context("SCAN-ERR-07: failed to read instance")?;
+    let obj = match inst_api.get(name).await {
+        Ok(obj) => obj,
+        Err(err) => {
+            // Un 404 peut venir de l'instance comme du namespace : on vérifie le namespace.
+            let namespace_exists = if matches!(&err, kube::Error::Api(status) if status.code == 404) {
+                Api::<Namespace>::all(client.clone())
+                    .get_opt(namespace)
+                    .await
+                    .ok()
+                    .map(|found| found.is_some())
+            } else {
+                None
+            };
+            return Err(err).context(instance_read_error(namespace, name, namespace_exists));
+        }
+    };
 
     let spec = obj.data.get("spec");
     let jukebox = spec
@@ -516,5 +545,37 @@ pub async fn run_instance(
         Scan(a) => run_instance_scan(info, &namespace, &args.name, a, context).await,
         Diagnostic(a) => run_diagnostic(info, &namespace, &args.name, a, context).await,
         _ => unreachable!("item verbs handled above"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::instance_read_error;
+
+    #[test]
+    fn a_missing_namespace_is_named_as_such() {
+        let msg = instance_read_error("missing-ns", "my-instance", Some(false));
+        assert_eq!(msg, "SCAN-ERR-11: namespace \"missing-ns\" not found");
+    }
+
+    #[test]
+    fn a_missing_instance_in_an_existing_namespace_names_both() {
+        let msg = instance_read_error("apps", "my-instance", Some(true));
+        assert_eq!(
+            msg,
+            "SCAN-ERR-07: failed to read instance \"my-instance\" in namespace \"apps\""
+        );
+    }
+
+    #[test]
+    fn an_unknown_namespace_state_suggests_checking_it() {
+        let msg = instance_read_error("apps", "my-instance", None);
+        assert!(
+            msg.starts_with("SCAN-ERR-07: failed to read instance \"my-instance\" in namespace \"apps\"")
+        );
+        assert!(
+            msg.contains("check the instance name and that the namespace exists"),
+            "{msg}"
+        );
     }
 }

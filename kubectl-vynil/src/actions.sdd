@@ -88,7 +88,7 @@ Exposes:
     le groupe `vynil.solidite.fr`, la version `v1`, l'api_version `vynil.solidite.fr/v1`
     verbatim depuis ses appelants (la paire @InstanceKindInfo, ou les littéraux
     `"JukeBox"`/`"jukeboxes"` ; ./completion.rs fournit les siens).
-  @POLL_INTERVAL privé (2 s), @JobOutcome (@Complete / @Failed(@String)), @set_annotation,
+  @POLL_INTERVAL privé (2 s), @JobOutcome (@Complete / @Failed(@String)), @set_annotation, @instance_read_error,
     @job_uid, @wait_job_recreated, @wait_job_terminal, @job_tag, @transport_mode,
     @watch_pods — observables seulement via le stdout/stderr des runners et le @Result.
 
@@ -130,6 +130,11 @@ Must:
     en @as_str seulement — un JSON non-string échoue sur la même erreur de clé manquante —
     et compose le filtre `{category}/{package}`, la forme category-only étant réservée au
     verbe jukebox.
+  Quand la lecture de l'instance échoue en 404, @run_instance_scan lit le @Namespace
+    (@Api::get_opt) pour départager : namespace absent → `SCAN-ERR-11`, présent → `SCAN-ERR-07`
+    nommant instance et namespace, lecture du namespace refusée ou autre erreur que 404 →
+    `SCAN-ERR-07` avec l'invite à vérifier nom et namespace. Le texte vient de
+    @instance_read_error (pur, testé) ; l'erreur API d'origine reste dans la chaîne anyhow.
   Les noms doivent s'aligner par convention : job de scan `scan-{box}`, job d'installation
     `{type_label}--{namespace}--{name}` (le namespace de l'instance est dans le nom), tous
     deux cherchés dans `--vynil-namespace` — le namespace est supposé être là où
@@ -217,7 +222,9 @@ Raises:
     `SCAN-ERR-04`/`UPG-ERR-05` `timed out waiting for job {name} to be (re)created`,
     `SCAN-ERR-05`/`UPG-ERR-06` `timed out waiting for job {name} to finish`,
     `SCAN-ERR-06`/`UPG-ERR-07` `{scan,install} job {name} failed: {msg}`,
-    `SCAN-ERR-07` `failed to read instance`,
+    `SCAN-ERR-07` `failed to read instance "{name}" in namespace "{ns}"` (avec, quand l'état du
+    namespace est inconnu, `(check the instance name and that the namespace exists)`),
+    `SCAN-ERR-11` `namespace "{ns}" not found`,
     `SCAN-ERR-08`/`-09`/`-10` `instance spec has no .spec.{jukebox,category,package}`,
     `SCAN-ERR-09`/`UPG-ERR-09` `timeout overflow` (les deux ids doublés — Tasks),
     `UPG-ERR-08` `failed to list pods`, `DIAG-ERR-01` sans-token-et-sans-token-SA,
@@ -340,7 +347,18 @@ Scenario: instance scan composes its filter from the spec triple
     category/package (`SCAN-ERR-09`/`-10`) se déclenchent
   Aucun test mappé n'existe.
 
-Scenario: a same-UID job is stale
+Scenario: a missing namespace is named in the instance scan error
+  Given un `vsi -n missing-ns my-instance scan` dont la lecture de l'instance répond 404
+  When @run_instance_scan s'exécute
+  Then l'erreur porte `SCAN-ERR-11: namespace "missing-ns" not found` si le namespace
+    n'existe pas, `SCAN-ERR-07` nommant l'instance et le namespace s'il existe, et
+    `SCAN-ERR-07` avec l'invite à vérifier le namespace quand son état est inconnu
+  Tests @a_missing_namespace_is_named_as_such,
+    @a_missing_instance_in_an_existing_namespace_names_both,
+    @an_unknown_namespace_state_suggests_checking_it (sur @instance_read_error seulement : la
+    requête au namespace passe par un cluster, comme le reste du fichier)
+
+
   Given un job `scan-home` terminal capturé pré-annotation, deadline pas atteint
   When @wait_job_recreated continue de voir le même UID
   Then il continue de poller toutes les 2 s, et avec `--timeout 0` la première telle
