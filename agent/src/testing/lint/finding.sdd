@@ -134,6 +134,13 @@ Scenario: cluster scoped object has no namespace in its description
   Then la description est `ClusterRole {name}`
   Test @cluster-scoped-object-has-no-namespace-in-its-description
 
+Scenario: findings survive a round trip to a script
+  Given des constats dont un `warn` sans chemin, un supprimé avec raison et origine, et un
+    objet sans namespace
+  When @findings_to_dynamic les convertit puis @parse_findings les relit
+  Then la liste relue est égale à la liste d'origine et `invalid` est vide
+  Test @findings-survive-a-round-trip-to-a-script
+
 Scenario: reserved rule names are invalid findings
   Given trois constats dont les règles valent `execution`, `invalid-finding` et `sections`, et
     un constat de règle `latest-tag`
@@ -153,9 +160,3 @@ Scenario: invalid finding messages are in English
   When @parse_findings s'exécute
   Then chaque description `finding #{index}: ...` est rédigée en anglais et nomme la cause
   Test @invalid-finding-messages-are-in-english
-Scenario: findings survive a round trip to a script
-  Given des constats dont un `warn` sans chemin, un supprimé avec raison et origine, et un
-    objet sans namespace
-  When @findings_to_dynamic les convertit puis @parse_findings les relit
-  Then la liste relue est égale à la liste d'origine et `invalid` est vide
-  Test @findings-survive-a-round-trip-to-a-script

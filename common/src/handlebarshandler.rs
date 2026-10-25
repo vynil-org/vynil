@@ -140,11 +140,16 @@ impl HandleBars<'_> {
 
     /// Moteur de @new privé des helpers qui touchent à l'hôte (voir la spec de ce module) :
     /// les mêmes helpers de vynil, sauf `render_file`, et sans `jsonnet` (son `importstr`
-    /// lit n'importe quel fichier). `render_template` imbriqué reste restreint.
+    /// lit n'importe quel fichier) ni les helpers réseau (`http_get`,
+    /// `gitignore_io`). `render_template` imbriqué reste restreint.
     #[must_use]
     pub fn new_restricted() -> HandleBars<'static> {
         let mut inner = vynil_core::hbs::HandleBars::new_restricted();
-        inner.engine_mut().unregister_helper("jsonnet");
+        // `http_get` et `gitignore_io` viennent de la feature par défaut `http_attohttpc` de
+        // `handlebars_misc_helpers` : ils ouvrent des connexions sortantes.
+        for helper in ["jsonnet", "http_get", "gitignore_io"] {
+            inner.engine_mut().unregister_helper(helper);
+        }
         Self::with_base(inner, false)
     }
 
@@ -490,6 +495,8 @@ mod tests {
             r#"{{read_to_str "x"}}"#,
             r#"{{env_var "PATH"}}"#,
             r#"{{canonicalize "."}}"#,
+            r#"{{http_get "http://127.0.0.1:9/"}}"#,
+            r#"{{gitignore_io "rust"}}"#,
             r#"{{#jsonnet}}importstr "/etc/hostname"{{/jsonnet}}"#,
         ] {
             let result = hbs.render(template, &data);

@@ -256,7 +256,7 @@ impl LintRunner {
     fn fix_outcome(value: &Dynamic) -> FixOutcome {
         let Some(map) = value.clone().try_cast::<Map>() else {
             return FixOutcome::failed(format!(
-                "le retour de `{FIX_HOOK}` doit être une carte, reçu {}",
+                "the return of `{FIX_HOOK}` must be a map, got {}",
                 value.type_name()
             ));
         };
@@ -264,14 +264,14 @@ impl LintRunner {
             None => String::new(),
             Some(message) => match message.clone().into_string() {
                 Ok(message) => message,
-                Err(_) => return FixOutcome::failed("`message` doit être une chaîne".to_string()),
+                Err(_) => return FixOutcome::failed("`message` must be a string".to_string()),
             },
         };
         let status = map.get("status").and_then(|s| s.clone().into_string().ok());
         match status.as_deref() {
             Some("applied") => {
                 let Some(package) = map.get("pkg").and_then(|p| p.clone().try_cast::<YamlDoc>()) else {
-                    return FixOutcome::failed("`applied` exige un `pkg` de type YamlDoc".to_string());
+                    return FixOutcome::failed("`applied` requires a `pkg` of type YamlDoc".to_string());
                 };
                 FixOutcome {
                     status: FixStatus::Applied,
@@ -284,8 +284,8 @@ impl LintRunner {
                 package: None,
                 message,
             },
-            Some(other) => FixOutcome::failed(format!("`status` inconnu : `{other}`")),
-            None => FixOutcome::failed("`status` absent ou non textuel".to_string()),
+            Some(other) => FixOutcome::failed(format!("unknown `status`: `{other}`")),
+            None => FixOutcome::failed("`status` missing or not a string".to_string()),
         }
     }
 
@@ -318,7 +318,7 @@ impl LintRunner {
             Ok(text) if text.is_empty() => HintOutcome::None,
             Ok(text) => HintOutcome::Text(text),
             Err(_) => HintOutcome::Failed(format!(
-                "le retour de `{HINT_HOOK}` doit être une chaîne, reçu {}",
+                "the return of `{HINT_HOOK}` must be a string, got {}",
                 value.type_name()
             )),
         }
@@ -339,11 +339,6 @@ impl LintRunner {
         self.invoke(name, args, max_operations, false)
     }
 
-    /// Évalue le script dans un moteur neuf puis appelle `name` avec `args`.
-    fn invoke(&self, name: &str, args: Vec<Dynamic>, max_operations: u64) -> Result<Dynamic, String> {
-        let engine = build_engine(&self.lint_dir, &self.script_dir, &self.schemas, max_operations);
-        // `call_fn` évalue déjà les instructions de premier niveau (`eval_ast` vrai par défaut) :
-        // une évaluation préalable du script les exécuterait une seconde fois.
     /// Évalue le script dans un moteur neuf puis appelle `name` avec `args`. `yaml_ordered`
     /// ajoute la surface `YamlDoc` (`fix` et `hint` en ont besoin, `lint` non).
     fn invoke(
@@ -357,6 +352,8 @@ impl LintRunner {
         if yaml_ordered {
             yaml_ordered_rhai_register(&mut engine);
         }
+        // `call_fn` évalue déjà les instructions de premier niveau (`eval_ast` vrai par défaut) :
+        // une évaluation préalable du script les exécuterait une seconde fois.
         let mut scope = Scope::new();
         engine
             .call_fn::<Dynamic>(&mut scope, &self.ast, name, args)
@@ -864,7 +861,7 @@ mod tests {
     #[test]
     fn a_malformed_fix_return_fails() {
         let cases = [
-            (r"fn fix(rule, findings, pkg) { [] }", "carte"),
+            (r"fn fix(rule, findings, pkg) { [] }", "map"),
             (
                 r#"fn fix(rule, findings, pkg) { #{ status: "maybe" } }"#,
                 "status",

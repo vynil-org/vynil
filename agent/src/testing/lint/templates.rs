@@ -75,7 +75,36 @@ fn partial_dir(lint_dir: &Path, dir: &str) -> RhaiRes<PathBuf> {
     if !resolved.starts_with(&root) {
         return refusal(dir, "sort du répertoire de lint");
     }
+    if let Some(escaping) = escaping_entry(&resolved, &root) {
+        return refusal(
+            dir,
+            &format!("`{}` sort du répertoire de lint", escaping.display()),
+        );
+    }
     Ok(resolved)
+}
+
+/// Première entrée de `dir` (récursivement) qui est un lien symbolique de fichier dont la cible
+/// canonique sort de `root` : un `.hbs` lié vers l'extérieur serait sinon lu. Les liens de
+/// répertoire ne sont pas suivis par le parcours de `handlebars`, donc pas examinés.
+fn escaping_entry(dir: &Path, root: &Path) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(kind) = entry.file_type() else { continue };
+        if kind.is_symlink() {
+            match path.canonicalize() {
+                Ok(target) if target.is_dir() => {}
+                Ok(target) if target.starts_with(root) => {}
+                _ => return Some(path),
+            }
+        } else if kind.is_dir()
+            && let Some(found) = escaping_entry(&path, root)
+        {
+            return Some(found);
+        }
+    }
+    None
 }
 
 /// Chemin résolu sous forme de chaîne, pour l'API `rhai_register_partial_dir`.
@@ -184,6 +213,9 @@ mod tests {
     }
 
     #[test]
+    // Liste d'exclusion : tous les helpers de `handlebars_misc_helpers` 0.17 qui touchent à l'hôte
+    // (fichier, environnement, réseau) y figurent. Un bump de `vynil-core` ou de la crate doit
+    // relire ses `register_helper` et compléter cette liste.
     fn host_helpers_are_gone() {
         let dir = tempfile::tempdir().expect("répertoire temporaire");
         let engine = engine(dir.path());
@@ -192,6 +224,8 @@ mod tests {
             r#"{{read_to_str "x"}}"#,
             r#"{{env_var "PATH"}}"#,
             r#"{{canonicalize "."}}"#,
+            r#"{{http_get "http://127.0.0.1/"}}"#,
+            r#"{{gitignore_io "rust"}}"#,
             r#"{{#jsonnet}}importstr "/etc/hostname"{{/jsonnet}}"#,
         ] {
             let mut scope = rhai::Scope::new();

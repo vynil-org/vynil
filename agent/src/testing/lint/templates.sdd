@@ -44,6 +44,9 @@ Raises:
   Erreurs de script, jamais de panique :
     - `dir` absolu, ou contenant un composant `..` : erreur qui nomme le chemin.
     - `dir` qui, une fois résolu (liens symboliques suivis), sort de @lint_dir : même erreur.
+    - `dir` qui contient (récursivement) un lien symbolique de fichier dont la cible sort de
+      @lint_dir : même erreur, qui nomme le fichier lié. Les liens de répertoire ne sont pas
+      suivis par le parcours de `handlebars` et ne sont pas examinés.
     - `dir` introuvable ou qui n'est pas un répertoire : erreur qui nomme le chemin. Le
       comportement par défaut de @HandleBars est un succès silencieux ; ici une faute de frappe
       ne doit pas donner un hint vide sans bruit.
@@ -73,9 +76,6 @@ Tasks:
   [?] Un gabarit ou un partial qui s'inclut lui-même n'est borné par rien dans `handlebars` :
       la pile peut déborder et tuer le processus, sans message. Borner la profondeur du rendu,
       ou le documenter comme limite, quand un cas réel se présente.
-  [?] Un fichier `.hbs` qui est lui-même un lien symbolique vers l'extérieur de @lint_dir est
-      suivi : seul le répertoire est contrôlé. Le répertoire d'une distribution est son propre
-      dépôt, qu'un script ne peut pas modifier ; à reconsidérer si ce n'est plus vrai.
 
 Done when:
   Chaque scénario a un test passant et le harnais statique est vert.
@@ -103,10 +103,16 @@ Scenario: the directory is bounded to the lint directory
   Then chaque appel est une erreur de script qui nomme le chemin, et aucun fichier n'a été lu
   Test @the-directory-is-bounded-to-the-lint-directory
 
+Scenario: a partial file linking outside the lint directory is refused
+  Given un `.hbs` de `templates/` qui est un lien symbolique vers un fichier hors du répertoire de lint
+  When un script appelle `register_partial_dir(h, "templates")`
+  Then l'appel est une erreur de script qui nomme le fichier lié
+  Test @a-partial-file-linking-outside-the-lint-directory-is-refused
+
 Scenario: host helpers are gone
   Given un `HandleBars` obtenu par `new_hbs()`
   When un gabarit appelle `{{render_file "x" data}}`, `{{read_to_str "x"}}`, `{{env_var "PATH"}}`,
-    `{{canonicalize "."}}` ou `{{#jsonnet}}importstr "/etc/hostname"{{/jsonnet}}`
+    `{{canonicalize "."}}`, `{{http_get "http://127.0.0.1/"}}`, `{{gitignore_io "rust"}}` ou `{{#jsonnet}}importstr "/etc/hostname"{{/jsonnet}}`
   Then chaque rendu est une erreur de script, et aucun contenu de l'hôte n'est rendu
   And `{{render_template "{{env_var \"PATH\"}}" data}}` ne rend pas le PATH
   And `{{concat "a" "b"}}` et `{{base64_encode "a"}}` rendent normalement

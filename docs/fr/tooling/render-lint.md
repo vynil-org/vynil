@@ -438,12 +438,17 @@ celui de la distribution.
 
 Le script reste pur : il reçoit le document et retourne le nouveau, seule la commande écrit
 `package.yaml`. L'ordre des clés est conservé à tous les niveaux. Les commentaires et le quoting ne le
-sont pas (même limite que `agent package update`), donc `package.yaml` n'est réécrit que lorsqu'un fix
-s'est appliqué.
+sont pas (même limite que `agent package update`), donc `package.yaml` n'est réécrit que lorsqu'un fix a
+changé le document : un fix qui répond `applied` avec un document identique laisse le fichier intact. Un
+`---` de tête est conservé quand le fichier en avait un, et l'écriture passe par un fichier temporaire puis
+un `rename`, donc une interruption ne laisse jamais un fichier tronqué.
 
 Un piège du type document : lire une clé imbriquée rend une copie, donc pour la modifier il faut lire
 le parent, modifier la copie et la ré-affecter. `keys()`, `contains(clé)`, `len()`, `is_empty()` et
 `remove(clé)` fonctionnent sur le document.
+
+L'ordre compte aussi pour une **nouvelle** carte : un littéral Rhai (`#{…}`) inséré dans le document sort
+en ordre alphabétique des clés. La construire par `yaml_decode_ordered(...)` quand l'ordre doit être conservé.
 
 Un constat supprimé est transmis à `fix` volontairement. Un fix qui édite tout le paquet ne doit pas
 passer outre la décision explicite d'un auteur : l'exemple ci-dessous renonce dès qu'un constat est
@@ -518,7 +523,9 @@ agent package test -p ./my-package --all --lint-dir ./distribution/lint --fix --
 
 La suite s'exécute à nouveau sur le `package.yaml` réécrit, et le code de sortie est celui de la dernière
 exécution. `--fix-rounds` est un plafond : la boucle s'arrête aussi quand rien n'a changé, ou quand une
-exécution n'a pas strictement moins de constats que la précédente, auquel cas elle n'applique plus de fix.
+exécution n'a pas strictement moins de constats que la précédente. Dans ce cas le fix écrit par le tour
+précédent est défait : `package.yaml` retrouve son contenu d'avant ce tour (commentaires compris),
+`stop: no progress, package.yaml restored …` s'affiche sur stderr, et le verdict est celui du tour conservé.
 
 ## Hints : `hint`
 

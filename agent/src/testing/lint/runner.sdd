@@ -29,8 +29,6 @@ Exposes:
     `run_suite(&self, ctx: &serde_json::Value) -> LintOutcome`,
     `has_test_hook(&self) -> bool` et `has_suite_hook(&self) -> bool` : vrai quand la
     distribution définit `lint`, respectivement `lint_suite`.
-  @LintOutcome — `{ rows: Vec<VynilAssertResult>, suppressions: Vec<Suppression> }`.
-    `run_suite(&self, ctx: &serde_json::Value) -> LintOutcome`.
   @LintOutcome — `{ rows: Vec<VynilAssertResult>, suppressions: Vec<Suppression>,
     findings: Vec<Finding> }` ; `findings` porte tous les constats valides du script, y compris
     les supprimés, dans l'ordre de retour, pour que l'appelant puisse les remettre à `fix`.
@@ -201,31 +199,6 @@ Scenario: the script sees every section
     clés présentes mais vides
   Test @the-script-sees-every-section
 
-Scenario: top level statements run once per call
-  Given un `lint.rhai` dont le premier niveau pose `let seuil = 7;`, fait une boucle qui coûte
-    plus de la moitié du budget d'opérations d'un appel sans objet, puis lève si `seuil` ne vaut
-    plus 7, et dont `lint` retourne `[]`
-  When @run_test s'exécute
-  Then aucune ligne `lint:execution` n'est produite : le premier niveau s'évalue sans erreur et
-    sans budget cumulé
-  And les liaisons de premier niveau ne sont pas visibles des fonctions du script (sémantique de
-    Rhai : une fonction ne capture pas la portée globale) ; seuls les `import` y ont leur usage
-  And le nombre d'évaluations du premier niveau n'est pas observable depuis le script : ce test
-    est une garde de non-régression, l'évaluation unique s'établit par la lecture du code
-  Test @top-level-statements-run-once-per-call
-
-Scenario: the test hook is exposed
-  Given un `lint.rhai` qui ne définit que `lint_suite`, puis un qui ne définit que `lint`
-  When @has_test_hook et @has_suite_hook sont lus
-  Then le premier répond faux puis vrai, le second vrai puis faux
-  Test @the-test-hook-is-exposed
-
-Scenario: engine messages are in English
-  Given un `lint.rhai` dont `lint` retourne une carte, et un répertoire de lint sans `lint.rhai`
-  When @run_test s'exécute, puis @LintRunner::new
-  Then le message de la ligne `lint:execution` contient `must be an array` et l'erreur de
-    construction contient `lint.rhai` et un texte anglais (`not found`)
-  Test @engine-messages-are-in-english
 Scenario: outcome carries every finding, suppressed included
   Given un `lint.rhai` dont `lint` retourne un constat `error` et un constat `error` supprimé
     avec sa raison
@@ -266,7 +239,7 @@ Scenario: a throwing fix fails without changing anything
 Scenario: a malformed fix return fails
   Given un `fix` qui retourne un tableau, ou un `status` inconnu, ou `applied` sans `pkg`
   When @run_fix s'exécute
-  Then chaque cas est @FixStatus::Failed, avec un message qui dit ce qui manque
+  Then chaque cas est @FixStatus::Failed, avec un message en anglais qui dit ce qui manque
   Test @a-malformed-fix-return-fails
 
 Scenario: a fix cannot touch the cluster or loop forever
@@ -320,3 +293,29 @@ Scenario: a hint renders a template file from the lint directory
   Then le résultat est @HintOutcome::Text avec `Retirer 2 limite(s) : no-cpu-limits`
   And un `hint` qui appelle `register_partial_dir(h, "..")` donne @HintOutcome::Failed
   Test @a-hint-renders-a-template-file-from-the-lint-directory
+
+Scenario: top level statements run once per call
+  Given un `lint.rhai` dont le premier niveau pose `let seuil = 7;`, fait une boucle qui coûte
+    plus de la moitié du budget d'opérations d'un appel sans objet, puis lève si `seuil` ne vaut
+    plus 7, et dont `lint` retourne `[]`
+  When @run_test s'exécute
+  Then aucune ligne `lint:execution` n'est produite : le premier niveau s'évalue sans erreur et
+    sans budget cumulé
+  And les liaisons de premier niveau ne sont pas visibles des fonctions du script (sémantique de
+    Rhai : une fonction ne capture pas la portée globale) ; seuls les `import` y ont leur usage
+  And le nombre d'évaluations du premier niveau n'est pas observable depuis le script : ce test
+    est une garde de non-régression, l'évaluation unique s'établit par la lecture du code
+  Test @top-level-statements-run-once-per-call
+
+Scenario: the test hook is exposed
+  Given un `lint.rhai` qui ne définit que `lint_suite`, puis un qui ne définit que `lint`
+  When @has_test_hook et @has_suite_hook sont lus
+  Then le premier répond faux puis vrai, le second vrai puis faux
+  Test @the-test-hook-is-exposed
+
+Scenario: engine messages are in English
+  Given un `lint.rhai` dont `lint` retourne une carte, et un répertoire de lint sans `lint.rhai`
+  When @run_test s'exécute, puis @LintRunner::new
+  Then le message de la ligne `lint:execution` contient `must be an array` et l'erreur de
+    construction contient `lint.rhai` et un texte anglais (`not found`)
+  Test @engine-messages-are-in-english

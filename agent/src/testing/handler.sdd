@@ -296,7 +296,8 @@ Exposes:
     n'écrit aucun fichier. Sans @with_lint, ou sans constat, le rapport est vide.
   @FixReport — `{ package: @YamlDoc, steps: Vec<@FixStep>, changed: bool }` : `package` est le
     document final (le document reçu si rien n'a été appliqué), `changed` vaut vrai quand au
-    moins une étape est @FixStatus::Applied.
+    moins une étape a changé le document : sa sérialisation diffère de celle du document reçu
+    (un `applied` qui rend le même document ne compte pas).
   @FixStep — `{ rule: @String, status: @FixStatus, message: @String }`.
   @TestHandler::finding_count(&self) -> `usize` — le nombre de constats non supprimés conservés.
   @TestHandler::run_hints(&self, package: &@YamlDoc, skip: &[@String]) -> Vec<@HintStep> —
@@ -646,16 +647,6 @@ Scenario: an unreadable status fails a lint sections row
   And un `status` lu avec succès sans aucune section déclarée ne produit aucune ligne
   Test @an-unreadable-status-fails-a-lint-sections-row
 
-Scenario: a suite only distribution reads no status
-  Given la fonction de la voie lint de test, appelée avec une lecture du `status` injectée sous
-    la forme d'une fermeture qui enregistre son appel et échoue, sur un @LintRunner dont le
-    script ne définit que `lint_suite`
-  When la voie lint s'exécute
-  Then la lecture du `status` n'est pas appelée, aucune ligne `lint:sections` n'est produite et
-    le script n'est pas appelé
-  And avec un script qui définit `lint`, la même lecture est appelée et son échec produit la
-    ligne `lint:sections`
-  Test @a-suite-only-distribution-reads-no-status
 Scenario: findings are kept across tests and the suite
   Given un handler configuré par @with_lint, deux tests dont chacun reçoit un constat du
     script `lint`, dont un supprimé, et un `lint_suite` qui en signale un
@@ -699,3 +690,14 @@ Scenario: the finding count ignores suppressed findings
   When @finding_count s'exécute
   Then il vaut deux, et zéro sans @with_lint
   Test @the-finding-count-ignores-suppressed-findings
+
+Scenario: a suite only distribution reads no status
+  Given la fonction de la voie lint de test, appelée avec une lecture du `status` injectée sous
+    la forme d'une fermeture qui enregistre son appel et échoue, sur un @LintRunner dont le
+    script ne définit que `lint_suite`
+  When la voie lint s'exécute
+  Then la lecture du `status` n'est pas appelée, aucune ligne `lint:sections` n'est produite et
+    le script n'est pas appelé
+  And avec un script qui définit `lint`, la même lecture est appelée et son échec produit la
+    ligne `lint:sections`
+  Test @a-suite-only-distribution-reads-no-status

@@ -92,7 +92,8 @@ Must:
     @TestHandler::run_fixes, écrire sur stderr une ligne par étape —
     `fix {rule}: {applied|not applicable|failed}` suivie de ` — {message}` quand le message
     n'est pas vide — puis, si `changed` et pas `--dry-run`, réécrire `package.yaml` par
-    @YamlDoc::to_yaml_string. Avec `--dry-run`, ne rien écrire et, si `changed`, afficher sur stderr le document
+    @YamlDoc::to_yaml_string, précédé du marqueur `---` quand le fichier lu en avait un, via un
+    fichier temporaire du même répertoire puis `rename` (jamais de fichier tronqué). Avec `--dry-run`, ne rien écrire et, si `changed`, afficher sur stderr le document
     qui serait écrit, après les lignes d'étapes (sans changement, il n'y a rien à écrire donc rien
     à afficher). Un fichier dont rien n'a changé n'est jamais
     réécrit : sa mise en forme (commentaires, quoting), que @YamlDoc ne conserve pas, reste intacte.
@@ -106,12 +107,14 @@ Must:
     champ Rust @fix_rounds de @FixArgs, déclaré `requires` `fix` : le nombre maximal d'exécutions de la suite.
     Avec `--fix`, la boucle est : exécuter la suite avec un handler neuf (donc relire
     `package.yaml`) ; si ce n'est pas la première exécution et que @TestHandler::finding_count
-    n'a pas baissé strictement depuis l'exécution précédente, s'arrêter sans appliquer de fix ;
+    n'a pas baissé strictement depuis l'exécution précédente, restaurer `package.yaml` tel qu'il
+    était avant le fix écrit au tour précédent, s'arrêter sans appliquer de fix, et rendre le
+    verdict du tour conservé (celui d'avant ce fix) ;
     sinon appliquer les fix comme ci-dessus ; s'arrêter si aucun fix n'a changé le document, si
     l'écriture n'a pas eu lieu (`--dry-run`, qui ne fait donc qu'une exécution) ou si le nombre
     d'exécutions atteint `--fix-rounds`. Sur stderr, une ligne
     `round {k}: {n} finding(s)` par exécution et, à l'arrêt sans progrès,
-    `stop: no progress`. Le résumé, le JUnit et le dump de template ne sont produits qu'une fois,
+    `stop: no progress, package.yaml restored to its state before round {k}`. Le résumé, le JUnit et le dump de template ne sont produits qu'une fois,
     depuis la dernière exécution, et le verdict est celui de cette dernière exécution : un fix qui
     a tout corrigé donne exit 0 dès que `--fix-rounds` vaut au moins 2.
   Porte `--verbose` (pas de court, pas d'env), booléen, champ Rust @verbose, déclaré `requires`
@@ -476,9 +479,22 @@ Scenario: fix rounds stop when there is no progress
   Given `--fix-rounds 5` et une distribution dont le constat ne disparaît jamais et dont le `fix`
     ajoute une marque au document à chaque appel
   When @run tourne
-  Then la marque n'est présente qu'une fois : la deuxième exécution n'a pas moins de constats que
-    la première, la boucle s'arrête sans appliquer de fix, et @Err @Error::TestFailure revient
+  Then la deuxième exécution n'a pas moins de constats que la première : la boucle s'arrête sans
+    appliquer de fix, `package.yaml` est restauré à l'identique (la marque a disparu), et @Err
+    @Error::TestFailure revient
   Test @fix-rounds-stop-when-there-is-no-progress
+
+Scenario: a fix returning the same document leaves the file alone
+  Given un `package.yaml` commenté et un `fix` qui répond `applied` avec le document reçu
+  When @run tourne avec `--fix`
+  Then `package.yaml` est intact, commentaires compris
+  Test @a-fix-returning-the-same-document-leaves-the-file-alone
+
+Scenario: the leading document marker survives a rewrite
+  Given un `package.yaml` qui commence par `---` et un `fix` qui change le document
+  When @run tourne avec `--fix`
+  Then le fichier réécrit commence par `---`, une seule fois
+  Test @the-leading-document-marker-survives-a-rewrite
 
 Scenario: the default is a single pass
   Given `--fix` sans `--fix-rounds`

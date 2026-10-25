@@ -32,7 +32,9 @@ Must:
     helpers Rhai `image_from_ctx` et `resources_from_ctx` ; rien d'autre n'est ajouté.
   @HandleBars::new_restricted construit sur @vynil_core::hbs::HandleBars::new_restricted, qui retire
     `read_to_str`, `env_var`, `canonicalize`, `parent`, `file_name` et `extension`,
-    retire en plus `jsonnet` (le helper évalue un snippet Jsonnet dans une machine virtuelle
+    retire en plus `http_get` et `gitignore_io` (helpers réseau, enregistrés par la feature par
+    défaut `http_attohttpc` de `handlebars_misc_helpers`, que le constructeur du cœur ne retire
+    pas) et `jsonnet` (le helper évalue un snippet Jsonnet dans une machine virtuelle
     aux imports par défaut : `importstr "/chemin"` lit n'importe quel fichier, ce que le
     constructeur du cœur ne retire pas), puis enregistre les mêmes helpers de vynil que
     @HandleBars::new SAUF `render_file` (qui lit n'importe quel chemin) : six macro helpers et
@@ -517,7 +519,7 @@ Scenario: Strict mode turns missing args into render errors
 Scenario: A restricted engine has no host helpers
   Given un @HandleBars::new_restricted
   When il rend `{{render_file "x" this}}`, `{{read_to_str "x"}}`, `{{env_var "PATH"}}`,
-    `{{canonicalize "."}}` et `{{#jsonnet}}importstr "/etc/hostname"{{/jsonnet}}`
+    `{{canonicalize "."}}`, `{{http_get "http://127.0.0.1:9/"}}`, `{{gitignore_io "rust"}}` et `{{#jsonnet}}importstr "/etc/hostname"{{/jsonnet}}`
   Then chaque rendu est une @Error::HbsRenderError, et aucun contenu de l'hôte n'est rendu
   And `{{render_template "{{env_var \"PATH\"}}" this}}` ne rend pas le PATH : le moteur du
     gabarit imbriqué est lui aussi restreint, et l'échec du rendu imbriqué est avalé en chaîne vide

@@ -430,11 +430,17 @@ left it. Vynil ships no fix: the catalogue is the distribution's.
 
 The script stays pure: it receives the document and returns the new one, only the command writes
 `package.yaml`. The key order is kept at every level. Comments and quoting are not (the same limit as
-`agent package update`), so `package.yaml` is only rewritten when a fix applied.
+`agent package update`), so `package.yaml` is only rewritten when a fix changed the document: a fix
+that answers `applied` with an identical document leaves the file untouched. A leading `---` is kept when
+the file had one, and the write goes through a temporary file then a rename, so an interruption never
+leaves a truncated file.
 
 One trap of the document type: reading a nested key returns a copy, so to change it, read the parent,
 modify the copy and assign it back. `keys()`, `contains(key)`, `len()`, `is_empty()` and `remove(key)` work
 on the document.
+
+Key order also matters for a **new** map: a Rhai literal (`#{…}`) inserted into the document is written in
+alphabetical key order. Build it with `yaml_decode_ordered(...)` when the order must be kept.
 
 A suppressed finding is passed to `fix` on purpose. A fix that edits the whole package should not
 override an author's explicit decision: the example below declines when any finding is suppressed.
@@ -509,7 +515,9 @@ agent package test -p ./my-package --all --lint-dir ./distribution/lint --fix --
 
 The suite runs again on the rewritten `package.yaml`, and the exit code is the one of the last run.
 `--fix-rounds` is a ceiling: the loop also stops when nothing changed, or when a run does not have
-strictly fewer findings than the previous one, in which case it applies no further fix.
+strictly fewer findings than the previous one. In that case the fix written by the previous round is
+undone: `package.yaml` is restored to its content before that round (comments included), `stop: no progress,
+package.yaml restored …` is printed on stderr, and the verdict is the one of the round that was kept.
 
 ## Hints: `hint`
 

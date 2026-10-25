@@ -206,6 +206,8 @@ struct FixRound {
     steps: Vec<FixStep>,
     document: YamlDoc,
     yaml: Option<String>,
+    /// Texte de `package.yaml` avant ce tour, pour le restaurer si le tour suivant n'a pas progressé.
+    original: String,
 }
 
 /// Une exécution de la suite : son moteur neuf et le collecteur des objets créés du test unique.
@@ -214,11 +216,46 @@ struct Round {
     created_objects: Arc<Mutex<Vec<Dynamic>>>,
 }
 
-fn read_package(package_dir: &Path) -> Result<YamlDoc> {
+/// Texte de `package.yaml` et son document.
+fn read_package_text(package_dir: &Path) -> Result<(String, YamlDoc)> {
     let path = package_dir.join("package.yaml");
     let text = fs::read_to_string(&path).map_err(Error::Stdio)?;
-    text.parse::<YamlDoc>()
-        .map_err(|e| Error::YamlError(format!("{}: {e}", path.display())))
+    let doc = text
+        .parse::<YamlDoc>()
+        .map_err(|e| Error::YamlError(format!("{}: {e}", path.display())))?;
+    Ok((text, doc))
+}
+
+fn read_package(package_dir: &Path) -> Result<YamlDoc> {
+    read_package_text(package_dir).map(|(_, doc)| doc)
+}
+
+/// Vrai si le premier contenu du texte (hors commentaires et lignes vides) est le marqueur `---`.
+fn has_document_marker(text: &str) -> bool {
+    text.lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with('#'))
+        .is_some_and(|line| line == "---" || line.starts_with("--- "))
+}
+
+/// `yaml` précédé du marqueur `---` quand `original` en avait un : la sérialisation n'en émet pas.
+fn keep_document_marker(original: &str, yaml: String) -> String {
+    if has_document_marker(original) && !yaml.starts_with("---") {
+        format!("---\n{yaml}")
+    } else {
+        yaml
+    }
+}
+
+/// Écrit `content` dans `path` sans jamais laisser un fichier tronqué : fichier temporaire du
+/// même répertoire, puis `rename`.
+fn write_atomic(path: &Path, content: &str) -> Result<()> {
+    let tmp = path.with_extension("yaml.tmp");
+    fs::write(&tmp, content).map_err(Error::Stdio)?;
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        Error::Stdio(e)
+    })
 }
 
 /// Moteur neuf : relit `package.yaml` et réinstalle le lint quand il est demandé.
@@ -257,10 +294,11 @@ fn run_round(args: &Parameters) -> Result<Round> {
 /// Lit `package.yaml`, applique les fix du lint et prépare le YAML à écrire si un fix a changé
 /// le document. N'écrit rien.
 fn fix_round(handler: &TestHandler, package_dir: &Path) -> Result<FixRound> {
-    let doc = read_package(package_dir)?;
+    let (original, doc) = read_package_text(package_dir)?;
     let report = handler.run_fixes(&doc);
     let yaml = if report.changed {
-        Some(report.package.to_yaml_string().map_err(Error::YamlError)?)
+        let yaml = report.package.to_yaml_string().map_err(Error::YamlError)?;
+        Some(keep_document_marker(&original, yaml))
     } else {
         None
     };
@@ -268,13 +306,14 @@ fn fix_round(handler: &TestHandler, package_dir: &Path) -> Result<FixRound> {
         steps: report.steps,
         document: report.package,
         yaml,
+        original,
     })
 }
 
 /// Écrit `package.yaml` si un fix a changé le document, sauf en `dry_run`.
 fn write_fixes(args: &Parameters, fixes: &FixRound) -> Result<()> {
     if let (Some(yaml), false) = (&fixes.yaml, args.fixing.dry_run) {
-        fs::write(args.package_dir.join("package.yaml"), yaml).map_err(Error::Stdio)?;
+        write_atomic(&args.package_dir.join("package.yaml"), yaml)?;
     }
     Ok(())
 }
@@ -345,18 +384,26 @@ pub fn run(args: &Parameters) -> Result<()> {
     }
 
     let mut round: u32 = 1;
-    let mut previous: Option<usize> = None;
+    let mut previous: Option<(Round, FixRound)> = None;
     loop {
         let current = run_round(args)?;
         let findings = current.handler.finding_count();
         if args.fixing.fix {
             eprintln!("round {round}: {findings} finding(s)");
         }
-        if previous.is_some_and(|before| findings >= before) {
-            eprintln!("stop: no progress");
-            return report_last_round(args, &current, None);
+        if let Some((kept, written)) = previous
+            .take()
+            .filter(|(kept, _)| findings >= kept.handler.finding_count())
+        {
+            // Le fix écrit au tour précédent n'a rien amélioré : on rend le fichier tel qu'il
+            // était avant lui, et on rapporte le verdict de ce tour-là.
+            write_atomic(&args.package_dir.join("package.yaml"), &written.original)?;
+            eprintln!(
+                "stop: no progress, package.yaml restored to its state before round {}",
+                round.saturating_sub(1)
+            );
+            return report_last_round(args, &kept, None);
         }
-        previous = Some(findings);
         if !args.fixing.fix {
             return report_last_round(args, &current, None);
         }
@@ -366,17 +413,14 @@ pub fn run(args: &Parameters) -> Result<()> {
         }
         write_fixes(args, &fixes)?;
         eprint!("{}", fix_stderr(&fixes, false));
+        previous = Some((current, fixes));
         round = round.saturating_add(1);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{OutputFormat, Parameters, format_results, run};
-    use clap::Parser;
-    use client::testing::TestHandler;
-    use super::{Parameters, fix_output, run};
-    use super::{Parameters, fix_output, hint_output, run};
+    use super::{OutputFormat, Parameters, fix_output, format_results, hint_output, run};
     use clap::Parser;
     use client::testing::{FixStatus, FixStep, HintOutcome, HintStep, TestHandler};
     use common::{Error, yamlhandler::YamlDoc};
@@ -866,7 +910,57 @@ fn hint(rule, findings, pkg) {
         let err = run(&args).expect_err("le constat ne disparaît jamais");
         assert!(matches!(err, Error::TestFailure(1, 1)), "{err}");
         let text = read(&t.package.join("package.yaml"));
-        assert_eq!(text.matches("marque-tour").count(), 1, "{text}");
+        assert_eq!(
+            text, PACKAGE_YAML,
+            "le fix du tour sans progrès est retiré : {text}"
+        );
+    }
+
+    #[test]
+    fn a_fix_returning_the_same_document_leaves_the_file_alone() {
+        const SAME_DOCUMENT_DISTRO: &str = r#"fn lint(objs, ctx) {
+    [#{
+        rule: "always", severity: "error",
+        object: #{ apiVersion: "v1", kind: "ConfigMap", namespace: "app", name: "web" },
+        message: "toujours là"
+    }]
+}
+
+fn fix(rule, findings, pkg) { #{ status: "applied", pkg: pkg } }
+"#;
+        let t = tree_with(
+            Some(SAME_DOCUMENT_DISTRO),
+            INSTALL_ONE_CONFIGMAP,
+            PACKAGE_COMMENTED_NO_CPU,
+        );
+        let args = params(&t, &[
+            "--all",
+            "--lint-dir",
+            &t.lint.display().to_string(),
+            "--fix",
+            "--fix-rounds",
+            "3",
+        ]);
+        run(&args).expect_err("le constat reste");
+        let text = read(&t.package.join("package.yaml"));
+        assert_eq!(text, PACKAGE_COMMENTED_NO_CPU, "commentaires conservés : {text}");
+    }
+
+    #[test]
+    fn the_leading_document_marker_survives_a_rewrite() {
+        let original = format!("---\n# en-tête\n{PACKAGE_WITH_CPU_LIMITS}");
+        let t = tree_with(Some(CPU_FROM_PACKAGE_DISTRO), INSTALL_ONE_CONFIGMAP, &original);
+        let args = params(&t, &[
+            "--all",
+            "--lint-dir",
+            &t.lint.display().to_string(),
+            "--fix",
+        ]);
+        run(&args).expect_err("une seule exécution");
+        let text = read(&t.package.join("package.yaml"));
+        assert!(text.starts_with("---\n"), "{text}");
+        assert!(!text.contains("cpu"), "{text}");
+        assert_eq!(text.matches("---").count(), 1, "{text}");
     }
 
     #[test]
