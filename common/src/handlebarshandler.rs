@@ -145,8 +145,9 @@ impl HandleBars<'_> {
     #[must_use]
     pub fn new_restricted() -> HandleBars<'static> {
         let mut inner = vynil_core::hbs::HandleBars::new_restricted();
-        // `http_get` et `gitignore_io` viennent de la feature par défaut `http_attohttpc` de
-        // `handlebars_misc_helpers` : ils ouvrent des connexions sortantes.
+        // `http_get` et `gitignore_io` (feature `http_attohttpc` de `handlebars_misc_helpers`,
+        // ouvrant des connexions sortantes) sont désactivés dans `common/Cargo.toml` ; on les
+        // désenregistre quand même, au cas où un autre crate du graphe réactive la feature.
         for helper in ["jsonnet", "http_get", "gitignore_io"] {
             inner.engine_mut().unregister_helper(helper);
         }
