@@ -93,7 +93,7 @@ Markdown brut, directement consommable.
 
 ## Licence, état et crédits
 
-BSD-3-Clause. Projet en développement actif (workspace en version `0.7.10`). Dépôt :
+BSD-3-Clause. Projet en développement actif (workspace en version `0.7.11`). Dépôt :
 `vynil-org/vynil`.
 
 Documentation rédigée et maintenue par les mainteneurs, à partir du code et du

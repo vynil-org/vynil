@@ -30,7 +30,7 @@ jsonschema = { version = "0.30", default-features = false }
 regex = "1.12"
 
 [workspace.package]
-version = "0.7.10"
+version = "0.7.11"
 authors = [
     "Sébastien Huss <sebastien.huss@gmail.com>",
     "Xavier Mortelette <reivaxm@gmail.com>"

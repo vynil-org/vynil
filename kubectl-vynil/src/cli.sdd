@@ -68,7 +68,7 @@ Must:
   La surface d'usage sort `0` sur stdout : `-h`/`--help` à tout niveau, `help`,
     `help <cmd>`, `-V`/`--version`. La ligne de version est `kubectl-vynil <version
     workspace>` via l'override `#[command(name = "kubectl-vynil", version, about,
-    long_about = None)]` — `kubectl-vynil 0.7.10` observé sur version workspace `0.7.10`.
+    long_about = None)]` — `kubectl-vynil 0.7.11` observé sur version workspace `0.7.11`.
     Bannières d'aide issues des doc comments : racine avec `long_about` désactivé, donc
     `-h`/`--help` racine rendent l'about une ligne sans son `.` final ; les about courts
     perdent leur `.` final ; la doc à deux paragraphes du variant `completion` se rend
@@ -312,13 +312,13 @@ Scenario: usage surface and error exits
   Given `--help`, puis `help vti`, puis `--version`, puis `toto`, puis `vti` nu
   When lancé contre le build verrouillé
   Then les trois premiers impriment sur stdout et sortent `0` (`--version` imprimant
-    `kubectl-vynil 0.7.10` sur la version workspace `0.7.10`), `toto` sort `2` avec
+    `kubectl-vynil 0.7.11` sur la version workspace `0.7.11`), `toto` sort `2` avec
     `unrecognized subcommand 'toto'`, et `vti` nu imprime son help sur stderr en sortant `2`
   Aucun test mappé n'existe.
 
 Example:
   les défauts sondés rendent : `Cli { context: None, namespace: None, command: Vti(InstanceArgs { name: "x", verb: Diagnostic(DiagnosticArgs { items: None, output: None, transport: TransportArgs { server_url: None, token: None, insecure: false } }) }) }`
-  ligne de version observée : `kubectl-vynil 0.7.10`
+  ligne de version observée : `kubectl-vynil 0.7.11`
   le help racine annote les kinds avec `[aliases: box]` pour `jukebox` et
     `[aliases: tenantinstance]` pour `vti`, les abouts d'une ligne perdent leur point final
   erreur verbe manquant : `error: 'kubectl-vynil vti' requires a subcommand but one was not provided` suivi de `[subcommands: upgrade, scan, diagnostic, children, agentlog, childlogs, operatorlog, help]`
