@@ -278,4 +278,4 @@ Example:
     `[possible values: true, false]`
   refus de valeur vide : `error: a value is required for '--insecure-no-tls' but none was supplied`
     et `error: a value is required for '--tls-cert <TLS_CERT>' but none was supplied`
-  ligne de version observée sur la version workspace `0.7.10`: `vynil-diag 0.7.10`
+  ligne de version observée sur la version workspace `0.7.11`: `vynil-diag 0.7.11`

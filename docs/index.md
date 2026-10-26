@@ -92,7 +92,7 @@ Markdown, directly consumable.
 
 ## License, status, and credits
 
-BSD-3-Clause. Project under active development (workspace version `0.7.10`). Repository:
+BSD-3-Clause. Project under active development (workspace version `0.7.11`). Repository:
 `vynil-org/vynil`.
 
 Documentation written and maintained by the maintainers, based on the code and

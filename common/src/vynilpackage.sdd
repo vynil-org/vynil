@@ -165,7 +165,7 @@ Depends on:
 
 Exposes:
   @VERSION — @pub @const @&@str issu de `env!("CARGO_PKG_VERSION")` ; la version compilée en cours
-    d'exécution, `0.7.10` dans ce build (`/Cargo.toml` `workspace.package.version`,
+    d'exécution, `0.7.11` dans ce build (`/Cargo.toml` `workspace.package.version`,
     `version.workspace = true`).
   @get_vynil_version — `#[must_use]` @pub fn() -> @String, une copie de @VERSION.
   @VynilPackageType — enum, derives @Serialize/@Deserialize/@Eq/@PartialEq/@Clone/@Debug/@JsonSchema/@Default ;
@@ -349,7 +349,7 @@ Tasks:
       préfixée `v` se classe au-dessus d'un current sans préfixe et `>=` échoue. Décider plus tard
       si @use_v a sa place dans l'ordre.
   [?] Les ordres du @semver `1.0.28` verrouillé incluent les métadonnées de build et classent les
-      pré-releases sous les releases, donc des chaînes de garde comme `0.7.10+build` ou des
+      pré-releases sous les releases, donc des chaînes de garde comme `0.7.11+build` ou des
       @VERSION pré-release déplacent les issues de @>= contre la règle de précédence de
       semver.org. Décider plus tard quelle précédence les gardes de version doivent suivre.
   [?] @VynilPackage::is_cluster_version_ok combine @tokio::task::block_in_place avec

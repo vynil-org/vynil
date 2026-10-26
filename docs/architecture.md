@@ -359,7 +359,7 @@ changes in string and collection manipulation functions.
 |---|---|---|
 | `CONTROLLER_BASE_DIR` | `./operator` | Handlebars templates directory |
 | `VYNIL_NAMESPACE` | `vynil-system` | Vynil system namespace |
-| `AGENT_IMAGE` | `ghcr.io/vynil-org/vynil-agent:0.7.10` | Agent image for Jobs |
+| `AGENT_IMAGE` | `ghcr.io/vynil-org/vynil-agent:0.7.11` | Agent image for Jobs |
 | `AGENT_ACCOUNT` | `vynil-agent` | Job ServiceAccount |
 | `AGENT_LOG_LEVEL` | `info` | Log level |
 | `TENANT_LABEL` | `vynil.solidite.fr/tenant` | Tenant label key |
@@ -382,4 +382,4 @@ changes in string and collection manipulation functions.
 | `actix-web` | 4.12 | Metrics HTTP server |
 | `prometheus-client` | ~0.22 | Prometheus metrics |
 
-> Workspace version at time of writing: **0.7.10** (Rust 2024 edition, BSD-3-Clause license).
+> Workspace version at time of writing: **0.7.11** (Rust 2024 edition, BSD-3-Clause license).
