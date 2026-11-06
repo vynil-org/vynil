@@ -70,6 +70,23 @@ Must not:
     (variable d'environnement dédiée), jamais un effet de bord d'un test en échec.
 
 Tasks:
+  [ ] #282 Comparer aussi l'`apiVersion` des constats. Contrat : la clé de comparaison de chaque
+      entrée `ported` passe de `(rule, kind, namespace, name)` à `(rule, apiVersion, kind,
+      namespace, name)`, l'`apiVersion` de l'oracle étant reconstruit depuis le
+      `GroupVersionKind` de sa sortie JSON (`groupe/version`, ou `version` seule pour le groupe du
+      noyau). Sequence : (1) lire la sortie JSON réelle de kube-linter pour confirmer le champ ;
+      (2) tests rouges ; (3) étendre `expected.json` en les régénérant AVEC le binaire de
+      référence, jamais à la main (binaire indisponible : s'arrêter et le signaler) ; (4) étendre
+      la clé de `expected_keys` et celle de la sortie de la bibliothèque. Chaque divergence révélée
+      est arbitrée une par une, avec le développeur : correction de la bibliothèque, ou exception
+      consignée dans le catalogue avec sa raison. Un lot de corrections de bibliothèque se livre
+      séparément du changement de clé.
+  [?] #282 Le chemin (`path`) et le message : la sortie JSON de kube-linter ne porte pas, à notre
+      connaissance, de chemin de champ comparable à celui de la bibliothèque (seulement l'objet
+      et un message). À confirmer à l'étape (1) ci-dessus. S'il n'existe pas, `path` ne peut pas
+      entrer dans la clé : le consigner ici et clore ce point sans le comparer ; le message peut
+      être comparé à part après normalisation, ou rester libre (c'est le contrat actuel de
+      /agent/scripts/lib/render_lint.sdd). Décision à prendre avec le développeur avant de coder.
   [x] Établir `catalogue.yaml` à partir de l'inventaire de l'outil de référence, thème par
       thème, avec le statut `deferred` et une raison pour tout ce qui n'est pas encore porté.
   [x] Ajouter pour chaque vérification portée son répertoire de fixtures et son verdict.
@@ -90,6 +107,13 @@ Scenario: a ported check matches its recorded verdict
   When le test de verdict s'exécute
   Then l'ensemble des constats de la bibliothèque égale celui de `expected.json`
   Test @a-ported-check-matches-its-recorded-verdict
+
+Scenario: a finding on the wrong apiVersion is a divergence
+  Given une fixture dont le constat attendu porte `apiVersion: apps/v1` et une bibliothèque qui
+    rend le même constat (même règle, même kind, même nom) avec `apiVersion: extensions/v1beta1`
+  When le test de verdict s'exécute
+  Then il échoue et nomme la règle, l'objet et les deux `apiVersion`
+  Test @a-finding-on-the-wrong-apiversion-is-a-divergence
 
 Scenario: the default set matches the catalogue
   Given le catalogue réel et `render_lint::default_checks()`

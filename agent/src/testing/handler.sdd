@@ -368,6 +368,21 @@ Handles:
     @PoisonError::into_inner, les objets restent évalués.
 
 Tasks:
+  [ ] #306 Donner une JukeBox à l'instance de test, couvert par les scénarios the-test-instance-
+      carries-a-jukebox, the-jukebox-defaults-to-test et a-child-instance-copying-the-jukebox-
+      validates-against-the-vynil-crd. Contrat : `instance.jukebox` (champ du document `Test`, voir
+      ./vyniltest.sdd) alimente `spec.jukebox` de l'instance de `build_test_instance` et de
+      `virtual_instance_dynamic`, et la valeur que la production expose aux templates comme
+      `instance.package.jukebox` ; absent, la valeur par défaut est la chaîne `test` (non vide),
+      pour que les tests existants restent valides sans modification. À vérifier avant de coder :
+      par quel chemin la production calcule `instance.package.jukebox` (opérateur et
+      /common/src/instance*.rs) et le reproduire ; si ce chemin sort de ce fichier, s'arrêter et
+      demander plutôt que d'élargir la tâche.
+  [?] #306 (suggestion de l'issue, hors de cette tâche) Embarquer dans la table native de
+      ./schema/native.sdd les CRD de vynil (`SystemInstance`, `TenantInstance`, `ServiceInstance`,
+      `JukeBox`) pour que les distributions n'aient plus à recopier `deploy/crd/crd.yaml` dans leur
+      `--schemas-dir`. Décision à prendre avec le développeur : l'embarquement couple la table
+      native à la version du CRD du dépôt (la CRD est déjà générée par `crdgen`).
   [x] Couvrir la voie lint par des tests de même nom que les scénarios lint ci-dessous.
   [x] Templater les asserts sur le contexte rhai réel, couvert par les tests de même nom que
       les scénarios asserts-resolve-against-the-real-context à mocks-do-not-see-the-rhai-context.
@@ -701,3 +716,25 @@ Scenario: a suite only distribution reads no status
   And avec un script qui définit `lint`, la même lecture est appelée et son échec produit la
     ligne `lint:sections`
   Test @a-suite-only-distribution-reads-no-status
+
+Scenario: the test instance carries a jukebox
+  Given un `Test` dont `instance.jukebox` vaut `home-alpha`
+  When la course construit l'instance exposée aux scripts et aux templates, et l'instance
+    virtuelle mockée
+  Then `spec.jukebox` vaut `home-alpha` sur les deux, et la valeur que la production expose aux
+    templates comme `instance.package.jukebox` vaut `home-alpha`
+  Test @the-test-instance-carries-a-jukebox
+
+Scenario: the jukebox defaults to test
+  Given un `Test` sans `instance.jukebox`
+  When la course construit les mêmes objets
+  Then `spec.jukebox` vaut `test` et `instance.package.jukebox` vaut `test`
+  Test @the-jukebox-defaults-to-test
+
+Scenario: a child instance copying the jukebox validates against the vynil CRD
+  Given un package dont un template rend une `TenantInstance` avec
+    `jukebox: {{ instance.package.jukebox }}`, la CRD de vynil dans le répertoire de schémas et la
+    validation de schéma active
+  When la course s'exécute
+  Then aucun constat `schema/invalid` ne signale `jukebox` manquant
+  Test @a-child-instance-copying-the-jukebox-validates-against-the-vynil-crd

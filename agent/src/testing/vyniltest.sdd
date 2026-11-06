@@ -81,7 +81,9 @@ Exposes:
   @VynilTestInstance — @name (@String), @namespace (@String, tous deux requis), @options
     (@Option<@BTreeMap<@String, @serde_json::Value>>), @nodes (@Option<Vec<@String>> — noms
     des Nodes que ./handler.rs mocke pour la course), @config_dir (@Option<@String> — sous-dossier
-    de `<package_dir>/tests` que ./handler.rs substitue au répertoire de configuration).
+    de `<package_dir>/tests` que ./handler.rs substitue au répertoire de configuration),
+    @jukebox (@Option<@String> — nom de la JukeBox de l'instance de test, que ./handler.rs pose
+    sur `spec.jukebox` ; `test` quand absent).
   @VynilTestSetRef — #[allow(non_snake_case)] @testSet (@String), @variables
     (@Option<@BTreeMap<@String, @serde_json::Value>> — nom → valeur brute, typée contrairement
     aux déclarations de variables du TestSet).
@@ -98,7 +100,7 @@ Accepts:
     ici). Clés wire obligatoires : `apiVersion`, `kind`, `metadata` avec `name`, et
     `instance` avec `name` et `namespace` tous deux requis ; optionnelles : `description`,
     `testSets`, `mocks`, `asserts`, `instance.options`, `instance.nodes`,
-    `instance.config_dir`. Pas de rename de conteneur ni de
+    `instance.config_dir`, `instance.jukebox`. Pas de rename de conteneur ni de
     `deny_unknown_fields`, donc les clés sont exactement l'orthographe des champs (le
     camelCase `apiVersion`/`testSets` survit via `#[allow(non_snake_case)]`) et les clés
     inconnues sont droppées ; pas de `#[serde(default)]` — l'optionnalité est @Option-only,

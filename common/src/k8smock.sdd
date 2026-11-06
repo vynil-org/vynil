@@ -242,6 +242,36 @@ Handles:
   Mutex de base empoisonné — @std::sync::PoisonError::into_inner réutilise l'état interne.
 
 Tasks:
+  [ ] #304 Établir la cause de la régression de `agent package test` 0.7.11 sur `dev/plane`
+      (dépôt `kydah/box`, test `full`) AVANT tout code : 14 assertions passaient en 0.7.10, aucune en
+      0.7.11 (`SSO is enabled but no gitea service is available in this tenant`). Faits établis :
+      `lib/resolv_service.rhai` et `tenant/context.rhai` sont identiques entre 0.7.10 et 0.7.11 ; le
+      test place un mock `TenantInstance` dans le namespace `apps` alors que l'instance est dans
+      `dev-test` et qu'AUCUN mock `Namespace` n'existe ; `tenant/context.rhai` liste les
+      TenantInstance de chacun des `instance.get_tenant_namespaces()`. Constaté dans le code : en
+      0.7.10 `get_tenant_namespaces` rendait `[get_tenant_name()]` (le nom du namespace de
+      l'instance, faute de mock `Namespace`), en 0.7.11 il rend les `Namespace` mockés portant le
+      label tenant, ou `[namespace de l'instance]` à défaut ; les deux donnent `["dev-test"]` ici, et
+      le mock en `apps` n'est donc trouvé ni par l'une ni par l'autre version. L'hypothèse de
+      l'issue (le tenant couvrait `apps` avant) n'est donc PAS établie par ce code. Pistes à
+      vérifier, dans l'ordre : (1) reproduire en 0.7.10 et 0.7.11 avec le test `full` de
+      `kydah/box` (`dev/plane`) pour confirmer la régression ; (2) bisecter les commits de
+      0.7.10..0.7.11 touchant /agent/src/testing et /common/src (#228 « asserts sur le contexte
+      rhai réel », #269 vynil-core 0.8, #271, #273) ; (3) comparer le comportement de
+      `k8s_resource("TenantInstance", ns).list()` du mock entre les deux versions. Livrable de cette
+      tâche : un rapport (cause, commit fautif, verdict « voulu » ou « régression ») sans
+      modification de code. Ne rien corriger avant l'accord du développeur sur le verdict.
+  [?] #304 Selon le verdict : si le changement est voulu, documenter dans la page du test de
+      package que les mocks d'instances d'un tenant doivent être dans un namespace du tenant (mock
+      `Namespace` portant le label tenant), et envisager un avertissement quand un mock
+      `TenantInstance` est hors de tous les namespaces du tenant ; si c'est une régression, écrire
+      d'abord un scénario rouge reproduisant `dev/plane` (mock hors du namespace de l'instance,
+      testset `tenant`), puis corriger.
+  [ ] #304 Réparer l'incohérence interne de cette spec : la description d'Exposes de
+      @K8sInstanceMock::get_tenant_namespaces dit « emballant ce résultat dans un tableau
+      mono-élément » alors que le Must le décrit comme la liste des namespaces portant le label
+      tenant. Aligner l'Exposes sur le Must (seule modification de ce fichier autorisée avant le
+      verdict).
   [ ] Couvrir les ratés de recherche avec les deux textes d'erreur exacts, et les recherches
       appariées sur (`kind`, `metadata.name`, `metadata.namespace`) en ignorant tous les
       autres champs.
