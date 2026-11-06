@@ -35,6 +35,20 @@ fn mark_quantity(mut schema: Value) -> Value {
     schema
 }
 
+/// `schemars` décrit le type `JSON` des CRD — `default`, `example`, chaque élément de `enum`,
+/// `const` — comme un objet, ce qui rejetait `default: fast`. Comme pour `Quantity`, la
+/// définition ne porte alors aucune contrainte de type : tout JSON est valide, sans marqueur
+/// à normaliser par ./dialect.sdd.
+fn relax_json(mut schema: Value) -> Value {
+    if let Some(json) = schema
+        .pointer_mut("/$defs/io.k8s.apiextensions-apiserver.pkg.apis.apiextensions.v1.JSON")
+        .and_then(Value::as_object_mut)
+    {
+        json.remove("type");
+    }
+    schema
+}
+
 /// Schéma natif brut de `apiVersion`/`kind`, ou `None` pour un couple absent de la table.
 #[must_use]
 pub fn native_schema(api_version: &str, kind: &str) -> Option<Value> {
@@ -80,7 +94,7 @@ pub fn native_schema(api_version: &str, kind: &str) -> Option<Value> {
         ("discovery.k8s.io/v1", "EndpointSlice") => schema_of::<discovery_v1::EndpointSlice>(),
         _ => None,
     }?;
-    Some(mark_quantity(raw))
+    Some(relax_json(mark_quantity(raw)))
 }
 
 /// Version mineure de Kubernetes dont proviennent les schémas natifs, pour les messages.
@@ -166,6 +180,88 @@ mod tests {
         jsonschema::validator_for(&schema).expect("schéma Deployment compilable")
     }
 
+    /// Schéma natif de `CustomResourceDefinition` passé par le même traitement de dialecte
+    /// que le registre.
+    fn compiled_crd(strict: bool) -> jsonschema::Validator {
+        let Some(mut schema) = native_schema("apiextensions.k8s.io/v1", "CustomResourceDefinition") else {
+            return jsonschema::validator_for(&json!(false)).expect("schéma trivial");
+        };
+        normalize(&mut schema);
+        if strict {
+            strictify(&mut schema);
+        }
+        jsonschema::validator_for(&schema).expect("schéma CRD compilable")
+    }
+
+    /// CRD `widgets.example.com` au socle fixe, pour le `spec` donné.
+    fn crd(spec: &Value) -> Value {
+        json!({
+            "apiVersion": "apiextensions.k8s.io/v1",
+            "kind": "CustomResourceDefinition",
+            "metadata": {"name": "widgets.example.com"},
+            "spec": spec
+        })
+    }
+
+    /// Les erreurs de `doc` contre `validator`, sous forme `chemin|message`.
+    fn errors(validator: &jsonschema::Validator, doc: &Value) -> Vec<String> {
+        validator
+            .iter_errors(doc)
+            .map(|e| format!("{}|{e}", e.instance_path))
+            .collect()
+    }
+
+    /// CRD de fixture écrite pour ce dépôt, reprenant les motifs cnpg/cert-manager :
+    /// `default`, `enum`, `items` imbriqués, `additionalProperties`,
+    /// `x-kubernetes-preserve-unknown-fields`.
+    fn realistic_crd() -> Value {
+        crd(&json!({
+            "group": "postgres.example.org",
+            "names": {"kind": "Cluster", "plural": "clusters", "shortNames": ["cluster"]},
+            "scope": "Namespaced",
+            "versions": [{
+                "name": "v1",
+                "served": true,
+                "storage": true,
+                "schema": {"openAPIV3Schema": {
+                    "type": "object",
+                    "description": "Fixture de CRD de ce dépôt, motifs cnpg et cert-manager.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "spec": {"type": "object", "properties": {
+                            "instances": {"type": "integer", "format": "int32", "minimum": 1,
+        "default": 1},
+                            "logLevel": {"type": "string", "default": "info",
+                                "enum": ["debug", "info", "error"]},
+                            "primaryUpdateMethod": {"type": "string", "default": "switchover",
+                                "enum": ["switchover", "stop-start"]},
+                            "storage": {"type": "object", "properties": {
+                                "size": {"type": "string", "default": "1Gi"},
+                                "resizeMode": {"type": "string", "default": "auto",
+                                    "enum": ["online", "offline", "auto"]},
+                                "parameters": {"type": "object",
+                                    "additionalProperties": {"type": "string"}}
+                            }},
+                            "replicaClusters": {"type": "array", "items": {"type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "inherit": {"type": "array", "items": {
+                                        "type": "string",
+                                        "enum": ["metadata", "spec", "status"]
+                                    }}
+                                }}},
+                            "resources": {"type": "object",
+                                "x-kubernetes-preserve-unknown-fields": true},
+                            "affinity": {"type": "object",
+                                "x-kubernetes-preserve-unknown-fields": true}
+                        }},
+                        "status": {"type": "object", "x-kubernetes-preserve-unknown-fields": true}
+                    }
+                }}
+            }]
+        }))
+    }
+
     #[test]
     fn every_minimum_resource_resolves() {
         for (api_version, kind) in MINIMUM {
@@ -206,5 +302,130 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_crd_with_default_and_enum_values_is_valid() {
+        // La CRD `widgets.example.com` de l'issue #305.
+        let widget = crd(&json!({
+            "group": "example.com",
+            "names": {"kind": "Widget", "plural": "widgets"},
+            "scope": "Namespaced",
+            "versions": [{
+                "name": "v1",
+                "served": true,
+                "storage": true,
+                "schema": {"openAPIV3Schema": {
+                    "type": "object",
+                    "properties": {"spec": {"type": "object", "properties": {
+                        "mode": {"type": "string", "default": "fast", "enum": ["fast", "slow"]},
+                        "ports": {"type": "array", "items": {"type": "object", "properties": {
+                            "port": {"type": "integer"},
+                            "protocol": {"type": "string", "default": "TCP"}
+                        }}}
+                    }}}
+                }}
+            }]
+        }));
+        for strict in [true, false] {
+            let found = errors(&compiled_crd(strict), &widget);
+            assert!(found.is_empty(), "strict={strict}: {found:?}");
+        }
+    }
+
+    #[test]
+    fn default_and_enum_accept_any_json_value() {
+        for default in [
+            json!(7),
+            json!(true),
+            json!([1, "two"]),
+            json!({"a": 1}),
+            Value::Null,
+        ] {
+            let instance = crd(&json!({
+                "group": "example.com",
+                "names": {"kind": "Widget", "plural": "widgets"},
+                "scope": "Namespaced",
+                "versions": [{
+                    "name": "v1",
+                    "served": true,
+                    "storage": true,
+                    "schema": {"openAPIV3Schema": {
+                        "type": "object",
+                        "properties": {"spec": {"type": "object", "properties": {
+                            "threshold": {"default": default}
+                        }}}
+                    }}
+                }]
+            }));
+            for strict in [true, false] {
+                let found = errors(&compiled_crd(strict), &instance);
+                assert!(found.is_empty(), "strict={strict}: default={default} : {found:?}");
+            }
+        }
+        let mixed = crd(&json!({
+            "group": "example.com",
+            "names": {"kind": "Widget", "plural": "widgets"},
+            "scope": "Namespaced",
+            "versions": [{
+                "name": "v1",
+                "served": true,
+                "storage": true,
+                "schema": {"openAPIV3Schema": {
+                    "type": "object",
+                    "properties": {"spec": {"type": "object", "properties": {
+                        "levels": {"enum": ["low", 1, "high", 2]}
+                    }}}
+                }}
+            }]
+        }));
+        for strict in [true, false] {
+            let found = errors(&compiled_crd(strict), &mixed);
+            assert!(found.is_empty(), "strict={strict}: enum mixte : {found:?}");
+        }
+    }
+
+    #[test]
+    fn a_real_world_crd_yields_no_finding() {
+        let fixture = realistic_crd();
+        for strict in [true, false] {
+            let found = errors(&compiled_crd(strict), &fixture);
+            assert!(found.is_empty(), "strict={strict}: {found:?}");
+        }
+    }
+
+    #[test]
+    fn a_malformed_crd_is_still_rejected() {
+        let without_names = crd(&json!({
+            "group": "example.com",
+            "scope": "Namespaced",
+            "versions": [{"name": "v1", "served": true, "storage": true}]
+        }));
+        let versions_not_array = crd(&json!({
+            "group": "example.com",
+            "names": {"kind": "Widget", "plural": "widgets"},
+            "scope": "Namespaced",
+            "versions": "v1"
+        }));
+        for strict in [true, false] {
+            let validator = compiled_crd(strict);
+            for (label, malformed) in [
+                ("spec.names absent", &without_names),
+                ("spec.versions non tableau", &versions_not_array),
+            ] {
+                assert!(
+                    !errors(&validator, malformed).is_empty(),
+                    "strict={strict}: la CRD à {label} doit rendre au moins une erreur"
+                );
+            }
+        }
+        // Sensibilité du gardien : un schéma sans aucune contrainte accepte les deux CRD
+        // malformées, donc l'assertion ci-dessus rougit si toutes les contraintes
+        // étaient supprimées par erreur.
+        let permissive = jsonschema::validator_for(&json!({})).expect("schéma vide compilable");
+        assert!(
+            permissive.is_valid(&without_names) && permissive.is_valid(&versions_not_array),
+            "le gardien doit être sensible à une suppression totale des contraintes"
+        );
     }
 }

@@ -59,12 +59,16 @@ Handles:
 
 Tasks:
   [x] Couvrir chaque scénario par un test de même nom.
-  [ ] #305 Faire accepter toute valeur JSON aux champs `JSON` d'une CRD (Must ci-dessus). Sequence :
+  [x] #305 Faire accepter toute valeur JSON aux champs `JSON` d'une CRD (Must ci-dessus). Sequence :
       (1) tests rouges des quatre scénarios ci-dessous, la fixture de CRD réelle étant écrite pour ce
       dépôt ; (2) corriger la définition dans /agent/src/testing/schema/native.rs ; (3) vérifier que
       le scénario `a-malformed-crd-is-still-rejected` reste rouge si on supprime toute contrainte
       par erreur. Le contournement `kind_of_group(..., "CustomResourceDefinition")` côté
       distribution n'est pas du ressort de ce dépôt.
+  [?] @mark_quantity est un no-op : son pointeur `$defs/Quantity` ne correspond pas à la clé réelle
+      `io.k8s.apimachinery.pkg.api.resource.Quantity`, et `k8s-openapi` émet déjà le marqueur
+      `x-kubernetes-int-or-string` en amont. L'observable du Must `Quantity` reste satisfait, vérifié
+      par son scénario. Décider : corriger le pointeur ou supprimer le helper et son commentaire.
   [?] Étendre la table aux autres ressources de `k8s-openapi` (`resource.k8s.io`,
       `flowcontrol.apiserver.k8s.io`, `certificates.k8s.io`, …) ou la générer par macro à
       partir des modules ; décider selon l'usage réel des packages de la distribution.
