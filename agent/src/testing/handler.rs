@@ -296,6 +296,16 @@ fn lint_sections(
     }
 }
 
+/// `JukeBox` name posed on `spec.jukebox` of the instance for the test run: the one provided
+/// by the test instance, or the string `"test"` when absent (never empty, so that existing
+/// tests stay valid).
+fn jukebox_of(instance: &super::vyniltest::VynilTestInstance) -> String {
+    instance
+        .jukebox
+        .as_ref()
+        .map_or_else(|| "test".to_string(), String::clone)
+}
+
 /// Builds the virtual instance mock (`Dynamic`) for the tested instance.
 ///
 /// # Errors
@@ -318,6 +328,10 @@ fn virtual_instance_dynamic(
     spec.insert(
         "package".to_string(),
         serde_json::Value::String(package.metadata.name.clone()),
+    );
+    spec.insert(
+        "jukebox".to_string(),
+        serde_json::Value::String(jukebox_of(instance)),
     );
     if let Some(opts) = &instance.options {
         spec.insert(
@@ -1012,6 +1026,7 @@ impl TestHandler {
             "spec": {
                 "category": self.package.metadata.category,
                 "package": self.package.metadata.name,
+                "jukebox": jukebox_of(&test.instance),
             },
             "status": {},
         });
@@ -2060,5 +2075,171 @@ fn hint(rule, findings, pkg) {
         let message = rows[0]["message"].as_str().unwrap_or_default();
         assert!(message.contains("values.name"), "{message}");
         assert_eq!(created.lock().map(|o| o.len()).unwrap_or_default(), 0);
+    }
+
+    // ── JukeBox de l'instance de test ───────────────────────────────────────
+
+    /// `ctx::run` expose `instance.package.jukebox` depuis le `spec.jukebox` de l'instance,
+    /// comme la lane install de `build_context.rhai` (`jukebox: instance.spec.jukebox`).
+    /// La clé `"package"` est entre guillemets comme dans `build_context.rhai` : `package` est
+    /// un mot-clé réservé de Rhai en clé de carte littérale.
+    const CONTEXT_JUKEBOX: &str = r#"fn run(instance, args) {
+    #{ instance: #{ "package": #{ jukebox: instance.spec.jukebox } } }
+}
+"#;
+
+    /// Installation qui crée un `ConfigMap` `app/cm-<jukebox>` portant le jukebox du contexte.
+    /// `["package"]` en notation indice : `package` est un mot-clé réservé de Rhai.
+    const INSTALL_JUKEBOX_CM: &str = r#"fn run(instance, context) {
+    let name = context.instance["package"].jukebox;
+    let h = k8s_resource("configmaps", "app");
+    h.create(#{ apiVersion: "v1", kind: "ConfigMap", metadata: #{
+        name: "cm-" + name, namespace: "app", labels: #{ jukebox: name }
+    } });
+}
+"#;
+
+    /// Assert dont le sélecteur template `{{instance.package.jukebox}}` et dont la valeur
+    /// attend le jukebox littéral donné.
+    fn jukebox_asserts(jukebox: &str) -> String {
+        format!(
+            "asserts:\n  - name: jukebox-template\n    matcher:\n      exact: 1\n    selector:\n      kind: ConfigMap\n      name: \"cm-{{{{instance.package.jukebox}}}}\"\n      namespace: app\n    value:\n      metadata:\n        labels:\n          jukebox: \"{jukebox}\"\n"
+        )
+    }
+
+    /// `(spec.jukebox de l'instance exposée aux scripts, spec.jukebox du mock virtuel)` pour
+    /// une instance de test portant `instance.jukebox: {jukebox}` (vide : clé absente).
+    fn jukebox_of_instances(jukebox: &str) -> (Value, Value) {
+        let instance = if jukebox.is_empty() {
+            DEMO_INSTANCE.to_string()
+        } else {
+            format!("{DEMO_INSTANCE}  jukebox: {jukebox}\n")
+        };
+        let fx = fixture(
+            &[("default.yaml", test_doc(&instance, ""))],
+            INSTALL_JUKEBOX_CM,
+            None,
+        );
+        let h = handler(&fx);
+        let exposed = h.build_test_instance(h.get_test("default").expect("test chargée"));
+        let test = h.get_templated_test("default").expect("test résolue");
+        let mocks = test
+            .mocks
+            .as_ref()
+            .and_then(|m| m.kubernetes.clone())
+            .expect("mocks k8s");
+        let virtual_obj =
+            serde_json::to_value(mocks.last().expect("instance virtuelle")).expect("mock sérialisable");
+        assert_eq!(virtual_obj["kind"], "TenantInstance", "{virtual_obj}");
+        (
+            exposed["spec"]["jukebox"].clone(),
+            virtual_obj["spec"]["jukebox"].clone(),
+        )
+    }
+
+    /// Lance la voie complète avec l'instance de test donnée (vide : clé absente) et vérifie
+    /// que `{{instance.package.jukebox}}` rend la valeur littérale attendue dans l'assert.
+    fn run_jukebox_lane(jukebox: &str, expected: &str) {
+        let instance = if jukebox.is_empty() {
+            DEMO_INSTANCE.to_string()
+        } else {
+            format!("{DEMO_INSTANCE}  jukebox: {jukebox}\n")
+        };
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(&instance, &jukebox_asserts(expected)))],
+            CONTEXT_JUKEBOX,
+            INSTALL_JUKEBOX_CM,
+        );
+        let mut h = handler(&fx);
+        h.run_test("default", &sink());
+        let rows = rows(&h);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["name"], "jukebox-template", "{rows:?}");
+        assert_eq!(rows[0]["passed"], true, "{rows:?}");
+    }
+
+    #[test]
+    fn the_test_instance_carries_a_jukebox() {
+        let (exposed, virtual_spec) = jukebox_of_instances("home-alpha");
+        assert_eq!(exposed, "home-alpha");
+        assert_eq!(virtual_spec, "home-alpha");
+        run_jukebox_lane("home-alpha", "home-alpha");
+    }
+
+    #[test]
+    fn the_jukebox_defaults_to_test() {
+        let (exposed, virtual_spec) = jukebox_of_instances("");
+        assert_eq!(exposed, "test");
+        assert_eq!(virtual_spec, "test");
+        run_jukebox_lane("", "test");
+    }
+
+    /// Lint qui ne fait que la validation de schéma de chaque objet créé.
+    const LINT_SCHEMA_ONLY: &str = r#"import "render_lint_schema" as schema;
+
+fn lint(objs, ctx) {
+    let findings = [];
+    for obj in objs.all {
+        findings += schema::check(obj);
+    }
+    findings
+}
+"#;
+
+    /// Installation qui rend un `TenantInstance` enfant depuis un template Handlebars portant
+    /// `jukebox: {{instance.package.jukebox}}`, puis le crée.
+    const INSTALL_CHILD_TENANT_INSTANCE: &str = r#"fn run(instance, context) {
+    let hbs = new_hbs();
+    let tpl = "apiVersion: vynil.solidite.fr/v1\nkind: TenantInstance\nmetadata:\n  name: child\n  namespace: app\nspec:\n  category: core\n  package: demo\n  jukebox: {{instance.package.jukebox}}\n";
+    let text = hbs.render_from(tpl, context);
+    let obj = yaml_decode(text);
+    let t = k8s_resource("TenantInstance", "app");
+    t.create(obj);
+}
+"#;
+
+    #[test]
+    fn a_child_instance_copying_the_jukebox_validates_against_the_vynil_crd() {
+        let schemas = tempfile::tempdir().expect("répertoire de schémas");
+        let crd = Path::new(env!("CARGO_MANIFEST_DIR")).join("../deploy/crd/crd.yaml");
+        fs::copy(&crd, schemas.path().join("crd.yaml")).expect("copie de la CRD du dépôt");
+
+        let fx = fixture_with_context(
+            &[("default.yaml", test_doc(DEMO_INSTANCE, ""))],
+            CONTEXT_JUKEBOX,
+            INSTALL_CHILD_TENANT_INSTANCE,
+        );
+        fs::write(fx.lint.join("lint.rhai"), LINT_SCHEMA_ONLY).expect("lint.rhai");
+        // Les bibliothèques `render_lint*` du lint viennent des scripts réels de la distribution.
+        let real_scripts = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts");
+        let mut h = TestHandler::new(
+            fx.package.clone(),
+            real_scripts.clone(),
+            fx.package.clone(),
+            real_scripts,
+            None,
+        )
+        .expect("chargement du handler")
+        .with_lint(&fx.lint, Some(schemas.path()))
+        .expect("lint avec validation de schéma");
+
+        let created = sink();
+        h.run_test("default", &created);
+        assert_eq!(created.lock().map(|o| o.len()).unwrap_or_default(), 1);
+        let rows = rows(&h);
+        assert!(
+            !rows.iter().any(|r| r["name"] == "execution"),
+            "la voie install doit avoir tenu : {rows:?}"
+        );
+        assert!(
+            !rows.iter().any(|r| r["name"] == "lint:schema/unknown-kind"),
+            "la CRD de vynil doit être connue du registre : {rows:?}"
+        );
+        for row in &rows {
+            if row["name"] == "lint:schema/invalid" {
+                let message = row["message"].as_str().unwrap_or_default();
+                assert!(!message.contains("jukebox"), "{message}");
+            }
+        }
     }
 }

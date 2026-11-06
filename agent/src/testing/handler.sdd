@@ -142,8 +142,8 @@ Must:
     `metadata.name` et `metadata.namespace` égaux à l'instance (champs non-carte ou non-chaîne
     comptent comme non-appariés); sinon @virtual_instance_dynamic construit et passe par JSON
     `{apiVersion: "vynil.solidite.fr/v1", kind, metadata:{name, namespace},
-    spec:{category, package, options?}, status:{}}` — noter que l'objet virtuel porte le
-    bon apiVersion `vynil` `vynil.solidite.fr/v1`, contrairement au gate de scan.
+    spec:{category, package, jukebox, options?}, status:{}}` — noter que l'objet virtuel porte
+    le bon apiVersion `vynil` `vynil.solidite.fr/v1`, contrairement au gate de scan.
   Parce que cette injection est inconditionnelle-ou-déjà-appariée, un @get_templated_test
     réussi renvoie toujours @mocks `Some` avec un @kubernetes `Some` d'au moins un
     objet; ses branches @None de liste vide sont inatteignables (Tasks). Le test renvoyé garde
@@ -368,7 +368,7 @@ Handles:
     @PoisonError::into_inner, les objets restent évalués.
 
 Tasks:
-  [ ] #306 Donner une JukeBox à l'instance de test, couvert par les scénarios the-test-instance-
+  [x] #306 Donner une JukeBox à l'instance de test, couvert par les scénarios the-test-instance-
       carries-a-jukebox, the-jukebox-defaults-to-test et a-child-instance-copying-the-jukebox-
       validates-against-the-vynil-crd. Contrat : `instance.jukebox` (champ du document `Test`, voir
       ./vyniltest.sdd) alimente `spec.jukebox` de l'instance de `build_test_instance` et de
