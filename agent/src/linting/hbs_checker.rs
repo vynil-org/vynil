@@ -328,6 +328,7 @@ impl<'a> HbsChecker<'a> {
     }
 
     pub fn scan_rhai_for_values(&mut self, source: &str) {
+        let aliases = collect_rhai_value_aliases(source);
         for part in source.split("context.values.").skip(1) {
             let path: String = part
                 .chars()
@@ -341,6 +342,41 @@ impl<'a> HbsChecker<'a> {
                 self.used_value_paths.insert(path);
             }
         }
+        for (name, paths) in &aliases {
+            let needle = format!("{name}.");
+            for (idx, _) in source.match_indices(&needle) {
+                if source
+                    .get(..idx)
+                    .is_some_and(|before| before.chars().next_back().is_some_and(is_rhai_path_char))
+                {
+                    continue;
+                }
+                let Some(tail) = source.get(idx..).and_then(|from| from.get(needle.len()..)) else {
+                    continue;
+                };
+                for base in paths {
+                    self.record_aliased_value_path(tail, base);
+                }
+            }
+        }
+    }
+
+    /// Record `base.<tail>` for an access that starts at the head of `tail`, using the
+    /// same key-cut rule as the direct `context.values.` scanner.
+    fn record_aliased_value_path(&mut self, tail: &str, base: &str) {
+        let tail: String = tail
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '.')
+            .collect();
+        let tail = tail.trim_end_matches('.');
+        if tail.is_empty() {
+            return;
+        }
+        let path = join_value_path(base, tail);
+        if let Some(key) = path.split('.').next() {
+            self.used_values.insert(key.to_string());
+        }
+        self.used_value_paths.insert(path);
     }
 
     pub fn scan_rhai_for_images(&mut self, source: &str) {
@@ -408,6 +444,198 @@ fn is_value_path_covered(path: &str, used_paths: &HashSet<String>) -> bool {
         }
     }
     false
+}
+
+/// Join a values base path (empty for the `context.values` root) with a dotted suffix.
+fn join_value_path(base: &str, suffix: &str) -> String {
+    if base.is_empty() {
+        suffix.to_string()
+    } else if suffix.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}.{suffix}")
+    }
+}
+
+/// Base of an alias declaration: either the literal `context.values` root, or another
+/// declared name (an alias of an alias).
+enum AliasBase {
+    Root,
+    Name(String),
+}
+
+/// One parsed `let NAME = <base>.<suffix>;` declaration whose right-hand side names
+/// `context.values` or a candidate alias name.
+struct AliasRule {
+    name: String,
+    base: AliasBase,
+    suffix: String,
+}
+
+/// Collect the simple aliases of `context.values` declared in a Rhai source:
+/// `let X = context.values;` and `let X = context.values.<path>;`, where `<path>` is a
+/// plain dotted key path ending at the `;` (indexing or a call disqualifies the
+/// declaration). An alias of an alias (`let W = X.<path>;`) is followed. Scope is the
+/// whole file with no lexical analysis: a redefinition of `X` ADDS to its earlier paths,
+/// and an access declared before its alias is still seen. Declarations whose base never
+/// resolves (unknown name, alias cycles) contribute nothing.
+fn collect_rhai_value_aliases(source: &str) -> HashMap<String, HashSet<String>> {
+    let mut pending: Vec<AliasRule> = Vec::new();
+    for (idx, _) in source.match_indices("let") {
+        if source
+            .get(..idx)
+            .is_some_and(|before| before.chars().next_back().is_some_and(is_rhai_path_char))
+        {
+            continue;
+        }
+        let Some(after) = source.get(idx..).and_then(|from| from.get("let".len()..)) else {
+            continue;
+        };
+        if !after.chars().next().is_some_and(|c| c.is_ascii_whitespace()) {
+            continue;
+        }
+        if let Some(rule) = parse_rhai_let_alias(after) {
+            pending.push(rule);
+        }
+    }
+
+    let mut resolved: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut progressed = true;
+    while progressed {
+        progressed = false;
+        let rules = std::mem::take(&mut pending);
+        for rule in rules {
+            let bases = match &rule.base {
+                AliasBase::Root => Some(vec![String::new()]),
+                AliasBase::Name(n) => resolved.get(n).map(|s| s.iter().cloned().collect::<Vec<_>>()),
+            };
+            if let Some(bases) = bases {
+                progressed = true;
+                let entry = resolved.entry(rule.name).or_default();
+                for base in bases {
+                    entry.insert(join_value_path(&base, &rule.suffix));
+                }
+            } else {
+                pending.push(rule);
+            }
+        }
+    }
+    resolved
+}
+
+/// Parse `NAME = <rhs>;` from the text right after the `let` keyword. Returns `None`
+/// unless the whole declaration has the simple alias shape (plain identifier, `=`,
+/// `context.values` or a dotted `<name>.<path>` right-hand side, terminated by `;`).
+fn parse_rhai_let_alias(rest: &str) -> Option<AliasRule> {
+    let mut cur = Cursor::new(rest);
+    cur.skip_ws();
+    let name = cur.take_while(is_rhai_ident_char);
+    if name.is_empty() {
+        return None;
+    }
+    cur.skip_ws();
+    if cur.first() != Some('=') {
+        return None;
+    }
+    cur.eat('=');
+    cur.skip_ws();
+
+    let (base, suffix) = if cur.rest_starts_with("context.values") {
+        cur.eat_str("context.values");
+        if cur.first().is_some_and(is_rhai_ident_char) {
+            return None;
+        }
+        (AliasBase::Root, take_value_path(&mut cur)?)
+    } else {
+        let base_name = cur.take_while(is_rhai_ident_char);
+        if base_name.is_empty() || cur.first() != Some('.') {
+            return None;
+        }
+        (AliasBase::Name(base_name), take_value_path(&mut cur)?)
+    };
+    cur.skip_ws();
+    if cur.first() != Some(';') {
+        return None;
+    }
+    Some(AliasRule { name, base, suffix })
+}
+
+/// Consume a leading `.` plus dotted key path, or nothing at all. Returns `None` when a
+/// dot is present but no key character follows it. Trailing dots are trimmed like the
+/// direct scanner does.
+fn take_value_path(cur: &mut Cursor) -> Option<String> {
+    if !cur.eat('.') {
+        return Some(String::new());
+    }
+    let raw = cur.take_while(is_rhai_path_char);
+    let trimmed = raw.trim_end_matches('.');
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_owned())
+    }
+}
+
+fn is_rhai_ident_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// Characters that glue a Rhai identifier to its neighbours: matching one just before an
+/// occurrence means the occurrence is part of a longer token, not a standalone access.
+fn is_rhai_path_char(c: char) -> bool {
+    is_rhai_ident_char(c) || c == '.'
+}
+
+/// Minimal text cursor over `&str` built only on boundary-safe operations
+/// (`get`/`strip_prefix`), so no arithmetic or raw slicing can panic.
+struct Cursor<'a>(&'a str);
+
+impl<'a> Cursor<'a> {
+    const fn new(text: &'a str) -> Self {
+        Self(text)
+    }
+
+    fn first(&self) -> Option<char> {
+        self.0.chars().next()
+    }
+
+    fn rest_starts_with(&self, lit: &str) -> bool {
+        self.0.starts_with(lit)
+    }
+
+    fn skip_ws(&mut self) {
+        while let Some(rest) = self.0.strip_prefix(|c: char| c.is_ascii_whitespace()) {
+            self.0 = rest;
+        }
+    }
+
+    fn eat(&mut self, target: char) -> bool {
+        if let Some(rest) = self.0.strip_prefix(target) {
+            self.0 = rest;
+            return true;
+        }
+        false
+    }
+
+    fn eat_str(&mut self, lit: &str) -> bool {
+        if let Some(rest) = self.0.strip_prefix(lit) {
+            self.0 = rest;
+            return true;
+        }
+        false
+    }
+
+    fn take_while(&mut self, pred: impl Fn(char) -> bool) -> String {
+        let mut out = String::new();
+        while let Some(c) = self.first() {
+            if !pred(c) {
+                break;
+            }
+            out.push(c);
+            self.0 = self.0.get(c.len_utf8()..).unwrap_or_default();
+        }
+        out
+    }
 }
 
 struct HelperWalker<'a> {
@@ -1544,6 +1772,156 @@ mod tests {
         assert!(
             !findings.iter().any(|f| f.rule == "hbs/unused-resource"),
             "Resource used via context.instance.resources in Rhai should not produce warning"
+        );
+    }
+
+    fn pkg_with_options(options: Vec<(&str, serde_json::Value)>) -> VynilPackageSource {
+        let mut map = std::collections::BTreeMap::new();
+        for (key, schema) in options {
+            map.insert(key.to_string(), schema);
+        }
+        VynilPackageSource {
+            apiVersion: "v1".to_string(),
+            kind: "VynilPackage".to_string(),
+            metadata: VynilPackageMeta {
+                name: "test".to_string(),
+                category: "system".to_string(),
+                description: "test package".to_string(),
+                app_version: None,
+                usage: common::vynilpackage::VynilPackageType::Tenant,
+                features: vec![],
+                backup_affinity: None,
+            },
+            requirements: vec![],
+            recommandations: None,
+            options: Some(map),
+            images: None,
+            resources: None,
+            value_script: None,
+        }
+    }
+
+    fn count_rule(findings: &[LintFinding], rule: &str) -> usize {
+        findings.iter().filter(|f| f.rule == rule).count()
+    }
+
+    fn option_tree_pkg() -> VynilPackageSource {
+        pkg_with_options(vec![
+            (
+                "ingress",
+                serde_json::json!({"type": "object", "properties": {"provider": {"type": "string"}}}),
+            ),
+            (
+                "core",
+                serde_json::json!({"type": "object", "properties": {"reloader": {"type": "boolean"}}}),
+            ),
+            ("dbo", serde_json::json!(true)),
+        ])
+    }
+
+    #[test]
+    fn an_alias_of_context_values_counts_as_usage() {
+        let pkg = Box::leak(Box::new(option_tree_pkg()));
+        let mut checker = make_checker(pkg);
+
+        checker.scan_rhai_for_values(
+            r#"let v = context.values; let a = v.ingress.provider == "traefik"; let b = v.core.reloader;"#,
+        );
+        let findings = checker.finalize();
+
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.rule == "hbs/unused-option" && f.message.contains("ingress")),
+            "ingress used through a context.values alias should not produce unused-option"
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.rule == "hbs/unused-option-field" && f.message.contains("core.reloader")),
+            "core.reloader used through a context.values alias should not produce unused-option-field"
+        );
+        assert_eq!(
+            count_rule(&findings, "hbs/unused-option-field"),
+            0,
+            "both object leaves are used through the alias"
+        );
+        assert_eq!(
+            count_rule(&findings, "hbs/unused-option"),
+            1,
+            "only dbo remains unused"
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.rule == "hbs/unused-option" && f.message.contains("dbo")),
+            "dbo is never used, directly or through the alias"
+        );
+    }
+
+    #[test]
+    fn an_alias_of_a_sub_path_counts_as_usage() {
+        let pkg = Box::leak(Box::new(pkg_with_options(vec![(
+            "core",
+            serde_json::json!({"type": "object", "properties": {"reloader": {"type": "boolean"}}}),
+        )])));
+        let mut checker = make_checker(pkg);
+
+        checker.scan_rhai_for_values("let c = context.values.core; let b = c.reloader;");
+        assert!(
+            checker.used_value_paths.contains("core.reloader"),
+            "c.reloader should be recorded as context.values.core.reloader"
+        );
+        let findings = checker.finalize();
+
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.rule == "hbs/unused-option-field" && f.message.contains("core.reloader")),
+            "core.reloader used through a sub-path alias should not be flagged"
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.rule == "hbs/unused-option" && f.message.contains("core")),
+            "core is used through its alias"
+        );
+    }
+
+    #[test]
+    fn an_alias_of_an_alias_is_followed() {
+        let pkg = Box::leak(Box::new(create_dummy_pkg()));
+        let mut checker = make_checker(pkg);
+
+        checker.scan_rhai_for_values("let v = context.values; let i = v.ingress; let p = i.provider;");
+
+        assert!(
+            checker.used_values.contains("ingress"),
+            "ingress should be recorded as used through the alias chain"
+        );
+        assert!(
+            checker.used_value_paths.contains("ingress.provider"),
+            "i.provider should record the joined path ingress.provider"
+        );
+    }
+
+    #[test]
+    fn an_unrelated_variable_is_not_an_alias() {
+        let pkg = Box::leak(Box::new(pkg_with_options(vec![("dbo", serde_json::json!(true))])));
+        let mut checker = make_checker(pkg);
+
+        checker.scan_rhai_for_values("let v = other.values; let a = v.dbo;");
+        assert!(
+            !checker.used_values.contains("dbo") && !checker.used_value_paths.contains("dbo"),
+            "a variable assigned from another root is not a context.values alias"
+        );
+        let findings = checker.finalize();
+
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.rule == "hbs/unused-option" && f.message.contains("dbo")),
+            "dbo should still produce hbs/unused-option"
         );
     }
 }

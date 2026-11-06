@@ -121,9 +121,13 @@ Must:
     quatre scanners .rhai, qui EUX sont naïfs : @str::split en sous-chaîne sur les littéraux
     `context.values.`, `context.images.`, `context.instance.resources.` et `{{>` — les
     correspondances dans les chaînes et commentaires Rhai comptent comme usage, la syntaxe de
-    partial de bloc `{{#>` est manquée, l'accès dynamique ou aliasé par variable
-    (`let r = context.instance.resources; r.app`) est manqué, `mycontext.values.x` correspond au
-    suffixe `context.values.` et enregistre `x`, et les clés/tiges sont coupées au premier
+    partial de bloc `{{#>` est manquée, l'accès dynamique (indexation, appel) est manqué,
+    comme l'accès aliasé par variable sur `context.images.` et `context.instance.resources.`
+    (`let r = context.instance.resources; r.app`) ; sur `context.values.` l'alias simple est
+    suivi (`let X = context.values;`, `let X = context.values.<chemin>;`, alias d'alias,
+    redéfinitions en union — tâche #307), le reste — alias passé en argument de fonction,
+    alias par indexation ou appel, déstructurage — reste manqué ; `mycontext.values.x` correspond
+    au suffixe `context.values.` et enregistre `x`, et les clés/tiges sont coupées au premier
     caractère hors de leur classe take_while (une clé resource à trait d'union `my-img`
     s'enregistre comme usage de `my`, laissant un faux `hbs/unused-resource` pour
     `my-img`), `context.values.` suivi d'un `[`/`"` n'enregistre rien.
@@ -353,7 +357,7 @@ Example:
     this, tenant, system, service, namespace`
 
 Tasks:
-  [ ] #307 @scan_rhai_for_values suit les alias simples de `context.values`. Contrat : dans une
+  [x] #307 @scan_rhai_for_values suit les alias simples de `context.values`. Contrat : dans une
       source `.rhai`, une affectation `let X = context.values;` ou `let X = context.values.<chemin>;`
       (chemin de clés pointées, sans indexation ni appel) enregistre `X` comme alias du chemin
       correspondant (`context.values` pour la première forme) ; un accès `X.<a>.<b>` compte alors
@@ -367,6 +371,10 @@ Tasks:
       `hbs/unused-option` prend en compte les scripts Rhai, directement ou par alias simple.
       Sequence : tests rouges des scénarios ci-dessous, puis le scanner. Le nom de règle
       `hbs/unused-option` ne change pas.
+  [?] Un alias dérivé déclaré entre deux définitions de sa base (`let v = context.values.a;
+      let x = v.y; let v = context.values.b;`) ne résout que la première : manqué silencieux,
+      jamais un faux positif, cohérent avec la posture des découpeurs. Décider s'il faut
+      révisiter jusqu'à stabilité ou si cette posture suffit.
   [ ] Couvrir le scan de répertoires de @new (les deux répertoires, filtres extension/tige,
       entrées cachées, répertoires absents) — chaque test de ce fichier construit la structure
       littéralement et court-circuite ce scan.

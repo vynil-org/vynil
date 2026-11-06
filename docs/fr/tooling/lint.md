@@ -32,6 +32,10 @@ agent package lint -p ./my-package --format junit --junit-output-filename lint.x
 - validité des clés de ressources et d'images ;
 - usage du bon type de paquet.
 
+Pour `hbs/unused-option`, l'usage est compté depuis les templates et depuis les scripts
+Rhai, directement (`context.values.…`) ou par alias simple de `context.values`
+(`let v = context.values ; v.ingress.provider`).
+
 ### Scripts Rhai (`rhai/`)
 
 - validité de syntaxe ;
