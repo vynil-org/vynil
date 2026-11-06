@@ -87,6 +87,12 @@ Tasks:
       entrer dans la clé : le consigner ici et clore ce point sans le comparer ; le message peut
       être comparé à part après normalisation, ou rester libre (c'est le contrat actuel de
       /agent/scripts/lib/render_lint.sdd). Décision à prendre avec le développeur avant de coder.
+  [?] #282 Provenance du binaire de référence : le poste de développement ne l'a pas (aucune
+      kube-linter dans le PATH, `KUBE_LINTER_BIN` non posée). Décider entre le téléchargement de
+      la release officielle v0.8.3 (somme sha256 vérifiée contre la release, binaire hors du
+      dépôt) et une installation par le développeur qui pose alors `KUBE_LINTER_BIN`. Le code
+      local ne peut pas servir d'étape 1 : il est le port sous test, pas l'oracle ; sans le
+      binaire, les étapes (1) et (3) de la tâche s'arrêtent et le test d'oracle reste `#[ignore]`.
   [x] Établir `catalogue.yaml` à partir de l'inventaire de l'outil de référence, thème par
       thème, avec le statut `deferred` et une raison pour tout ce qui n'est pas encore porté.
   [x] Ajouter pour chaque vérification portée son répertoire de fixtures et son verdict.

@@ -90,7 +90,11 @@ Tasks:
     ajouter le job à test.yml. Un diff de génération qui touche autre chose que des descriptions
     (schéma, `required`, types) n'est pas committé silencieusement : s'arrêter et le signaler.
   [?] #280 Le job construit le binaire `agent` pour appeler `crdgen` : décider s'il réutilise le
-    cache du job de test ou s'il porte le sien. Aucun des deux ne change le contrat ci-dessus.
+    cache du job de test ou s'il porte le sien. Les quatre jobs de gate actuels partagent la
+    cache par Swatinem/rust-cache@v2 sans clé custom : la réutiliser, c'est poser la même action
+    sans clé — le binaire ne fait que relier ce que le job de test a déjà compilé ; une cache
+    propre, c'est recompiler toutes les dépendances pour un seul `crdgen`. Aucun des deux ne
+    change le contrat ci-dessus.
   [x] #3 Détecter un `parent.toml` désynchronisé (dépendance de workspace ajoutée au seul
     `/Cargo.toml`, qui cassait le build de l'image agent) et reconstruire les images quand
     leurs manifestes changent.
