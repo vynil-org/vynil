@@ -36,6 +36,12 @@ For `hbs/unused-option`, usage counts from templates and from Rhai scripts, eith
 directly (`context.values.…`) or through a simple `context.values` alias
 (`let v = context.values; v.ingress.provider`).
 
+The alias analysis is textual, with no lexical scope: two variables with the same name in
+different functions merge their paths, and a string or comment containing
+`let x = context.values;` counts as an alias, so an option may be considered used by mistake
+(a missed warning, never a spurious one). An indexed access (`v["a"]`) is not followed and
+still yields `hbs/unused-option`.
+
 ### Scripts Rhai (`rhai/`)
 
 - syntax validity;

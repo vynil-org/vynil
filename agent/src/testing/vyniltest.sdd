@@ -83,7 +83,7 @@ Exposes:
     des Nodes que ./handler.rs mocke pour la course), @config_dir (@Option<@String> — sous-dossier
     de `<package_dir>/tests` que ./handler.rs substitue au répertoire de configuration),
     @jukebox (@Option<@String> — nom de la JukeBox de l'instance de test, que ./handler.rs pose
-    sur `spec.jukebox` ; `test` quand absent).
+    sur `spec.jukebox` ; `test` quand absent ou vide).
   @VynilTestSetRef — #[allow(non_snake_case)] @testSet (@String), @variables
     (@Option<@BTreeMap<@String, @serde_json::Value>> — nom → valeur brute, typée contrairement
     aux déclarations de variables du TestSet).

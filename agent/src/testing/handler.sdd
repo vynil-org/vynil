@@ -373,7 +373,7 @@ Tasks:
       validates-against-the-vynil-crd. Contrat : `instance.jukebox` (champ du document `Test`, voir
       ./vyniltest.sdd) alimente `spec.jukebox` de l'instance de `build_test_instance` et de
       `virtual_instance_dynamic`, et la valeur que la production expose aux templates comme
-      `instance.package.jukebox` ; absent, la valeur par défaut est la chaîne `test` (non vide),
+      `instance.package.jukebox` ; absent ou vide (`jukebox: ""`), la valeur par défaut est la chaîne `test` (non vide),
       pour que les tests existants restent valides sans modification. À vérifier avant de coder :
       par quel chemin la production calcule `instance.package.jukebox` (opérateur et
       /common/src/instance*.rs) et le reproduire ; si ce chemin sort de ce fichier, s'arrêter et
@@ -730,6 +730,12 @@ Scenario: the jukebox defaults to test
   When la course construit les mêmes objets
   Then `spec.jukebox` vaut `test` et `instance.package.jukebox` vaut `test`
   Test @the-jukebox-defaults-to-test
+
+Scenario: an empty jukebox is treated as absent
+  Given un `Test` dont `instance.jukebox` vaut la chaîne vide
+  When la course construit les mêmes objets
+  Then `spec.jukebox` vaut `test` sur l'instance exposée et sur l'instance virtuelle
+  Test @an-empty-jukebox-is-treated-as-absent
 
 Scenario: a child instance copying the jukebox validates against the vynil CRD
   Given un package dont un template rend une `TenantInstance` avec

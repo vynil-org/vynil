@@ -364,6 +364,10 @@ Tasks:
       comme `context.values.<chemin>.<a>.<b>`, avec la même coupe de clé que l'accès direct.
       Portée : le fichier entier, sans analyse de portée lexicale ; un alias redéfini dans le
       même fichier s'ajoute aux précédents. Un alias de alias (`let w = v.ingress;`) est suivi.
+      Limites assumées (faux négatifs, jamais de faux positif de plus — c'est le bon sens d'erreur
+      pour un linter, documenté dans `docs/`) : deux variables de même nom dans des fonctions
+      différentes fusionnent leurs chemins ; une chaîne ou un commentaire contenant `let x =
+      context.values;` compte comme alias ; `let v = context.values; v["a"]` n'est pas suivi.
       Hors contrat, donc toujours manqués et sans warning supplémentaire : l'alias passé en
       argument de fonction, l'alias construit par indexation ou par appel, le déstructurage.
       Le texte de la section « Moteur de parsing » (l'accès aliasé « est manqué ») est mis à jour
@@ -569,6 +573,21 @@ Scenario: an unrelated variable is not an alias
   When @scan_rhai_for_values puis @finalize s'exécutent
   Then `dbo` produit `hbs/unused-option`
   Test @an-unrelated-variable-is-not-an-alias
+
+Scenario: a method call on a leaf option counts as usage
+  Given l'option-objet `database` avec le champ `port` et une source Rhai
+    `let n = context.values.database.port.len();`, ou `let v = context.values;
+    let n = v.database.port.len();`
+  When @scan_rhai_for_values puis @finalize s'exécutent
+  Then `database.port` n'est pas signalé : un accès plus profond (`database.port.len`) est un
+    usage de `database.port`
+  Test @a-method-call-on-a-leaf-option-counts-as-usage
+
+Scenario: value path is covered by a deeper used path
+  Given les chemins utilisés {`a.b.len`}
+  When `is_value_path_covered` est évaluée sur `a.b`, `a.b.c` (avec `a.b` utilisé) et `a.x`
+  Then `a.b` et `a.b.c` sont couverts, `a.x` ne l'est pas
+  Test @value-path-is-covered-by-a-deeper-used-path
 
 Scenario: object option leaf fields and prefix coverage
   Given l'option-objet `database` avec properties {host, port} : utiliser

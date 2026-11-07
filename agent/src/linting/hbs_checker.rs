@@ -436,6 +436,11 @@ fn is_value_path_covered(path: &str, used_paths: &HashSet<String>) -> bool {
     if used_paths.contains(path) {
         return true;
     }
+    // A deeper access (`a.b.len`, `a.b.c`) is a use of `a.b` itself.
+    let prefix = format!("{path}.");
+    if used_paths.iter().any(|used| used.starts_with(&prefix)) {
+        return true;
+    }
     let mut current = path.to_string();
     while let Some(idx) = current.rfind('.') {
         current.truncate(idx);
@@ -1670,6 +1675,36 @@ mod tests {
                 .any(|f| f.rule == "hbs/unused-option-field" && f.message.contains("database.host")),
             "database.host still unused should produce warning"
         );
+    }
+
+    #[test]
+    fn a_method_call_on_a_leaf_option_counts_as_usage() {
+        // `x.len()` is recorded as `x.len`: the leaf `database.port` must stay covered,
+        // for a direct access as for an alias access.
+        for source in [
+            "let n = context.values.database.port.len();",
+            "let v = context.values; let n = v.database.port.len();",
+        ] {
+            let pkg = Box::leak(Box::new(create_pkg_with_object_option()));
+            let mut checker = make_checker(pkg);
+            checker.scan_rhai_for_values(source);
+            let findings = checker.finalize();
+            assert!(
+                !findings.iter().any(|f| f.message.contains("database.port")),
+                "{source}: database.port doit être couvert"
+            );
+        }
+    }
+
+    #[test]
+    fn value_path_is_covered_by_a_deeper_used_path() {
+        let used: HashSet<String> = ["a.b.len".to_string()].into();
+        assert!(is_value_path_covered("a.b", &used));
+        assert!(is_value_path_covered(
+            "a.b.c",
+            &HashSet::from(["a.b".to_string()])
+        ));
+        assert!(!is_value_path_covered("a.x", &used));
     }
 
     #[test]

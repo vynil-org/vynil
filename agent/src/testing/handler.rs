@@ -297,13 +297,14 @@ fn lint_sections(
 }
 
 /// `JukeBox` name posed on `spec.jukebox` of the instance for the test run: the one provided
-/// by the test instance, or the string `"test"` when absent (never empty, so that existing
-/// tests stay valid).
+/// by the test instance, or the string `"test"` when absent or empty (never empty, so that
+/// existing tests stay valid).
 fn jukebox_of(instance: &super::vyniltest::VynilTestInstance) -> String {
     instance
         .jukebox
-        .as_ref()
-        .map_or_else(|| "test".to_string(), String::clone)
+        .as_deref()
+        .filter(|name| !name.is_empty())
+        .map_or_else(|| "test".to_string(), str::to_string)
 }
 
 /// Builds the virtual instance mock (`Dynamic`) for the tested instance.
@@ -2172,6 +2173,13 @@ fn hint(rule, findings, pkg) {
         assert_eq!(exposed, "test");
         assert_eq!(virtual_spec, "test");
         run_jukebox_lane("", "test");
+    }
+
+    #[test]
+    fn an_empty_jukebox_is_treated_as_absent() {
+        let (exposed, virtual_spec) = jukebox_of_instances("\"\"");
+        assert_eq!(exposed, "test");
+        assert_eq!(virtual_spec, "test");
     }
 
     /// Lint qui ne fait que la validation de schéma de chaque objet créé.

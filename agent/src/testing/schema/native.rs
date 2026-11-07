@@ -23,27 +23,15 @@ fn schema_of<T: JsonSchema>() -> Option<Value> {
     serde_json::to_value(schema_for!(T)).ok()
 }
 
-/// Le schéma `Quantity` n'a pas de `type` utile : le marqueur permet à ./dialect.sdd de
-/// l'accepter comme l'apiserver (entier ou chaîne).
-fn mark_quantity(mut schema: Value) -> Value {
-    if let Some(quantity) = schema
-        .pointer_mut("/$defs/Quantity")
-        .and_then(Value::as_object_mut)
-    {
-        quantity.insert("x-kubernetes-int-or-string".to_owned(), Value::Bool(true));
-    }
-    schema
-}
+/// Pointeur de la définition `JSON` dans le schéma d'une CRD.
+const JSON_DEF: &str = "/$defs/io.k8s.apiextensions-apiserver.pkg.apis.apiextensions.v1.JSON";
 
 /// `schemars` décrit le type `JSON` des CRD — `default`, `example`, chaque élément de `enum`,
-/// `const` — comme un objet, ce qui rejetait `default: fast`. Comme pour `Quantity`, la
+/// `const` — comme un objet, ce qui rejetait `default: fast`. La
 /// définition ne porte alors aucune contrainte de type : tout JSON est valide, sans marqueur
 /// à normaliser par ./dialect.sdd.
 fn relax_json(mut schema: Value) -> Value {
-    if let Some(json) = schema
-        .pointer_mut("/$defs/io.k8s.apiextensions-apiserver.pkg.apis.apiextensions.v1.JSON")
-        .and_then(Value::as_object_mut)
-    {
+    if let Some(json) = schema.pointer_mut(JSON_DEF).and_then(Value::as_object_mut) {
         json.remove("type");
     }
     schema
@@ -94,7 +82,7 @@ pub fn native_schema(api_version: &str, kind: &str) -> Option<Value> {
         ("discovery.k8s.io/v1", "EndpointSlice") => schema_of::<discovery_v1::EndpointSlice>(),
         _ => None,
     }?;
-    Some(relax_json(mark_quantity(raw)))
+    Some(relax_json(raw))
 }
 
 /// Version mineure de Kubernetes dont proviennent les schémas natifs, pour les messages.
@@ -302,6 +290,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn quantity_definition_carries_the_upstream_marker() {
+        let schema = native_schema("apps/v1", "Deployment").expect("schéma Deployment");
+        let quantity = schema
+            .pointer("/$defs/io.k8s.apimachinery.pkg.api.resource.Quantity")
+            .expect("définition Quantity introuvable : la clé `$defs` a changé");
+        assert_eq!(
+            quantity.get("x-kubernetes-int-or-string"),
+            Some(&Value::Bool(true)),
+            "k8s-openapi n'émet plus le marqueur int-or-string : {quantity}"
+        );
+    }
+
+    #[test]
+    fn json_definition_is_found_and_relaxed() {
+        let schema = native_schema("apiextensions.k8s.io/v1", "CustomResourceDefinition")
+            .expect("schéma CustomResourceDefinition");
+        let json_def = schema
+            .pointer(JSON_DEF)
+            .expect("définition JSON introuvable : la clé `$defs` a changé");
+        assert!(json_def.get("type").is_none(), "type résiduel : {json_def}");
     }
 
     #[test]
