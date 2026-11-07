@@ -37,8 +37,17 @@ Must:
   Produire le schéma avec les paramètres JSON Schema 2020-12 de `schemars`, racine et
     définitions réunies dans un seul document sans `$ref` externe.
   Faire accepter à `Quantity` un entier ou une chaîne, comme l'apiserver : la définition
-    native n'a pas de `type` utile, elle reçoit le marqueur `x-kubernetes-int-or-string`
-    pour que ./dialect.sdd la normalise.
+    native porte déjà, en amont (`k8s-openapi`), le marqueur `x-kubernetes-int-or-string` que
+    ./dialect.sdd normalise ; aucune réécriture locale.
+  Faire accepter à tout champ de type `JSON` d'une CRD (le type `apiextensions.v1.JSON` de
+    `k8s-openapi` : `default`, `example`, chaque élément de `enum`, `const`) n'importe quelle
+    valeur JSON : scalaire, tableau, objet ou `null`. `schemars` décrit ce type comme un
+    objet, ce qui rejetait `default: fast` ; la définition ne porte donc aucune contrainte de type,
+    en retirant son `type`. Les types `JSONSchemaPropsOrArray` (`items`) et
+    `JSONSchemaPropsOrBool` (`additionalProperties`, `additionalItems`) restent corrects une fois
+    `JSON` corrigé : ne les modifier que si un test rouge le montre. Mesuré sur 29 paquets : 981
+    constats `schema/invalid` sur des CRD valides (cnpg, cert-manager, traefik, mariadb-operator,
+    argocd-operator, artemis-operator, dragonfly, vault-operator, kuberest), tous des faux positifs.
   Résoudre `apiVersion` tel qu'écrit dans un manifeste : `v1` pour le groupe core,
     `<groupe>/<version>` pour les autres ; la casse est exacte.
 
@@ -50,6 +59,17 @@ Handles:
 
 Tasks:
   [x] Couvrir chaque scénario par un test de même nom.
+  [x] #305 Faire accepter toute valeur JSON aux champs `JSON` d'une CRD (Must ci-dessus). Sequence :
+      (1) tests rouges des quatre scénarios ci-dessous, la fixture de CRD réelle étant écrite pour ce
+      dépôt ; (2) corriger la définition dans /agent/src/testing/schema/native.rs ; (3) vérifier que
+      le scénario `a-malformed-crd-is-still-rejected` reste rouge si on supprime toute contrainte
+      par erreur. Le contournement `kind_of_group(..., "CustomResourceDefinition")` côté
+      distribution n'est pas du ressort de ce dépôt.
+  [x] @mark_quantity supprimé : son pointeur `$defs/Quantity` ne correspondait à aucune clé (la clé
+      réelle est `io.k8s.apimachinery.pkg.api.resource.Quantity`) et `k8s-openapi` émet déjà le
+      marqueur `x-kubernetes-int-or-string` en amont. Les tests
+      `quantity_definition_carries_the_upstream_marker` et `json_definition_is_found_and_relaxed`
+      échouent désormais bruyamment si une clé `$defs` change ou si le marqueur disparaît.
   [?] Étendre la table aux autres ressources de `k8s-openapi` (`resource.k8s.io`,
       `flowcontrol.apiserver.k8s.io`, `certificates.k8s.io`, …) ou la générer par macro à
       partir des modules ; décider selon l'usage réel des packages de la distribution.
@@ -76,3 +96,43 @@ Scenario: quantity accepts integer and string
   Then les trois valeurs sont valides
   But `[1]` et `true` sont rejetés
   Test @quantity-accepts-integer-and-string
+
+Scenario: a CRD with default and enum values is valid
+  Given la CRD `widgets.example.com` de l'issue #305 : `mode` (`type: string`, `default: fast`,
+    `enum: [fast, slow]`) et `ports` (tableau d'objets dont `protocol` porte `default: TCP`)
+  When la CRD est validée contre le schéma natif de `CustomResourceDefinition`, strict ou non
+  Then aucune erreur n'est rendue
+  Test @a-crd-with-default-and-enum-values-is-valid
+
+Scenario: default and enum accept any JSON value
+  Given des CRD dont un `default` vaut respectivement un entier, un booléen, un tableau, un objet
+    et `null`, et dont un `enum` mélange chaînes et entiers
+  When elles sont validées contre le schéma natif de `CustomResourceDefinition`
+  Then aucune erreur n'est rendue
+  Test @default-and-enum-accept-any-json-value
+
+Scenario: a real world CRD yields no finding
+  Given une CRD de fixture reprenant les motifs de cnpg ou de cert-manager (`default`, `enum`,
+    `items` imbriqués, `additionalProperties`, `x-kubernetes-preserve-unknown-fields`), écrite
+    pour ce dépôt et non copiée
+  When elle est validée contre le schéma natif
+  Then aucune erreur n'est rendue
+  Test @a-real-world-crd-yields-no-finding
+
+Scenario: a malformed CRD is still rejected
+  Given une CRD dont `spec.names` est absent ou dont `spec.versions` n'est pas un tableau
+  When elle est validée contre le schéma natif
+  Then au moins une erreur est rendue : assouplir `JSON` ne rend pas le reste du schéma permissif
+  Test @a-malformed-crd-is-still-rejected
+
+Scenario: quantity definition carries the upstream marker
+  Given le schéma natif de `Deployment`
+  When la définition `io.k8s.apimachinery.pkg.api.resource.Quantity` est lue
+  Then elle existe et porte `x-kubernetes-int-or-string: true`
+  Test @quantity-definition-carries-the-upstream-marker
+
+Scenario: json definition is found and relaxed
+  Given le schéma natif de `CustomResourceDefinition`
+  When la définition `apiextensions.v1.JSON` est lue
+  Then elle existe (sinon le test échoue : la clé `$defs` a changé) et ne porte plus de `type`
+  Test @json-definition-is-found-and-relaxed

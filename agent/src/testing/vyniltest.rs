@@ -52,6 +52,8 @@ pub struct VynilTestInstance {
     pub nodes: Option<Vec<String>>,
     /// Sub-directory of the package `tests/` used as the run's configuration directory.
     pub config_dir: Option<String>,
+    /// `JukeBox` name of the tested instance, placed on `spec.jukebox`; `test` when absent.
+    pub jukebox: Option<String>,
 }
 
 #[allow(non_snake_case)]

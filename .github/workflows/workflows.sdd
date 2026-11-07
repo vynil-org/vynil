@@ -23,12 +23,17 @@ Structure:
     par test.yml
   ../scripts/check-parent-manifests.test.sh: Tests du vérificateur sur des dépôts factices, un par
     scénario ci-dessous, appelés par test.yml avant le vérificateur
+  ../scripts/check-crds.sh: Vérificateur de synchronisation des CRD générées appelé par test.yml
+  ../scripts/check-crds.test.sh: Tests du vérificateur sur des dépôts factices, un par scénario
+    ci-dessous, appelés par test.yml avant le vérificateur
 
 Owns:
   ./*.yml
   ../scripts/check-docs-parity.sh
   ../scripts/check-parent-manifests.sh
   ../scripts/check-parent-manifests.test.sh
+  ../scripts/check-crds.sh
+  ../scripts/check-crds.test.sh
 
 Must:
   Lancer `cargo test`, `cargo fmt --check` sur nightly, `cargo clippy -- -D warnings`, et une
@@ -48,6 +53,13 @@ Must:
     rejoue dans un répertoire temporaire sur une copie de `/Cargo.toml`, et échoue en
     affichant le diff de chaque fichier divergent — sans jamais réécrire le dépôt ni recopier
     les commandes, `/Cargo.toml` restant leur seule source.
+  Vérifier sur chaque push et chaque pull request de test.yml que `/box/vynil/crds/crd.yaml` et
+    `/deploy/crd/crd.yaml` sont exactement ce que produit `agent crdgen` : ../scripts/check-crds.sh
+    lit la commande `[package.metadata.commands].generate_crd` du `/Cargo.toml`, en rejoue la
+    génération dans un répertoire temporaire (jamais dans le dépôt), compare le résultat aux deux
+    fichiers et échoue en affichant le diff de chacun qui diverge — sans recopier la commande,
+    `/Cargo.toml` restant sa seule source. Le binaire `agent` est construit une seule fois pour ce
+    job, avec les limites de parallélisme des autres jobs de gate.
   Déclencher docker-agent-test.yml, et le build de l'image concernée, sur un changement de son
     Dockerfile, de son `parent.toml`, de son `Cargo.toml`, de `/common/Cargo.toml`, de
     `/Cargo.toml` ou de `/Cargo.lock` : ce sont les entrées de l'étape de cache de dépendances
@@ -70,6 +82,19 @@ Tasks:
   [x] #2 Retirer les deux étapes `DockerHub Login` et préfixer `ghcr.io/` les tags de agent.yml,
     operator.yml et server.yml (sans préfixe, les images partaient sur Docker Hub).
   [ ] #1 Garder la toolchain Rust épinglée alignée sur le `RUST_VERSION` de chaque Dockerfile.
+  [ ] #280 Détecter une CRD désynchronisée des types Rust. Sequence : (1) régénérer les deux CRD avec
+    `cargo cmd generate_crd` et committer le diff seul, dans un commit distinct (au moment de
+    l'issue, 20 descriptions de chaque fichier divergeaient : backticks ajoutés par les corrections
+    clippy `doc_markdown`, comme `` `JukeBox` `` ou `<https://gitlab.com>`) ; (2) écrire
+    `check-crds.test.sh` rouge d'après les scénarios ci-dessous ; (3) écrire `check-crds.sh` ; (4)
+    ajouter le job à test.yml. Un diff de génération qui touche autre chose que des descriptions
+    (schéma, `required`, types) n'est pas committé silencieusement : s'arrêter et le signaler.
+  [?] #280 Le job construit le binaire `agent` pour appeler `crdgen` : décider s'il réutilise le
+    cache du job de test ou s'il porte le sien. Les quatre jobs de gate actuels partagent la
+    cache par Swatinem/rust-cache@v2 sans clé custom : la réutiliser, c'est poser la même action
+    sans clé — le binaire ne fait que relier ce que le job de test a déjà compilé ; une cache
+    propre, c'est recompiler toutes les dépendances pour un seul `crdgen`. Aucun des deux ne
+    change le contrat ci-dessus.
   [x] #3 Détecter un `parent.toml` désynchronisé (dépendance de workspace ajoutée au seul
     `/Cargo.toml`, qui cassait le build de l'image agent) et reconstruire les images quand
     leurs manifestes changent.
@@ -85,6 +110,28 @@ Scenario: a workspace dependency missing from a parent manifest fails
   When ../scripts/check-parent-manifests.sh s'exécute
   Then il sort `1`, nomme `agent/parent.toml` et affiche le diff qui porte la dépendance
     manquante
+
+Scenario: synchronized CRDs pass
+  Given `/box/vynil/crds/crd.yaml` et `/deploy/crd/crd.yaml` identiques à la sortie de la commande
+    `generate_crd` de `/Cargo.toml`
+  When ../scripts/check-crds.sh s'exécute
+  Then il sort `0` et n'a modifié aucun fichier du dépôt
+
+Scenario: a Rust doc comment changed without regenerating fails
+  Given un commentaire de documentation d'un type Rust modifié (un backtick ajouté) et des CRD non
+    régénérées
+  When ../scripts/check-crds.sh s'exécute
+  Then il sort `1`, nomme chaque fichier CRD divergent et affiche le diff de la description
+
+Scenario: only one of the two CRD copies is stale
+  Given `/box/vynil/crds/crd.yaml` à jour et `/deploy/crd/crd.yaml` obsolète
+  When ../scripts/check-crds.sh s'exécute
+  Then il sort `1` et ne nomme que `deploy/crd/crd.yaml`
+
+Scenario: no generate_crd command fails
+  Given un `/Cargo.toml` sans `[package.metadata.commands].generate_crd`
+  When ../scripts/check-crds.sh s'exécute
+  Then il sort `1` : un contrôle qui ne vérifie rien ne doit pas passer
 
 Scenario: no generate command writing a parent manifest fails
   Given un `/Cargo.toml` dont `[package.metadata.commands].generate` n'écrit aucun `parent.toml`

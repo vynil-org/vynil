@@ -41,6 +41,11 @@ Must:
     de kube-linter, et appliquer les mêmes valeurs par défaut.
   Ne signaler que ce que la vérification définit : une vérification n'infère aucune règle
     voisine.
+  Pour `run-as-non-root`, tenir un `runAsUser` non nul pour équivalent à `runAsNonRoot: true`.
+    Mesuré : kube-linter v0.8.3 ne signale pas un Deployment dont le seul `securityContext` est
+    celui du pod avec `runAsUser: 82`. Le message d'un constat n'exige donc plus les deux
+    réglages : il dit de définir `runAsNonRoot: true` ou un `runAsUser` non nul. La précédence
+    reste conteneur d'abord, pod ensuite, pour chacun des deux champs.
   Exposer `index(objs)` : l'entrée d'index de ce thème (`pod_names`, les noms de Secret et de
     ConfigMap du groupe du noyau). Les vérifications qui croisent plusieurs objets lisent
     l'index reçu en deuxième argument.
@@ -53,6 +58,18 @@ Tasks:
   [?] Une vérification de l'oracle qui dépend de ressources externes à la liste d'objets
       (un `ServiceMonitor` pour des CRD tierces par exemple) : décider si elle est portée sur
       la seule liste d'objets du test ou marquée `deferred` avec sa raison.
+  [ ] #302 Aligner `run_as_non_root` sur le verdict mesuré (Must ci-dessus). Sequence : (1) ajouter
+      à `/agent/tests/fixtures/render_lint/run-as-non-root/manifests.yaml` les objets des scénarios
+      ci-dessous ; (2) régénérer `expected.json` avec le binaire de référence selon
+      /agent/tests/lint_oracle.sdd, jamais à la main (binaire indisponible : s'arrêter et le
+      signaler) ; (3) tests rouges ; (4) corriger `run_as_non_root` et son message. Si le binaire
+      contredit un scénario ci-dessous, le binaire a raison : corriger la spec et le dire dans le
+      rapport.
+  [?] #302 Cas non mesurés par l'issue, à mesurer avec le binaire de référence avant de coder :
+      `runAsUser` non nul au niveau du conteneur seul ; `runAsUser: 0` sans `runAsNonRoot` ;
+      `runAsNonRoot: false` explicite avec un `runAsUser` non nul ; `runAsNonRoot` du conteneur à
+      false alors que celui du pod est à true. Le comportement actuel de la bibliothèque reste
+      celui des cas non mesurés tant qu'ils ne le sont pas.
 
 Done when:
   Chaque entrée `theme: pod` du catalogue est `ported`, `deferred` avec raison, ou
@@ -70,6 +87,26 @@ Scenario: init containers are checked like containers
   When la vérification `run_as_non_root` s'exécute
   Then le chemin du constat finit par `initContainers[0]`
   Test @init-containers-are-checked-like-containers
+
+Scenario: a non-zero runAsUser at pod level satisfies run-as-non-root
+  Given un Deployment dont le `securityContext` du pod porte `runAsUser: 82` et `runAsGroup: 82`,
+    sans aucun `runAsNonRoot`
+  When la vérification `run_as_non_root` s'exécute
+  Then le tableau est vide
+  Test @a-non-zero-runasuser-at-pod-level-satisfies-run-as-non-root
+
+Scenario: no runAsNonRoot and no runAsUser is still reported
+  Given un conteneur sans `securityContext` et un pod sans `securityContext`
+  When la vérification s'exécute
+  Then un constat nomme le conteneur et le message propose `runAsNonRoot: true` ou un
+    `runAsUser` non nul
+  Test @no-runasnonroot-and-no-runasuser-is-still-reported
+
+Scenario: runAsNonRoot true with runAsUser zero is still reported
+  Given un conteneur à `runAsNonRoot: true` et `runAsUser: 0`
+  When la vérification s'exécute
+  Then un constat nomme le conteneur
+  Test @runasnonroot-true-with-runasuser-zero-is-still-reported
 
 Scenario: latest tag honours the block list
   Given un conteneur d'image `registry/app:latest` et le paramètre `BlockList` valant

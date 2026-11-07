@@ -33,10 +33,30 @@ Must:
   Ne signaler que ce que la vérification définit : une vérification n'infère aucune règle
     voisine.
   Exposer `index(objs)` : les entrées d'index de ce thème (`workload_identities`,
-    `workload_pdb_targets`). Les vérifications qui croisent plusieurs objets lisent l'index reçu
-    en deuxième argument.
+    `workload_pdb_targets`, `workload_hpa_min_replicas`). Les vérifications qui croisent plusieurs
+    objets lisent l'index reçu en deuxième argument.
+  Pour `pdb-min-available`, compter les réplicas d'un workload ainsi : `spec.replicas` quand il est
+    présent ; sinon, quand un HorizontalPodAutoscaler du même namespace le désigne par
+    `spec.scaleTargetRef` (`kind` et `name`, groupe d'`apiVersion` compris), le `spec.minReplicas`
+    de ce HPA (1 quand il est absent) ; sinon 1. Mesuré : kube-linter v0.8.3 ne signale pas un
+    Deployment sans `spec.replicas` ciblé par un HPA `minReplicas: 2` et un PDB `minAvailable: 1`,
+    et le signale à `minReplicas: 1`. Plusieurs HPA sur la même cible : le plus petit
+    `minReplicas` est retenu (le plus défavorable pour le PDB).
+  `workload_hpa_min_replicas` : `namespace|kind|nom de la cible` -> `minReplicas` (entier), une
+    entrée par HPA ; l'index est construit une fois, sans que la vérification reparcoure la liste.
 
 Tasks:
+  [ ] #301 `pdb-min-available` tient compte du HPA (Must ci-dessus). Sequence : (1) ajouter au
+      répertoire de fixtures `/agent/tests/fixtures/render_lint/pdb-min-available/` les manifestes
+      Deployment + HPA + PDB des scénarios ci-dessous ; (2) régénérer `expected.json` AVEC le
+      binaire de référence selon /agent/tests/lint_oracle.sdd (jamais à la main ; si le binaire
+      n'est pas disponible, s'arrêter et le signaler) ; (3) écrire les tests rouges ; (4) coder
+      `index` et `pdb_replicas`. Un constat produit à la main dans `expected.json` est un échec de
+      la tâche.
+  [?] #301 Cas non mesurés : `spec.replicas` présent ET un HPA présent (le HPA prime-t-il côté
+      kube-linter ?), HPA sans `minReplicas`, `scaleTargetRef` vers un groupe différent. Les
+      mesurer avec le binaire de référence et consigner le verdict dans la fixture ; en attendant,
+      `spec.replicas` présent l'emporte, comme aujourd'hui.
   [x] Porter les vérifications du thème par lots, chacune avec sa fixture
       `/agent/tests/fixtures/render_lint/{nom}/` et son statut mis à jour dans le catalogue ; un lot
       est livrable seul tant que le harnais d'oracle reste vert.
@@ -67,3 +87,24 @@ Scenario: a matching target is not dangling
   When la vérification s'exécute
   Then le tableau est vide
   Test @a-matching-target-is-not-dangling
+
+Scenario: an HPA minimum replaces the missing replica count
+  Given un Deployment sans `spec.replicas`, un HPA du même namespace qui le cible avec
+    `minReplicas: 2`, et un PodDisruptionBudget `minAvailable: 1` qui le sélectionne
+  When la vérification `pdb_min_available` s'exécute
+  Then le tableau est vide
+  Test @an-hpa-minimum-replaces-the-missing-replica-count
+
+Scenario: an HPA at one replica still blocks eviction
+  Given le même ensemble avec `minReplicas: 1`
+  When la vérification s'exécute
+  Then un constat de règle `pdb-min-available` nomme le PodDisruptionBudget et le message dit
+    que le workload compte 1 réplica
+  Test @an-hpa-at-one-replica-still-blocks-eviction
+
+Scenario: an HPA in another namespace is ignored
+  Given le Deployment sans `spec.replicas` dans `app`, un HPA `minReplicas: 2` de même nom dans
+    un autre namespace, et un PDB `minAvailable: 1` dans `app`
+  When la vérification s'exécute
+  Then un constat nomme le PodDisruptionBudget (le workload compte 1 réplica)
+  Test @an-hpa-in-another-namespace-is-ignored
