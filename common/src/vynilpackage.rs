@@ -170,7 +170,7 @@ impl VynilPackageRequirement {
             }
             Self::CustomResourceDefinition(crd) => {
                 let api: Api<CustomResourceDefinition> = Api::all(client);
-                let r = api.get_metadata_opt(crd).await.map_err(Error::KubeError)?;
+                let r = api.get_metadata_opt(crd).await.map_err(Error::from)?;
                 Ok((r.is_some(), format!("CRD {crd} is not installed"), 5 * 60))
             }
             Self::Prefly { script, name } => {
@@ -184,7 +184,7 @@ impl VynilPackageRequirement {
             }
             Self::SystemPackage { category, name } => {
                 let api: Api<SystemInstance> = Api::all(client);
-                let lst = api.list(&ListParams::default()).await.map_err(Error::KubeError)?;
+                let lst = api.list(&ListParams::default()).await.map_err(Error::from)?;
                 Ok((
                     lst.items
                         .into_iter()
@@ -259,7 +259,7 @@ impl VynilPackageRequirement {
             }
             Self::CustomResourceDefinition(crd) => {
                 let api: Api<CustomResourceDefinition> = Api::all(client);
-                let r = api.get_metadata_opt(crd).await.map_err(Error::KubeError)?;
+                let r = api.get_metadata_opt(crd).await.map_err(Error::from)?;
                 Ok((r.is_some(), format!("CRD {crd} is not installed"), 5 * 60))
             }
             Self::Prefly { script, name } => {
@@ -273,7 +273,7 @@ impl VynilPackageRequirement {
             }
             Self::SystemPackage { category, name } => {
                 let api: Api<SystemInstance> = Api::all(client);
-                let lst = api.list(&ListParams::default()).await.map_err(Error::KubeError)?;
+                let lst = api.list(&ListParams::default()).await.map_err(Error::from)?;
                 Ok((
                     lst.items
                         .into_iter()
@@ -285,7 +285,7 @@ impl VynilPackageRequirement {
             Self::TenantPackage { category, name } => {
                 let allowed = inst.get_tenant_namespaces().await?;
                 let api: Api<TenantInstance> = Api::all(client);
-                let lst = api.list(&ListParams::default()).await.map_err(Error::KubeError)?;
+                let lst = api.list(&ListParams::default()).await.map_err(Error::from)?;
                 Ok((
                     lst.items.into_iter().any(|i| {
                         i.spec.category == *category
@@ -362,7 +362,7 @@ impl VynilPackageRequirement {
             }
             Self::CustomResourceDefinition(crd) => {
                 let api: Api<CustomResourceDefinition> = Api::all(client);
-                let r = api.get_metadata_opt(crd).await.map_err(Error::KubeError)?;
+                let r = api.get_metadata_opt(crd).await.map_err(Error::from)?;
                 Ok((r.is_some(), format!("CRD {crd} is not installed"), 5 * 60))
             }
             Self::Prefly { script, name } => {
@@ -376,7 +376,7 @@ impl VynilPackageRequirement {
             }
             Self::SystemPackage { category, name } => {
                 let api: Api<SystemInstance> = Api::all(client);
-                let lst = api.list(&ListParams::default()).await.map_err(Error::KubeError)?;
+                let lst = api.list(&ListParams::default()).await.map_err(Error::from)?;
                 Ok((
                     lst.items
                         .into_iter()

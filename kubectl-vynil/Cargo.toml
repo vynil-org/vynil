@@ -14,7 +14,7 @@ path = "src/main.rs"
 tokio = { version = "1", features = ["full"] }
 # Pure-rustls (no openssl): keeps the client binary portable (static-friendly, no libssl at
 # runtime) and avoids cross-compiling openssl for the aarch64 release build.
-kube = { version = "3.1.0", default-features = false, features = ["client", "rustls-tls"] }
+kube = { version = "4.2.0", default-features = false, features = ["client", "rustls-tls"] }
 http = "1"
 http-body-util = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }

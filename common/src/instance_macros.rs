@@ -308,7 +308,7 @@ macro_rules! impl_instance_common {
                     $crate::context::get_client_async().await,
                     &namespace,
                 );
-                api.get(&name).await.map_err($crate::Error::KubeError)
+                api.get(&name).await.map_err($crate::Error::from)
             }
 
             /// # Errors
@@ -320,7 +320,7 @@ macro_rules! impl_instance_common {
                     &namespace,
                 );
                 let lp = ::kube::api::ListParams::default();
-                api.list(&lp).await.map_err($crate::Error::KubeError)
+                api.list(&lp).await.map_err($crate::Error::from)
             }
 
             pub fn get_options_digest(&mut self) -> String {
@@ -412,7 +412,7 @@ macro_rules! impl_instance_common {
                 );
                 api.patch_status(&name, &ps, &new_status)
                     .await
-                    .map_err($crate::Error::KubeError)
+                    .map_err($crate::Error::from)
             }
 
             async fn send_event(
@@ -439,7 +439,7 @@ macro_rules! impl_instance_common {
                             }
                             Ok(())
                         }
-                        _ => Err($crate::Error::KubeError(e)),
+                        _ => Err($crate::Error::from(e)),
                     },
                 }
             }

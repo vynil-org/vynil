@@ -17,10 +17,11 @@ pub enum Error {
     YamlError(String),
 
     #[error("K8s error: {0}")]
-    KubeError(#[from] kube::Error),
+    // Boxed since kube 4: the inline error pushed `Error` over clippy's `result_large_err` bound
+    KubeError(#[source] Box<kube::Error>),
 
     #[error("K8s wait error: {0}")]
-    KubeWaitError(#[from] kube::runtime::wait::Error),
+    KubeWaitError(#[source] Box<kube::runtime::wait::Error>),
 
     #[error("Elapsed wait error: {0}")]
     Elapsed(#[from] tokio::time::error::Elapsed),
@@ -109,6 +110,18 @@ pub enum Error {
     #[error(transparent)]
     Core(#[from] vynil_core::Error),
 }
+impl From<kube::Error> for Error {
+    fn from(e: kube::Error) -> Self {
+        Self::KubeError(Box::new(e))
+    }
+}
+
+impl From<kube::runtime::wait::Error> for Error {
+    fn from(e: kube::runtime::wait::Error) -> Self {
+        Self::KubeWaitError(Box::new(e))
+    }
+}
+
 impl Error {
     pub fn metric_label(&self) -> String {
         format!("{self:?}").to_lowercase()

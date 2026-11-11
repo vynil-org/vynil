@@ -196,7 +196,7 @@ impl ServiceInstance {
                 .map_err(|_| {
                     Error::Other("E_LIST_SERVICES_TIMEOUT: get_all_services_names exceeded 30s".into())
                 })?
-                .map_err(Error::KubeError)?;
+                .map_err(Error::from)?;
 
                 let mut list: Vec<String> = all_instances
                     .iter()

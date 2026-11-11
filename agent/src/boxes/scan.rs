@@ -44,7 +44,7 @@ pub struct Parameters {
 
 async fn resolve_http_secret(name: &str, namespace: &str, client: &kube::Client) -> Result<(String, String)> {
     let api: Api<Secret> = Api::namespaced(client.clone(), namespace);
-    let secret = api.get(name).await.map_err(Error::KubeError)?;
+    let secret = api.get(name).await.map_err(Error::from)?;
     let data = secret.data.unwrap_or_default();
     if let Some(token_bytes) = data.get("token") {
         let token = String::from_utf8(token_bytes.0.clone()).map_err(Error::UTF8)?;
@@ -63,7 +63,7 @@ async fn resolve_http_secret(name: &str, namespace: &str, client: &kube::Client)
 
 async fn resolve_s3_secret(name: &str, namespace: &str, client: &kube::Client) -> Result<(String, String)> {
     let api: Api<Secret> = Api::namespaced(client.clone(), namespace);
-    let secret = api.get(name).await.map_err(Error::KubeError)?;
+    let secret = api.get(name).await.map_err(Error::from)?;
     let data = secret.data.unwrap_or_default();
     let access_key = data
         .get("access_key_id")

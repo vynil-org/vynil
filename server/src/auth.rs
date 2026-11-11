@@ -72,7 +72,7 @@ pub async fn validate_token(client: &Client, token: &str) -> Result<Identity, Di
     let api: Api<TokenReview> = Api::all(client.clone());
     let review = TokenReview {
         spec: k8s_openapi::api::authentication::v1::TokenReviewSpec {
-            token: Some(token.to_string()),
+            token: token.to_string(),
             ..Default::default()
         },
         ..Default::default()

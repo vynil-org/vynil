@@ -8,10 +8,8 @@ use crate::{
     instancetenant::tenant_rhai_register,
     jukebox::jukebox_rhai_register,
     jukebox_file::file_jukebox_rhai_register,
-    k8sgeneric::k8sgeneric_rhai_register,
+    k8sgeneric::k8s_rhai_register,
     k8smock::k8smock_rhai_register,
-    k8sraw::k8sraw_rhai_register,
-    k8sworkload::k8sworkload_rhai_register,
     s3handler::s3_rhai_register,
     vynilpackage::package_rhai_register,
     yamlhandler::yaml_ordered_rhai_register,
@@ -81,9 +79,7 @@ impl Script {
         system_rhai_register(&mut script.engine);
         tenant_rhai_register(&mut script.engine);
         jukebox_rhai_register(&mut script.engine);
-        k8sgeneric_rhai_register(&mut script.engine);
-        k8sraw_rhai_register(&mut script.engine);
-        k8sworkload_rhai_register(&mut script.engine);
+        k8s_rhai_register(&mut script.engine);
         script
     }
 
