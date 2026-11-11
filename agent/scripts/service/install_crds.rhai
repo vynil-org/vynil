@@ -11,11 +11,11 @@ fn run(instance, context) {
     let applied_crds = [];
     let api = k8s_resource("CustomResourceDefinition");
     try {
-        for file in read_dir(`${context.package_dir}/crds`) {
+        for file in host::read_dir(`${context.package_dir}/crds`) {
             let crds = if file.ends_with(".yaml") || file.ends_with(".yml") {
-                yd::decode(file_read(file))
+                yd::decode(host::file_read(file))
             } else if file.ends_with(".yaml.hbs") || file.ends_with(".yml.hbs") {
-                yd::decode(hbs.render_named(file, file_read(file), context))
+                yd::decode(hbs.render_named(file, host::file_read(file), context))
             } else {[]};
             for crd in crds {
                 if crd.kind == "CustomResourceDefinition" {
@@ -29,8 +29,8 @@ fn run(instance, context) {
                     }
                     applied_crds.push(crd.metadata.name);
                 } else {
-                    log_warn("Ignoring an item as it is not a CRD");
-                    log_debug(yaml_encode(crd));
+                    host::log_warn("Ignoring an item as it is not a CRD");
+                    host::log_debug(core::yaml_encode(crd));
                 }
             }
         }
@@ -41,7 +41,7 @@ fn run(instance, context) {
                     if old_api.exist() {
                         let cnt = old_api.list_meta().items.len();
                         if cnt > 0 {
-                            log_warn(`Ignoring to delete ${old} as it still have ${cnt} children`);
+                            host::log_warn(`Ignoring to delete ${old} as it still have ${cnt} children`);
                             applied_crds.push(old);
                         } else {
                             api.delete(old);
@@ -54,7 +54,7 @@ fn run(instance, context) {
     } catch (e) {
         switch type_of(e) {
             "string" => instance.set_status_crd_failed(e),
-            _ => instance.set_status_crd_failed(json_encode(e))
+            _ => instance.set_status_crd_failed(core::json_encode(e))
         }
         throw;
     }

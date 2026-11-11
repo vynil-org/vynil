@@ -4,12 +4,12 @@ fn run(context) {
     let hbs = new_hbs();
     hbs.register_partial_dir(context.template_dir);
     for secret in context.secret_list {
-        let name = get_env(`secret_${secret}_target`);
-        log_info(`Restoring secret ${secret} (${name})`);
+        let name = host::get_env(`secret_${secret}_target`);
+        host::log_info(`Restoring secret ${secret} (${name})`);
         let data = #{};
-        for file in read_dir(`/backup/${secret}`) {
-            let base = basename(file);
-            data[base] = file_read(file);
+        for file in host::read_dir(`/backup/${secret}`) {
+            let base = core::basename(file);
+            data[base] = host::file_read(file);
         }
         api.apply(name, #{
             apiVersion: "v1",

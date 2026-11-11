@@ -8,20 +8,20 @@ fn run(instance, context) {
     hbs.register_partial_dir(context.config_dir);
     hbs.register_partial_dir(`${context.package_dir}/handlebars/partials`);
     hbs.register_helper_dir(`${context.package_dir}/handlebars/helpers`);
-    for file in read_dir(`${context.package_dir}/crds`) {
+    for file in host::read_dir(`${context.package_dir}/crds`) {
         let crds = if file.ends_with(".yaml") || file.ends_with(".yml") {
-            yd::decode(file_read(file))
+            yd::decode(host::file_read(file))
         } else if file.ends_with(".yaml.hbs") || file.ends_with(".yml.hbs") {
-            yd::decode(hbs.render_named(file, file_read(file), context))
+            yd::decode(hbs.render_named(file, host::file_read(file), context))
         } else {[]};
         for crd in crds {
             if crd.kind == "CustomResourceDefinition" {
                 print("---");
-                print(yaml_encode(crd));
+                print(core::yaml_encode(crd));
             } else {
                 print("---");
-                log_warn("# Ignoring an item as it is not a CRD");
-                log_debug(yaml_encode(crd));
+                host::log_warn("# Ignoring an item as it is not a CRD");
+                host::log_debug(core::yaml_encode(crd));
             }
         }
     }

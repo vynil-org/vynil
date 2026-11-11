@@ -1,30 +1,30 @@
 // create a run context for backup/restore pod in from the preparation of the "run" function bellow
 fn from_args(context) {
-    context["deployment_list"] = get_env("DEPLOYMENT_LIST").split(" ").filter(|x| x!="");
-    context["statefulset_list"] = get_env("STATEFULSET_LIST").split(" ").filter(|x| x!="");
-    context["secret_list"] = get_env("SECRET_LIST").split(" ").filter(|x| x!="");
-    context["pg_list"] = get_env("PG_LIST").split(" ").filter(|x| x!="");
-    context["mysql_list"] = get_env("MYSQL_LIST").split(" ").filter(|x| x!="");
-    context["mongo_list"] = get_env("MONGO_LIST").split(" ").filter(|x| x!="");
-    context["redis_list"] = get_env("REDIS_LIST").split(" ").filter(|x| x!="");
-    context["restic_tags"] = get_env("RESTIC_TAGS");
-    context["snapshot"] = get_env("RESTIC_SNAPSHOT");
-    context["max_dayly"] = get_env("RESTIC_MAX_DAYLY");
+    context["deployment_list"] = host::get_env("DEPLOYMENT_LIST").split(" ").filter(|x| x!="");
+    context["statefulset_list"] = host::get_env("STATEFULSET_LIST").split(" ").filter(|x| x!="");
+    context["secret_list"] = host::get_env("SECRET_LIST").split(" ").filter(|x| x!="");
+    context["pg_list"] = host::get_env("PG_LIST").split(" ").filter(|x| x!="");
+    context["mysql_list"] = host::get_env("MYSQL_LIST").split(" ").filter(|x| x!="");
+    context["mongo_list"] = host::get_env("MONGO_LIST").split(" ").filter(|x| x!="");
+    context["redis_list"] = host::get_env("REDIS_LIST").split(" ").filter(|x| x!="");
+    context["restic_tags"] = host::get_env("RESTIC_TAGS");
+    context["snapshot"] = host::get_env("RESTIC_SNAPSHOT");
+    context["max_dayly"] = host::get_env("RESTIC_MAX_DAYLY");
     if context["max_dayly"] == "" {context["max_dayly"] = "7";}
-    context["max_weekly"] = get_env("RESTIC_MAX_WEEKLY");
+    context["max_weekly"] = host::get_env("RESTIC_MAX_WEEKLY");
     if context["max_weekly"] == "" {context["max_weekly"] = "5";}
-    context["max_monthly"] = get_env("RESTIC_MAX_MONTHLY");
+    context["max_monthly"] = host::get_env("RESTIC_MAX_MONTHLY");
     if context["max_monthly"] == "" {context["max_monthly"] = "12";}
-    context["max_yearly"] = get_env("RESTIC_MAX_YEARLY");
+    context["max_yearly"] = host::get_env("RESTIC_MAX_YEARLY");
     if context["max_yearly"] == "" {context["max_yearly"] = "4";}
-    context["namespace"] = get_env("NAMESPACE");
+    context["namespace"] = host::get_env("NAMESPACE");
     try {
-        context["scale_target"] = parse_int(get_env("SCALE_TARGET"));
+        context["scale_target"] = parse_int(host::get_env("SCALE_TARGET"));
     } catch {
         context["scale_target"] = 1;
     }
-    let sub_path  = get_env("SUB_PATH");
-    let base_path = get_env("BASE_REPO_URL");
+    let sub_path  = host::get_env("SUB_PATH");
+    let base_path = host::get_env("BASE_REPO_URL");
     sub_path.replace("/"," ");
     sub_path.trim();
     sub_path.replace(" ","/");
@@ -35,7 +35,7 @@ fn from_args(context) {
     context["base_path"] = base_path;
     context["s3_url"] = `s3:${base_path}/${sub_path}`;
     context["restic_args"] = "";
-    if get_env("INSECURE_TLS") == "true" {
+    if host::get_env("INSECURE_TLS") == "true" {
         context["restic_args"] += " --insecure-tls";
     }
     context
@@ -129,13 +129,13 @@ fn run(instance, context, use_init_from) {
         };
     }
     context["files"] = [];
-    if is_dir(`${context.package_dir}/scripts`) {
-        for f in read_dir(`${context.package_dir}/scripts`) {
-            let base = basename(f);
+    if host::is_dir(`${context.package_dir}/scripts`) {
+        for f in host::read_dir(`${context.package_dir}/scripts`) {
+            let base = core::basename(f);
             if base.starts_with("restore") || base.starts_with("backup") || base.starts_with("maintenance") {
                 context["files"] += #{
                     name: base,
-                    content: file_read(f)
+                    content: host::file_read(f)
                 };
             }
         }
@@ -283,8 +283,8 @@ fn run(instance, context, use_init_from) {
                 }
             } catch (e) {
                 switch type_of(e) {
-                    "string" => log_warn(e),
-                    _ => log_warn(json_encode(e))
+                    "string" => host::log_warn(e),
+                    _ => host::log_warn(core::json_encode(e))
                 }
             }
         } else if v.kind == "NdbCluster" {
@@ -318,8 +318,8 @@ fn run(instance, context, use_init_from) {
                 }
             } catch (e) {
                 switch type_of(e) {
-                    "string" => log_warn(e),
-                    _ => log_warn(json_encode(e))
+                    "string" => host::log_warn(e),
+                    _ => host::log_warn(core::json_encode(e))
                 }
             }
         } else if v.kind == "MongoDBCommunity" {
@@ -361,8 +361,8 @@ fn run(instance, context, use_init_from) {
                 }
             } catch (e) {
                 switch type_of(e) {
-                    "string" => log_warn(e),
-                    _ => log_warn(json_encode(e))
+                    "string" => host::log_warn(e),
+                    _ => host::log_warn(core::json_encode(e))
                 }
             }
         } else if v.kind == "Dragonfly" {
@@ -399,8 +399,8 @@ fn run(instance, context, use_init_from) {
                 }
             } catch (e) {
                 switch type_of(e) {
-                    "string" => log_warn(e),
-                    _ => log_warn(json_encode(e))
+                    "string" => host::log_warn(e),
+                    _ => host::log_warn(core::json_encode(e))
                 }
             }
         } else if v.kind == "RedisCluster" {
@@ -437,8 +437,8 @@ fn run(instance, context, use_init_from) {
                 }
             } catch (e) {
                 switch type_of(e) {
-                    "string" => log_warn(e),
-                    _ => log_warn(json_encode(e))
+                    "string" => host::log_warn(e),
+                    _ => host::log_warn(core::json_encode(e))
                 }
             }
         } else if v.kind == "RedisSentinel" {
@@ -475,8 +475,8 @@ fn run(instance, context, use_init_from) {
                 }
             } catch (e) {
                 switch type_of(e) {
-                    "string" => log_warn(e),
-                    _ => log_warn(json_encode(e))
+                    "string" => host::log_warn(e),
+                    _ => host::log_warn(core::json_encode(e))
                 }
             }
         }

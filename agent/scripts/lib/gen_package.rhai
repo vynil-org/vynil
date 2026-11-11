@@ -1,16 +1,16 @@
 fn gen_yaml(path, data) {
-    file_write(path, `---
-${yaml_encode(data)}`);
+    host::file_write(path, `---
+${core::yaml_encode(data)}`);
 }
 fn gen_crd_yaml(path, data) {
-    file_write(path, `# yamllint disable rule:line-length
+    host::file_write(path, `# yamllint disable rule:line-length
 ---
-${yaml_encode(data)}`);
+${core::yaml_encode(data)}`);
 }
 fn gen_yaml_if(path, type, data) {
-    file_write(path, `{{#if (ctx_have_crd this "${type}")}}
+    host::file_write(path, `{{#if (ctx_have_crd this "${type}")}}
 ---
-${yaml_encode(data)}
+${core::yaml_encode(data)}
 {{/if}}
 `);
 }
@@ -22,7 +22,7 @@ ${yaml_encode(data)}
 fn placeholder() {
     let result = "vnsplaceholder";
     try {
-        let r = shell_output("cat /proc/sys/kernel/random/uuid 2>/dev/null");
+        let r = host::shell_output("cat /proc/sys/kernel/random/uuid 2>/dev/null");
         r.trim();                              // mute r en place, ne pas chaîner (retourne ())
         let parts = r.split("-");
         if parts.len() >= 1 && parts[0].len() >= 4 {
@@ -48,12 +48,12 @@ fn replace_first(s, from, to) {
 
 // Generic text-level replacement across all files of a generated sub-directory.
 fn apply_replace_in_dir(dir_path, from, to) {
-    if !is_dir(dir_path) { return; }
-    for file in read_dir(dir_path) {
-        if is_file(file) {
-            let content = file_read(file);
+    if !host::is_dir(dir_path) { return; }
+    for file in host::read_dir(dir_path) {
+        if host::is_file(file) {
+            let content = host::file_read(file);
             content.replace(from, to);
-            file_write(file, content);
+            host::file_write(file, content);
         }
     }
 }
@@ -77,8 +77,8 @@ fn apply_name_to_generated(path, name) {
 
 // Read the package name from package.yaml (used to build the dedup pattern).
 fn read_pkg_name(path) {
-    if !is_file(`${path}/package.yaml`) { return (); }
-    let pkg_meta = yaml_decode(file_read(`${path}/package.yaml`));
+    if !host::is_file(`${path}/package.yaml`) { return (); }
+    let pkg_meta = core::yaml_decode(host::file_read(`${path}/package.yaml`));
     if type_of(pkg_meta["metadata"]) == "map" { pkg_meta["metadata"]["name"] } else { () }
 }
 
@@ -258,7 +258,7 @@ fn extract_cronjob_images_resources(doc, release_name) {
 
 // Replace IMAGE_CTX_* and RESOURCES_CTX_* markers with HBS expressions in a file.
 fn apply_image_resource_expressions(filepath, images_keys, resources_keys) {
-    let content = file_read(filepath);
+    let content = host::file_read(filepath);
     for key in images_keys {
         let marker = `IMAGE_CTX_${key}`;
         let expr = `{{image_from_ctx this "${key}"}}`;
@@ -273,7 +273,7 @@ fn apply_image_resource_expressions(filepath, images_keys, resources_keys) {
         content.replace(`"${marker}"`, expr);
         content.replace(`'${marker}'`, expr);
     }
-    file_write(filepath, content);
+    host::file_write(filepath, content);
 }
 
 // Update package.yaml with extracted images and resources (always overwrites existing entries).
@@ -285,7 +285,7 @@ fn apply_image_resource_expressions(filepath, images_keys, resources_keys) {
 fn update_package_yaml_images_resources(path, images, resources) {
     if images.len() == 0 && resources.len() == 0 { return; }
     let pkg_path = `${path}/package.yaml`;
-    if !is_file(pkg_path) { return; }
+    if !host::is_file(pkg_path) { return; }
 
     let nl = "\n";
 
@@ -323,7 +323,7 @@ fn update_package_yaml_images_resources(path, images, resources) {
     }
 
     // Read original file and rebuild line by line, replacing existing sections
-    let original = file_read(pkg_path);
+    let original = host::file_read(pkg_path);
     let lines = original.split(nl);
     let new_lines = [];
     let in_section = false;
@@ -373,7 +373,7 @@ fn update_package_yaml_images_resources(path, images, resources) {
         content = `---${nl}${content}`;
     }
 
-    file_write(pkg_path, content);
+    host::file_write(pkg_path, content);
 }
 
 // ---------------------------------------------------------------------------
@@ -687,7 +687,7 @@ fn extract_env_configmap(path, doc_name, doc, name) {
         data: env_data,
     };
     let cm_file_name = clean_file_name(doc_name, name);
-    create_dir(`${path}/get_others`);
+    host::create_dir(`${path}/get_others`);
     gen_yaml(`${path}/get_others/ConfigMap_${cm_file_name}-envs.yaml.hbs`, cm);
 
     // Update containers: remove plain envs, prepend envFrom reference
@@ -1168,7 +1168,7 @@ fn apply_svc_selectors(doc, comp) {
 
 // Post-process a generated file: replace marker strings with HBS expressions
 fn apply_selector_expressions(filepath, comp) {
-    let content = file_read(filepath);
+    let content = host::file_read(filepath);
     let sel_marker = `SELECTOR_COMP_${comp}`;
     let sel_expr = `{{json_to_str (selector_from_ctx this comp="${comp}")}}`;
     let lbl_expr = `{{json_to_str (labels_from_ctx this comp="${comp}")}}`;
@@ -1180,7 +1180,7 @@ fn apply_selector_expressions(filepath, comp) {
     content.replace(`'${sel_marker}'`, sel_expr);
     content.replace(`"LABELS_FROM_CTX"`, lbl_expr);
     content.replace(`'LABELS_FROM_CTX'`, lbl_expr);
-    file_write(filepath, content);
+    host::file_write(filepath, content);
 }
 
 // ---------------------------------------------------------------------------
@@ -1194,7 +1194,7 @@ fn gen_system_core(path, docs, name, ns) {
         let all_resources = #{};
         for doc in docs.filter(|obj| type_of(obj) == "map" && obj.keys().contains("kind") && obj.keys().contains("metadata") && type_of(obj.metadata) == "map") {
             if doc.kind == "CustomResourceDefinition" {
-                create_dir(`${path}/get_crds`);
+                host::create_dir(`${path}/get_crds`);
                 doc.metadata = clean_metadata(doc.metadata, name);
                 if "conversion" in doc.spec && doc.spec.conversion != () {
                     if "webhook" in doc.spec.conversion && doc.spec.conversion.webhook != () {
@@ -1206,7 +1206,7 @@ fn gen_system_core(path, docs, name, ns) {
                     gen_crd_yaml(`${path}/get_crds/${doc.metadata.name}.yaml`, doc);
                 }
             } else if doc.kind != () && doc.kind != "Namespace" {
-                create_dir(`${path}/get_systems`);
+                host::create_dir(`${path}/get_systems`);
                 let doc_name = doc.metadata.name;   // original — used for analysis lookups
                 let file_name = clean_file_name(`${doc_name}`, name, ns);  // sanitized for file path
                 if doc.kind == "ClusterRoleBinding" || doc.kind == "ClusterRole" || doc.kind == "ValidatingWebhookConfiguration" || doc.kind == "MutatingWebhookConfiguration" || doc.kind == "APIService" {
@@ -1325,7 +1325,7 @@ fn gen_system(path, docs, name) {
     gen_system_core(path, docs, name, ());
 }
 fn gen_system(path, docs) {
-    let yaml = yaml_decode(file_read(path+"/package.yaml"));
+    let yaml = core::yaml_decode(host::file_read(path+"/package.yaml"));
     let name = if type_of(yaml["metadata"]) == "map" {yaml["metadata"]["name"]} else {()};
     gen_system_core(path, docs, name, ());
     apply_dedup_to_generated(path, name);
@@ -1355,10 +1355,10 @@ fn gen_tenant_core(path, docs, name, ns) {
             }
             doc.metadata = clean_metadata(doc.metadata, name);
             if ["PersistentVolumeClaim"].contains(doc.kind) {
-                create_dir(`${path}/get_vitals`);
+                host::create_dir(`${path}/get_vitals`);
                 gen_yaml(`${path}/get_vitals/${doc.kind}_${file_name}.yaml.hbs`, doc);
             } else if ["Deployment", "ReplicaSet", "StatefulSet", "DaemonSet"].contains(doc.kind) {
-                create_dir(`${path}/get_scalables`);
+                host::create_dir(`${path}/get_scalables`);
                 let extr = extract_workload_images_resources(doc, name);
                 doc = extr.doc;
                 for k in extr.images.keys() { all_images[k] = extr.images[k]; }
@@ -1373,7 +1373,7 @@ fn gen_tenant_core(path, docs, name, ns) {
                 }
                 if comp != "" { apply_selector_expressions(fp, comp); }
             } else if ["Namespace", "CustomResourceDefinition", "ClusterRole", "ClusterRoleBinding", "ValidatingWebhookConfiguration", "MutatingWebhookConfiguration", "APIService"].contains(doc.kind) {
-                create_dir(`${path}/get_systems`);
+                host::create_dir(`${path}/get_systems`);
                 if doc.kind == "ClusterRoleBinding" {
                     doc = replace_binding(doc, name);
                 }
@@ -1386,7 +1386,7 @@ fn gen_tenant_core(path, docs, name, ns) {
                 }
                 gen_yaml(`${path}/get_systems/${doc.kind}_${file_name}.yaml.hbs`, doc);
             } else {
-                create_dir(`${path}/get_others`);
+                host::create_dir(`${path}/get_others`);
                 if doc.kind == "RoleBinding" {
                     doc = replace_binding(doc, name);
                 }
@@ -1462,7 +1462,7 @@ fn gen_tenant(path, docs, name) {
     gen_tenant_core(path, docs, name, ());
 }
 fn gen_tenant(path, docs) {
-    let yaml = yaml_decode(file_read(path+"/package.yaml"));
+    let yaml = core::yaml_decode(host::file_read(path+"/package.yaml"));
     let name = if type_of(yaml["metadata"]) == "map" {yaml["metadata"]["name"]} else {()};
     gen_tenant_core(path, docs, name, ());
     apply_dedup_to_generated(path, name);
@@ -1492,10 +1492,10 @@ fn gen_service_core(path, docs, name, ns) {
             }
             doc.metadata = clean_metadata(doc.metadata, name);
             if ["PersistentVolumeClaim"].contains(doc.kind) {
-                create_dir(`${path}/get_vitals`);
+                host::create_dir(`${path}/get_vitals`);
                 gen_yaml(`${path}/get_vitals/${doc.kind}_${file_name}.yaml.hbs`, doc);
             } else if ["Deployment", "ReplicaSet", "StatefulSet", "DaemonSet"].contains(doc.kind) {
-                create_dir(`${path}/get_scalables`);
+                host::create_dir(`${path}/get_scalables`);
                 let extr = extract_workload_images_resources(doc, name);
                 doc = extr.doc;
                 for k in extr.images.keys() { all_images[k] = extr.images[k]; }
@@ -1510,7 +1510,7 @@ fn gen_service_core(path, docs, name, ns) {
                 }
                 if comp != "" { apply_selector_expressions(fp, comp); }
             } else if doc.kind == "CustomResourceDefinition" {
-                create_dir(`${path}/get_crds`);
+                host::create_dir(`${path}/get_crds`);
                 doc.metadata = clean_metadata(doc.metadata, name);
                 if "conversion" in doc.spec && doc.spec.conversion != () {
                     if "webhook" in doc.spec.conversion && doc.spec.conversion.webhook != () {
@@ -1522,10 +1522,10 @@ fn gen_service_core(path, docs, name, ns) {
                     gen_crd_yaml(`${path}/get_crds/${doc.metadata.name}.yaml`, doc);
                 }
             } else if ["Namespace"].contains(doc.kind) {
-                create_dir(`${path}/get_systems`);
+                host::create_dir(`${path}/get_systems`);
                 gen_yaml(`${path}/get_systems/${doc.kind}_${file_name}.yaml.hbs`, doc);
             } else {
-                create_dir(`${path}/get_others`);
+                host::create_dir(`${path}/get_others`);
                 if doc.kind == "RoleBinding" || doc.kind == "ClusterRoleBinding" {
                     doc = replace_binding(doc, name);
                 }
@@ -1608,7 +1608,7 @@ fn gen_service(path, docs, name) {
     gen_service_core(path, docs, name, ());
 }
 fn gen_service(path, docs) {
-    let yaml = yaml_decode(file_read(path+"/package.yaml"));
+    let yaml = core::yaml_decode(host::file_read(path+"/package.yaml"));
     let name = if type_of(yaml["metadata"]) == "map" {yaml["metadata"]["name"]} else {()};
     gen_service_core(path, docs, name, ());
     apply_dedup_to_generated(path, name);

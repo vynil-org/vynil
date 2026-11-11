@@ -42,6 +42,17 @@ impl std::ops::DerefMut for Script {
     }
 }
 
+/// Registers the vynil-core modules that have no test double (everything but `http`, `k8s` and
+/// `oci`) under their own names, so that package scripts can call `core::json_encode`,
+/// `host::log_info`, `semver::from`, … The bare names stay registered by `Script::new_bare`.
+fn core_modules_register(engine: &mut Engine) {
+    engine.register_static_module("core", vynil_core::engine::core_module().into());
+    engine.register_static_module("host", vynil_core::engine::host_module().into());
+    engine.register_static_module("crypto", vynil_core::hashes::crypto_module().into());
+    engine.register_static_module("semver", vynil_core::semver::semver_module().into());
+    engine.register_static_module("password", vynil_core::password::password_module().into());
+}
+
 fn vynil_owner_register(engine: &mut Engine) {
     engine.register_fn("vynil_owner", || -> Dynamic {
         context::get_owner()
@@ -54,6 +65,7 @@ impl Script {
     #[must_use]
     pub fn new_core(resolver_path: Vec<String>) -> Self {
         let mut script = Self(vynil_core::engine::Script::new_bare(resolver_path));
+        core_modules_register(&mut script.engine);
         vynil_owner_register(&mut script.engine);
         yaml_ordered_rhai_register(&mut script.engine);
         package_rhai_register(&mut script.engine);

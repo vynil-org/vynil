@@ -8,10 +8,10 @@ fn run(instance, context) {
     /*if instance.status != () && instance.status.vitals != () && context.namespace.use_backup {
         let hbs = new_hbs();
         hbs.register_partial_dir(context.template_dir);
-        if is_dir(`${context.package_dir}/pods`) {
+        if host::is_dir(`${context.package_dir}/pods`) {
             hbs.register_partial_dir(`${context.package_dir}/pods`);
         }
-        let all = yaml_decode_multi(hbs.render_from("{{> manualbackup.yaml }}", context));
+        let all = core::yaml_decode_multi(hbs.render_from("{{> manualbackup.yaml }}", context));
         for obj in all {
             dir::install_allowed_obj(obj, context.tenant.namespaces, instance.metadata.namespace);
         }
@@ -35,14 +35,14 @@ fn run(instance, context) {
                     deleted.push(o);
                 } catch (e) {
                     switch type_of(e) {
-                        "string" => if ! e.contains("NotFound") { log_warn(e) },
-                        _ => log_warn(json_encode(e))
+                        "string" => if ! e.contains("NotFound") { host::log_warn(e) },
+                        _ => host::log_warn(core::json_encode(e))
                     }
                 }
             }
         }
         for d in deleted {
-            log_info(`Waiting for ${d.original_kind} ${d.metadata.name} to be deleted`);
+            host::log_info(`Waiting for ${d.original_kind} ${d.metadata.name} to be deleted`);
             d.wait_deleted(60*5);
         }
     }

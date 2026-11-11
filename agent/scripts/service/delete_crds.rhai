@@ -11,24 +11,24 @@ fn run(instance, context) {
                 if old_api.exist() {
                     let cnt = old_api.list_meta().items.len();
                     if cnt > 0 {
-                        log_warn(`Ignoring to delete ${old} as it still have ${cnt} children`);
+                        host::log_warn(`Ignoring to delete ${old} as it still have ${cnt} children`);
                     } else {
-                        log_info(`Deleting CRD ${old}`);
+                        host::log_info(`Deleting CRD ${old}`);
                         try {
                             let o = api.get_obj(old);
                             o.delete();
                         } catch (e) {
                             switch type_of(e) {
-                                "string" => if ! e.contains("NotFound") { log_warn(e) },
-                                _ => log_warn(json_encode(e))
+                                "string" => if ! e.contains("NotFound") { host::log_warn(e) },
+                                _ => host::log_warn(core::json_encode(e))
                             }
                         }
                     }
                 }
             } catch (e) {
                 switch type_of(e) {
-                    "string" => log_warn(e),
-                    _ => log_warn(json_encode(e))
+                    "string" => host::log_warn(e),
+                    _ => host::log_warn(core::json_encode(e))
                 }
             }
         }

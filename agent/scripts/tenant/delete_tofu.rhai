@@ -8,7 +8,7 @@ fn run(instance, context) {
     }
     let orig = instance.get_tfstate();
     if orig != "" {
-        file_write(`${context.package_dir}/tofu/terraform.tfstate`, orig);
+        host::file_write(`${context.package_dir}/tofu/terraform.tfstate`, orig);
     }
     tfg::gen_files(context);
     tf::run_init(`${context.package_dir}/tofu`);

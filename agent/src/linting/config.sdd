@@ -194,7 +194,7 @@ Example:
       `hbs/unused-helper` (new, fichier virtuel `handlebars/helpers/{helper}.rhai`),
       `hbs/unused-partial` (new, fichier virtuel `handlebars/partials/{partial}.hbs`),
       `rhai/unused-script` (new), `rhai/unused-function` (new),
-      `rhai/unused-parameter` (ensemble par fichier), `rhai/k8s-resource-plural` (par ligne)
+      `rhai/unused-parameter` (ensemble par fichier), `rhai/k8s-resource-plural` (par ligne), `rhai/prefer-module` (par ligne)
   `7` règles rhai de plus n'atteignent jamais @resolve_level, donc `.vynil-lint.yaml` ne peut pas les
     reconfigurer (@Warn codé en dur) : `rhai/shadowed-variable`, `rhai/dead-code`,
     `rhai/wrong-api-mode`, `rhai/wrong-package-type`, `rhai/unused-variable`,

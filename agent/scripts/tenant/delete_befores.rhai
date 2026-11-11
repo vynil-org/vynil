@@ -21,14 +21,14 @@ fn run(instance, context) {
                     deleted.push(o);
                 } catch (e) {
                     switch type_of(e) {
-                        "string" => if ! e.contains("NotFound") { log_warn(e) },
-                        _ => log_warn(json_encode(e))
+                        "string" => if ! e.contains("NotFound") { host::log_warn(e) },
+                        _ => host::log_warn(core::json_encode(e))
                     }
                 }
             }
         }
         for d in deleted {
-            log_info(`Waiting for ${d.original_kind} ${d.metadata.name} to be deleted`);
+            host::log_info(`Waiting for ${d.original_kind} ${d.metadata.name} to be deleted`);
             d.wait_deleted(60*5);
         }
     }

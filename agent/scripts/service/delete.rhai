@@ -4,13 +4,13 @@ fn run(instance, context) {
     if type_of(ctx) == "map" {
         context = ctx;
     }
-    if is_dir(`${context.package_dir}/posts`) {
+    if host::is_dir(`${context.package_dir}/posts`) {
         ctx = import_run("delete_posts", instance, context);
         if type_of(ctx) == "map" {
             context = ctx;
         }
     }
-    if is_dir(`${context.package_dir}/scalables`) {
+    if host::is_dir(`${context.package_dir}/scalables`) {
         ctx = import_run("delete_scalables", instance, context);
         if type_of(ctx) == "map" {
             context = ctx;
@@ -19,26 +19,26 @@ fn run(instance, context) {
     if tfg::has_tofu_files(`${context.package_dir}/tofu`) {
         context = import_run("delete_tofu", instance, context);
     }
-    if is_dir(`${context.package_dir}/others`) {
+    if host::is_dir(`${context.package_dir}/others`) {
         ctx = import_run("delete_others", instance, context);
         if type_of(ctx) == "map" {
             context = ctx;
         }
     }
-    if is_dir(`${context.package_dir}/vitals`) {
+    if host::is_dir(`${context.package_dir}/vitals`) {
         import_run("delete_backup", instance, context);
         ctx = import_run("delete_vitals", instance, context);
         if type_of(ctx) == "map" {
             context = ctx;
         }
     }
-    if is_dir(`${context.package_dir}/befores`) {
+    if host::is_dir(`${context.package_dir}/befores`) {
         ctx = import_run("delete_befores", instance, context);
         if type_of(ctx) == "map" {
             context = ctx;
         }
     }
-    if is_dir(`${context.package_dir}/crds`) {
+    if host::is_dir(`${context.package_dir}/crds`) {
         ctx = import_run("delete_crds", instance, context);
         if type_of(ctx) == "map" {
             context = ctx;

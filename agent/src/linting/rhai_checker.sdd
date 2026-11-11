@@ -19,7 +19,7 @@ Purpose:
     identifiant se parse proprement. Une instance @RhaiChecker accumule le bookkeeping
     cross-file (imports, tiges définissant un entry-point, noms de fonctions
     définies/appelées) au fil de ses @check_file par fichier et solde `rhai/unused-script` et
-    `rhai/unused-function` dans @finalize. Possède les quatorze ids de règle `rhai/…`, leurs
+    `rhai/unused-function` dans @finalize. Possède les quinze ids de règle `rhai/…`, leurs
     niveaux built-in, leurs gabarits de message, et exactement quelle lane de suppression
     (config / directive file-union / directive par ligne / aucune) chaque règle câble — y
     compris les sept règles câblées à aucune lane du tout.
@@ -92,7 +92,7 @@ Exposes:
     @check_stmts_for_empty_catch, @empty_catch_disabled, @extract_position, @check_unused_variables,
     @check_unused_parameters, @is_core_script, @first_property_in_dot_chain,
     @check_wrong_package_type, @check_context_hook_no_return, @check_k8s_resource_plural,
-    @const @ENTRY_POINT_PATTERNS, @K8S_RESOURCE_PLURAL_KINDS, @ENTRY_POINT_FUNCTIONS,
+    @check_prefer_module, @const @ENTRY_POINT_PATTERNS, @K8S_RESOURCE_PLURAL_KINDS, @MODULE_FUNCTIONS, @ENTRY_POINT_FUNCTIONS,
     @FULL_ONLY_FUNCTIONS.
 
 Accepts:
@@ -113,13 +113,14 @@ Returns:
     `rhai/unresolved-import`, `rhai/dead-code`, `rhai/shadowed-variable`,
     `rhai/unused-variable` (la passe de shadowing tourne dans la passe unused-variable et
     émet en premier), `rhai/unused-parameter`, `rhai/empty-catch`, `rhai/undefined-variable`,
-    `rhai/wrong-api-mode`, `rhai/wrong-package-type`, `rhai/k8s-resource-plural`,
+    `rhai/wrong-api-mode`, `rhai/wrong-package-type`, `rhai/k8s-resource-plural`, `rhai/prefer-module`,
     `rhai/context-hook-no-return` ; en cas d'échec de @Engine::compile — exactement un finding
     `rhai/syntax` et rien d'autre, bookkeeping compris (cascade, `Handles`).
   @finalize — findings `rhai/unused-script`, puis findings `rhai/unused-function`.
   Exactitude des numéros de ligne, gelée par règle : `rhai/syntax` porte la position du
     @ParseError (@extract_position) ; `rhai/unused-parameter` porte la ligne de position du
-    bloc de corps de fonction ; `rhai/k8s-resource-plural` la ligne du littéral de kind ;
+    bloc de corps de fonction ; `rhai/k8s-resource-plural` la ligne du littéral de kind ; `rhai/prefer-module` la ligne de
+    l'appel (@None si l'appel n'a pas de position) ;
     `rhai/wrong-package-type` la position verbatim de la ligne de la variable ou de la chaîne
     rhs (@Option, pas d'écrasement) ; `rhai/unused-variable`, `rhai/shadowed-variable` et
     `rhai/empty-catch` rapportent la ligne de position mais écrasent un noeud sans position à
@@ -227,12 +228,12 @@ Must:
     file-JukeBox que seule la lane @Script::new_file_scan installe, les noms OCI — ce checker
     ne miroite AUCUNE fonction d'enregistrement du runtime ; ses tables sont des littéraux
     tapés à la main et le moteur avec lequel il compile est le stock vide.
-  # Inventaire des règles — 14 ids, niveaux, lanes (table gelée)
-  # Les sept règles qui CONSULTENT @resolve_level (disable, override_ et glob-premier-match de
+  # Inventaire des règles — 15 ids, niveaux, lanes (table gelée)
+  # Les huit règles qui CONSULTENT @resolve_level (disable, override_ et glob-premier-match de
     `.vynil-lint.yaml` peuvent les reconfigurer ou les faire taire) : `rhai/syntax` (built-in
     @Error), `rhai/unresolved-import` (@Error), `rhai/undefined-variable` (@Error),
     `rhai/unused-parameter` (@Warn), `rhai/k8s-resource-plural` (@Warn),
-    `rhai/unused-script` (@Warn), `rhai/unused-function` (@Warn).
+    `rhai/prefer-module` (@Warn), `rhai/unused-script` (@Warn), `rhai/unused-function` (@Warn).
   # Les sept règles à niveau codé en dur et immunisées contre la config (tranche la finding
     ./config.sdd) : @Warn — `rhai/shadowed-variable`, `rhai/dead-code`, `rhai/wrong-api-mode`,
     `rhai/wrong-package-type`, `rhai/unused-variable`, `rhai/empty-catch` ;
@@ -244,8 +245,8 @@ Must:
     `rhai/unused-parameter`. NOTE : la table d'exemple de ./config.sdd étiquette
     `rhai/undefined-variable` par ligne — cet étiquetage est FAUX ; ce fichier est la vérité.
     Lane PAR-LIGNE via @resolve_level — seulement l'ensemble des lignes de finding :
-    `rhai/k8s-resource-plural` (un finding à ligne @None alimente là un ensemble VIDE,
-    rendant la directive inerte pour lui).
+    `rhai/k8s-resource-plural` et `rhai/prefer-module` (un finding à ligne @None alimente là
+    un ensemble VIDE, rendant la directive inerte pour lui).
     Lane PAR-LIGNE par lookup brut dans la carte, niveau codé en dur, entièrement hors config :
     `rhai/unused-variable` et `rhai/empty-catch` (la chaîne d'id de règle est testée contre
     @inline_disables à la ligne de déclaration/catch et rapportée quelle que soit la config).
@@ -318,6 +319,23 @@ Must:
   — `rhai/k8s-resource-plural` @Warn (sensible à la config, par ligne) : @Expr::FnCall nommé
     `k8s_resource` avec un @Expr::StringConstant en POSITION D'ARGUMENT 1 égal à un membre
     pluriel de la colonne ; la moitié singulière correspondante est citée comme correctif.
+  — `rhai/prefer-module` @Warn (sensible à la config, par ligne) : @Expr::FnCall dont l'espace
+    de noms est VIDE (appel nu, jamais `module::nom(...)`, jamais un appel de méthode) et dont
+    le nom figure dans @MODULE_FUNCTIONS, sauf si ce même fichier définit une fonction de ce
+    nom (c'est alors un appel à la fonction locale). Le message nomme l'appel nu et son
+    équivalent qualifié (`json_encode(...)` → utiliser `core::json_encode(...)`). La table
+    ne couvre que ce qui a un jumeau module SANS double de test dans vynil-core : `core`
+    (`base64_encode`, `base64_decode`, `url_encode`, `json_encode`, `json_encode_escape`,
+    `json_decode`, `to_decimal`, `basename`, `dirname`, `regex_is_match`, `sleep`, `date_now`,
+    `glob`, `yaml_encode`, `yaml_decode`, `yaml_decode_multi`), `host` (`get_env`, `log_debug`,
+    `log_info`, `log_warn`, `log_error`, `file_read`, `file_write`, `file_copy`, `create_dir`,
+    `read_dir`, `is_file`, `is_dir`, `shell_run`, `shell_output`), `crypto` (`sha256`,
+    `crc32_hash`, `bcrypt_hash`, `new_argon`, `gen_private_key`) et les noms raccourcis
+    `semver_from` → `semver::from`, `gen_password` → `password::gen`, `gen_password_alphanum`
+    → `password::gen_alphanum`. Les noms de `http`, `k8s`, `s3` et `oci` n'y figurent PAS :
+    leurs modules de test n'ont pas de jumeau (vynil-core#47) ; la table s'étend quand ils en
+    auront. Le linter reste syntaxique : il ne vérifie pas que le module est enregistré, la
+    table est la politique de migration.
   — `rhai/context-hook-no-return` @Error (codé en dur, sans lane) : s'applique quand le texte
     lossy du chemin du fichier CONTIENT `context_` N'IMPORTE OÙ — délibérément PLUS LARGE que
     l'exclusion par PRÉFIXE DE NOM `context_` de @new : un fichier comme
@@ -430,6 +448,11 @@ Example:
       @inline_disable_suppresses_empty_catch
     k8s-resource-plural +/propre : @k8s_resource_plural_kind_produces_warning,
       @k8s_resource_singular_kind_no_warning
+    prefer-module +/propre/directive : @bare_module_function_produces_prefer_module_warning,
+      @qualified_module_call_no_prefer_module_warning, @bare_semver_from_names_semver_from,
+      @locally_defined_function_not_flagged_as_bare_module_function,
+      @http_and_k8s_names_not_flagged_as_bare_module_function,
+      @inline_disable_suppresses_prefer_module
   Honnêteté des fixtures : les tests unitaires ne lisent QUE le contenu de `package.yaml` et
     les NOMS DE FICHIERS du répertoire scripts de ./../../tests/fixtures/lint/rhai-checks/ ;
     les corps de scripts de `broken.rhai`, `dead.rhai`, `functions.rhai`, `params.rhai`,
@@ -534,6 +557,19 @@ Scenario: k8s kind plural table with per-line suppression
     @k8s_resource_singular_kind_no_warning ; les sept paires restantes, les kinds inconnus, le
     comportement de directive et l'inertie des lignes @None n'en ont aucun (Tasks).
 
+Scenario: bare module function names are steered to the module catalogue
+  Given `log_info(x)` nu → un @Warn `rhai/prefer-module` nommant `host::log_info` à la ligne
+    de l'appel ; `host::log_info(x)` qualifié → rien ; `semver_from("1.0.0")` → le correctif
+    est `semver::from` (nom raccourci, pas `semver::semver_from`) ; une fonction `fn log_info`
+    définie dans le fichier et appelée nue → rien ; `k8s_resource(...)`, `new_http_client()`,
+    `s3_get_yaml(...)` → rien (pas de jumeau de test) ; la directive prefer-module sur la ligne
+    de l'appel supprime
+  Tests mappés @bare_module_function_produces_prefer_module_warning,
+    @qualified_module_call_no_prefer_module_warning, @bare_semver_from_names_semver_from,
+    @locally_defined_function_not_flagged_as_bare_module_function,
+    @http_and_k8s_names_not_flagged_as_bare_module_function,
+    @inline_disable_suppresses_prefer_module.
+
 Scenario: dead code inside function bodies is a documented non-behaviour
   Given du code dont une fonction return puis déclare — rien aujourd'hui : le scan couvre
     uniquement les déclarations de premier niveau, et le commentaire d'AST privée porte la
@@ -541,7 +577,7 @@ Scenario: dead code inside function bodies is a documented non-behaviour
   Test mappé @dead_code_after_return_detected (ignoré) ; la branche vivante de premier niveau
     est elle-même non testée (Tasks).
 
-Scenario: config reconfiguration reaches exactly the seven resolve_level rules
+Scenario: config reconfiguration reaches exactly the eight resolve_level rules
   Given un disable de manifeste pour `rhai/k8s-resource-plural` → ce @Warn peut disparaître ;
     un override de `rhai/syntax` vers @Warn → le verdict bloquant pour les sources cassées
     peut tomber

@@ -4,14 +4,14 @@ fn run(instance, context) {
     if type_of(ctx) == "map" {
         context = ctx;
     }
-    if is_dir(`${context.package_dir}/befores`) {
+    if host::is_dir(`${context.package_dir}/befores`) {
         ctx = import_run("install_befores", instance, context);
         if type_of(ctx) == "map" {
             context = ctx;
         }
         instance = get_tenant_instance(instance.metadata.namespace, instance.metadata.name);
     }
-    if is_dir(`${context.package_dir}/vitals`) {
+    if host::is_dir(`${context.package_dir}/vitals`) {
         ctx = import_run("install_vitals", instance, context);
         if type_of(ctx) == "map" {
             context = ctx;
@@ -29,21 +29,21 @@ fn run(instance, context) {
     if instance.status != () && instance.status.vitals != () && type_of(instance.status.tag) == "()" && instance.spec.initFrom != () {
         import_run("init_from", instance, context);
     }
-    if is_dir(`${context.package_dir}/others`) {
+    if host::is_dir(`${context.package_dir}/others`) {
         ctx = import_run("install_others", instance, context);
         if type_of(ctx) == "map" {
             context = ctx;
         }
         instance = get_tenant_instance(instance.metadata.namespace, instance.metadata.name);
     }
-    if is_dir(`${context.package_dir}/scalables`) {
+    if host::is_dir(`${context.package_dir}/scalables`) {
         ctx = import_run("install_scalables", instance, context);
         if type_of(ctx) == "map" {
             context = ctx;
         }
         instance = get_tenant_instance(instance.metadata.namespace, instance.metadata.name);
     }
-    if is_dir(`${context.package_dir}/posts`) {
+    if host::is_dir(`${context.package_dir}/posts`) {
         ctx = import_run("install_posts", instance, context);
         if type_of(ctx) == "map" {
             context = ctx;
@@ -58,8 +58,8 @@ fn run(instance, context) {
             found = true;
         } catch (e) {
             switch type_of(e) {
-                "string" => log_warn(e),
-                _ => log_warn(json_encode(e))
+                "string" => host::log_warn(e),
+                _ => host::log_warn(core::json_encode(e))
             }
         }
         if found {

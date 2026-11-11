@@ -65,8 +65,8 @@ fn run(instance, args) {
             }
         } catch (e) {
             switch type_of(e) {
-                "string" => log_warn(e),
-                _ => log_warn(json_encode(e))
+                "string" => host::log_warn(e),
+                _ => host::log_warn(core::json_encode(e))
             }
         }
     }

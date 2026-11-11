@@ -17,11 +17,11 @@ fn run(instance, context) {
                 let opt = k;
                 opt.remove(prefix);
                 try {
-                    context.namespace[opt] = json_decode(annotations[k]);
+                    context.namespace[opt] = core::json_decode(annotations[k]);
                 } catch (e) {
                     switch type_of(e) {
-                        "string" => log_warn(e),
-                        _ => log_warn(json_encode(e))
+                        "string" => host::log_warn(e),
+                        _ => host::log_warn(core::json_encode(e))
                     }
                 }
             }
@@ -31,8 +31,8 @@ fn run(instance, context) {
         }
     } catch (e) {
         switch type_of(e) {
-            "string" => log_warn(e),
-            _ => log_warn(json_encode(e))
+            "string" => host::log_warn(e),
+            _ => host::log_warn(core::json_encode(e))
         }
     }
     context

@@ -225,21 +225,21 @@ fn get_default_context(args) {
 }
 
 fn template(instance, args) {
-    let pkg = yaml_decode(file_read(`${args.package_dir}/package.yaml`));
+    let pkg = core::yaml_decode(host::file_read(`${args.package_dir}/package.yaml`));
     let defaults = get_default_context(args);
     let scs = sce::classes_enrich(defaults.scs);
     let current = "";
     let controller = #{};
     try {
-        controller = json_decode(args.controller_values);
+        controller = core::json_decode(args.controller_values);
     } catch (e) {
         switch type_of(e) {
-            "string" => log_warn(e),
-            _ => log_warn(json_encode(e))
+            "string" => host::log_warn(e),
+            _ => host::log_warn(core::json_encode(e))
         }
     }
-    let cluster_config = if is_file(`${args.config_dir}/agent.yaml`) {
-        yaml_decode(file_read(`${args.config_dir}/agent.yaml`))
+    let cluster_config = if host::is_file(`${args.config_dir}/agent.yaml`) {
+        core::yaml_decode(host::file_read(`${args.config_dir}/agent.yaml`))
     } else {#{}};
     cluster_config["storage_classes"] = scs;
     cluster_config["crds"] = defaults.crds;
@@ -298,18 +298,18 @@ fn run(instance, args) {
     let current = "";
     let controller = #{};
     try {
-        controller = json_decode(args.controller_values);
+        controller = core::json_decode(args.controller_values);
     } catch (e) {
         switch type_of(e) {
-            "string" => log_warn(e),
-            _ => log_warn(json_encode(e))
+            "string" => host::log_warn(e),
+            _ => host::log_warn(core::json_encode(e))
         }
     }
     if instance.status != () && instance.status.tag != () {
         current = instance.status.tag;
     }
-    let cluster_config = if is_file(`${args.config_dir}/agent.yaml`) {
-        yaml_decode(file_read(`${args.config_dir}/agent.yaml`))
+    let cluster_config = if host::is_file(`${args.config_dir}/agent.yaml`) {
+        core::yaml_decode(host::file_read(`${args.config_dir}/agent.yaml`))
     } else {#{}};
     cluster_config["storage_classes"] = scs;
     let crds = k8s_resource("CustomResourceDefinition").list_meta().items;
@@ -385,8 +385,8 @@ fn run(instance, args) {
         cluster_config["services"] = lst;
     } catch (e) {
         switch type_of(e) {
-            "string" => log_warn(e),
-            _ => log_warn(json_encode(e))
+            "string" => host::log_warn(e),
+            _ => host::log_warn(core::json_encode(e))
         }
     }
 

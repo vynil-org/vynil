@@ -27,7 +27,7 @@ fn validate(yaml) {
 }
 
 fn run(args) {
-    let yaml = yaml_decode(file_read(args.source+"/package.yaml"));
+    let yaml = core::yaml_decode(host::file_read(args.source+"/package.yaml"));
     validate(yaml);
     let valid = read_package_yaml(args.source+"/package.yaml");
     valid.validate_options();

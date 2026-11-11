@@ -36,21 +36,21 @@ fn get_objects(context, dir) {
     hbs.register_partial_dir(`${context.package_dir}/handlebars/partials`);
     hbs.register_helper_dir(`${context.package_dir}/handlebars/helpers`);
     let ret = [];
-    for file in read_dir(dir) {
+    for file in host::read_dir(dir) {
         let objects = [];
         try {
             objects = if file.ends_with(".yaml") || file.ends_with(".yml") {
-                yd::decode(file_read(file))
+                yd::decode(host::file_read(file))
             } else if file.ends_with(".yaml.hbs") || file.ends_with(".yml.hbs") {
-                yd::decode(hbs.render_named(file, file_read(file), context))
+                yd::decode(hbs.render_named(file, host::file_read(file), context))
             } else {[]};
         } catch(e) {
-            log_error(`While parsing ${file} :`);
+            host::log_error(`While parsing ${file} :`);
             throw;
         }
         for obj in objects.filter(|obj| type_of(obj) != "map" || ! obj.keys().contains("kind") || ! obj.keys().contains("metadata") || type_of(obj.metadata) != "map") {
-            log_warn(`No kind for an object in file ${file}`);
-            log_debug(yaml_encode(obj));
+            host::log_warn(`No kind for an object in file ${file}`);
+            host::log_debug(core::yaml_encode(obj));
         }
         ret += objects.filter(|obj| type_of(obj) == "map" && obj.keys().contains("kind") && obj.keys().contains("metadata") && type_of(obj.metadata) == "map");
     }
@@ -59,8 +59,8 @@ fn get_objects(context, dir) {
 
 fn install_obj(obj, allow_cluster, namespace, force_ns) {
     let applied = [];
-    log_debug(`Applying:`);
-    log_debug(yaml_encode(obj));
+    host::log_debug(`Applying:`);
+    host::log_debug(core::yaml_encode(obj));
     let ns = if (force_ns) {
         namespace
     } else {
@@ -73,7 +73,7 @@ fn install_obj(obj, allow_cluster, namespace, force_ns) {
         }
         if api.scope == "cluster" {
             if allow_cluster {
-                log_info(`Applying ${obj.kind} ${obj.metadata.name}`);
+                host::log_info(`Applying ${obj.kind} ${obj.metadata.name}`);
                 api.apply(obj.metadata.name, obj);
                 applied.push(#{
                     api_version: obj.apiVersion,
@@ -82,10 +82,10 @@ fn install_obj(obj, allow_cluster, namespace, force_ns) {
                     name: obj.metadata.name
                 });
             } else {
-                log_warn(`Ignoring ${obj.kind} ${obj.metadata.name} as it is a clusterwide resource type.`);
+                host::log_warn(`Ignoring ${obj.kind} ${obj.metadata.name} as it is a clusterwide resource type.`);
             }
         } else {
-            log_info(`Applying ${obj.kind} ${ns}/${obj.metadata.name}`);
+            host::log_info(`Applying ${obj.kind} ${ns}/${obj.metadata.name}`);
             api.apply(obj.metadata.name, obj);
             applied.push(#{
                 api_version: obj.apiVersion,
@@ -96,7 +96,7 @@ fn install_obj(obj, allow_cluster, namespace, force_ns) {
             });
         }
     } else {
-        log_debug(yaml_encode(obj));
+        host::log_debug(core::yaml_encode(obj));
         throw `kind: ${obj.kind} is unknown from the apiServer.`;
     }
     applied
@@ -122,8 +122,8 @@ fn install(instance, context, dir, allow_cluster, force_ns) {
 
 fn install_allowed_obj(obj, allowed, namespace) {
     let applied = [];
-    log_debug(`Applying:`);
-    log_debug(yaml_encode(obj));
+    host::log_debug(`Applying:`);
+    host::log_debug(core::yaml_encode(obj));
     let ns = if (obj.metadata.namespace != () && obj.metadata.namespace in allowed) {
         obj.metadata.namespace
     } else {
@@ -133,7 +133,7 @@ fn install_allowed_obj(obj, allowed, namespace) {
     if api.exist() {
         if api.scope != "cluster" {
             obj.metadata.namespace = ns;
-            log_info(`Applying ${obj.kind} ${ns}/${obj.metadata.name}`);
+            host::log_info(`Applying ${obj.kind} ${ns}/${obj.metadata.name}`);
             api.apply(obj.metadata.name, obj);
             applied.push(#{
                 api_version: obj.apiVersion,
@@ -143,10 +143,10 @@ fn install_allowed_obj(obj, allowed, namespace) {
                 namespace: ns
             });
         } else {
-            log_warn(`Ignoring ${obj.kind} ${obj.metadata.name} as it is a clusterwide resource type.`);
+            host::log_warn(`Ignoring ${obj.kind} ${obj.metadata.name} as it is a clusterwide resource type.`);
         }
     } else {
-        log_debug(yaml_encode(obj));
+        host::log_debug(core::yaml_encode(obj));
         throw `kind: ${obj.kind} is unknown from the apiServer.`;
     }
     applied
@@ -191,15 +191,15 @@ fn remove(applied, previous, default_ns) {
                     deleted.push(o);
                 } catch (e) {
                     switch type_of(e) {
-                        "string" => if ! e.contains("NotFound") { log_warn(e) },
-                        _ => log_warn(json_encode(e))
+                        "string" => if ! e.contains("NotFound") { host::log_warn(e) },
+                        _ => host::log_warn(core::json_encode(e))
                     }
                 }
             }
         }
     }
     for d in deleted {
-        log_info(`Waiting for ${d.original_kind} ${d.metadata.name} to be deleted`);
+        host::log_info(`Waiting for ${d.original_kind} ${d.metadata.name} to be deleted`);
         d.wait_deleted(60*5);
     }
 }
@@ -221,17 +221,17 @@ fn template(instance, context, dir) {
     for k in get_first() {
         for obj in all.filter(|o| o.kind==k) {
             print("---");
-            print(yaml_encode(obj));
+            print(core::yaml_encode(obj));
         }
     }
     for obj in all.filter(|o| !get_first().contains(o.kind) && !get_last().contains(o.kind)) {
         print("---");
-        print(yaml_encode(obj));
+        print(core::yaml_encode(obj));
     }
     for k in get_last() {
         for obj in all.filter(|o| o.kind==k) {
             print("---");
-            print(yaml_encode(obj));
+            print(core::yaml_encode(obj));
         }
     }
 }

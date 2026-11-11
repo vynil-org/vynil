@@ -26,7 +26,7 @@ fn run(instance, context) {
     } catch (e) {
         switch type_of(e) {
             "string" => instance.set_status_post_failed(e),
-            _ => instance.set_status_post_failed(json_encode(e))
+            _ => instance.set_status_post_failed(core::json_encode(e))
         }
         throw;
     }

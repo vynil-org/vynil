@@ -50,7 +50,8 @@ still yields `hbs/unused-option`.
 - unused parameters and functions (`rhai/unused-function`, `rhai/unused-variable`);
 - API mode validation (no full-API in core scripts);
 - package type validation (no tenant access in a system package);
-- context hook return value validation (`rhai/context-hook-no-return`).
+- context hook return value validation (`rhai/context-hook-no-return`);
+- bare helper names that have a module spelling (`rhai/prefer-module`, warning): `log_info(...)` should be `host::log_info(...)`, `json_encode(...)` `core::json_encode(...)`, `semver_from(...)` `semver::from(...)`, and likewise for the `crypto` and `password` modules. Calls on `http`, `k8s`, `s3` and `oci` are not reported yet.
 
 ## Configuration: `.vynil-lint.yaml`
 
