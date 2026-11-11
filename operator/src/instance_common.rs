@@ -157,12 +157,7 @@ pub async fn build_base_recommendations(
             match reco {
                 VynilPackageRecommandation::CustomResourceDefinition(crd) => {
                     let api: Api<CustomResourceDefinition> = Api::all(client.clone());
-                    if api
-                        .get_metadata_opt(&crd)
-                        .await
-                        .map_err(Error::KubeError)?
-                        .is_some()
-                    {
+                    if api.get_metadata_opt(&crd).await.map_err(Error::from)?.is_some() {
                         rec_crds.push(crd);
                     }
                 }
@@ -280,7 +275,7 @@ pub async fn delete_job_and_wait(job_api: &Api<Job>, job_name: &str) -> Result<(
                 tokio::time::timeout(std::time::Duration::from_secs(20), cond)
                     .await
                     .map_err(Error::Elapsed)?
-                    .map_err(Error::KubeWaitError)?;
+                    .map_err(Error::from)?;
             }
         }
         Err(e) => tracing::warn!("Deleting Job {} failed with: {e}", job_name),
@@ -310,14 +305,14 @@ pub async fn upsert_job(job_api: &Api<Job>, job_name: &str, job_def: Value) -> R
         if let either::Left(j) = job_api
             .delete(job_name, &DeleteParams::foreground())
             .await
-            .map_err(Error::KubeError)?
+            .map_err(Error::from)?
         {
             let uid = j.metadata.uid.unwrap_or_default();
             let cond = await_condition(job_api.clone(), job_name, conditions::is_deleted(&uid));
             tokio::time::timeout(std::time::Duration::from_secs(20), cond)
                 .await
                 .map_err(Error::Elapsed)?
-                .map_err(Error::KubeWaitError)?;
+                .map_err(Error::from)?;
         }
         job_api
             .create(
@@ -325,7 +320,7 @@ pub async fn upsert_job(job_api: &Api<Job>, job_name: &str, job_def: Value) -> R
                 &serde_json::from_value(job_def).map_err(Error::SerializationError)?,
             )
             .await
-            .map_err(Error::KubeError)?;
+            .map_err(Error::from)?;
     }
     Ok(())
 }
@@ -563,7 +558,7 @@ pub async fn do_reconcile<T: InstanceKind>(inst: &T, ctx: Arc<Context>) -> Resul
         );
         api.patch(&inst.name_any(), &PatchParams::default(), &patch)
             .await
-            .map_err(Error::KubeError)?;
+            .map_err(Error::from)?;
         let job = job_api.get_metadata_opt(&job_name).await;
         if matches!(job, Ok(Some(_))) {
             Box::pin(delete_job_and_wait(&job_api, &job_name)).await?;
@@ -647,17 +642,17 @@ pub async fn do_cleanup<T: InstanceKind>(inst: &T, ctx: Arc<Context>) -> Result<
             &serde_json::from_value(job_def).map_err(Error::SerializationError)?,
         )
         .await
-        .map_err(Error::KubeError)?;
+        .map_err(Error::from)?;
 
     // Wait for the delete job to reach a terminal state (Complete or Failed).
     let cond = await_condition(job_api.clone(), &job_name, is_job_terminal_cond());
     match tokio::time::timeout(std::time::Duration::from_mins(3), cond).await {
         Ok(res) => {
-            res.map_err(Error::KubeWaitError)?;
+            res.map_err(Error::from)?;
             let failed = job_api
                 .get_opt(&job_name)
                 .await
-                .map_err(Error::KubeError)?
+                .map_err(Error::from)?
                 .as_ref()
                 .is_some_and(is_job_failed);
             // Purge the delete job in every terminal case (success or failure).

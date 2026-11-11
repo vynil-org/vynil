@@ -1,6 +1,6 @@
 fn to_tf(v) {
-    let str = json_encode_escape(v);
-    shell_output(`echo 'jsondecode(${str})'|tofu console`)
+    let str = core::json_encode_escape(v);
+    host::shell_output(`echo 'jsondecode(${str})'|tofu console`)
 }
 
 fn get_tf_type(item, optional) {
@@ -47,30 +47,30 @@ fn run_init(path) {
   }
   direct {}
 }`;
-    file_write(`${path}/.tofurc`, cfg);
-    let rc = shell_run(`cd ${path};TF_CLI_CONFIG_FILE=.tofurc tofu init`);
+    host::file_write(`${path}/.tofurc`, cfg);
+    let rc = host::shell_run(`cd ${path};TF_CLI_CONFIG_FILE=.tofurc tofu init`);
     if rc != 0 {
         throw "tofu init failed";
     }
 }
 fn run_plan(path) {
-    let rc = shell_run(`cd ${path};tofu plan -input=false -out=tf.plan -var-file=vynil.tfvars`);
+    let rc = host::shell_run(`cd ${path};tofu plan -input=false -out=tf.plan -var-file=vynil.tfvars`);
     if rc != 0 {
         throw "tofu plan failed";
     }
 }
 fn run_apply(path) {
-    let rc = shell_run(`cd ${path};tofu apply -input=false -auto-approve tf.plan`);
+    let rc = host::shell_run(`cd ${path};tofu apply -input=false -auto-approve tf.plan`);
     if rc != 0 {
         throw "tofu apply failed";
     }
 }
 fn run_destroy(path) {
-    let rc = shell_run(`cd ${path};tofu apply -destroy -input=false -auto-approve -var-file=vynil.tfvars`);
+    let rc = host::shell_run(`cd ${path};tofu apply -destroy -input=false -auto-approve -var-file=vynil.tfvars`);
     if rc != 0 {
         throw "tofu destroy failed";
     }
 }
 fn get_output(path) {
-    shell_output(`cd ${path};tofu output -json`)
+    host::shell_output(`cd ${path};tofu output -json`)
 }

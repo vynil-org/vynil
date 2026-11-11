@@ -1,10 +1,10 @@
 fn validate(yaml) {
     if ! ("apiVersion" in yaml.keys()) {
-        log_warn("You should set your apiVersion");
+        host::log_warn("You should set your apiVersion");
         yaml.apiVersion = "vinyl.solidite.fr/v1beta1";
     }
     if ! ("kind" in yaml.keys()) {
-        log_warn("You should set your kind");
+        host::log_warn("You should set your kind");
         yaml.kind = "Package";
     }
     if ! ("metadata" in yaml.keys()) {
@@ -63,7 +63,7 @@ fn properties_improve(values) {
                             };
                         }
                     } else {
-                        log_warn(`Properties definition left empty for property ${prop}`);
+                        host::log_warn(`Properties definition left empty for property ${prop}`);
                     }
                 }
                 values[prop].properties = properties_improve(values[prop].properties);

@@ -1,7 +1,7 @@
 fn run(context) {
     import_run("backup_check_pre", context);
-    log_info("Checking restic repository");
-    let rc = shell_run(`export RESTIC_REPOSITORY="${context.s3_url}";restic check ${context.restic_args}`);
+    host::log_info("Checking restic repository");
+    let rc = host::shell_run(`export RESTIC_REPOSITORY="${context.s3_url}";restic check ${context.restic_args}`);
     if rc != 0 {
         throw `restic check FAILED returning ${rc}`;
     }

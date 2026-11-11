@@ -21,7 +21,7 @@ fn run(instance, context) {
         if instance.status != () && instance.status.vitals != () {
             for old in instance.status.vitals {
                 if ! applied_objs.some(|n| n.kind == old.kind && n.namespace == old.namespace && n.name == old.name) {
-                    log_warn(`Not deleting vitals ${old.kind} ${old.name} !`);
+                    host::log_warn(`Not deleting vitals ${old.kind} ${old.name} !`);
                     applied_objs.push(old);
                 }
             }
@@ -31,7 +31,7 @@ fn run(instance, context) {
     } catch (e) {
         switch type_of(e) {
             "string" => instance.set_status_vital_failed(e),
-            _ => instance.set_status_vital_failed(json_encode(e))
+            _ => instance.set_status_vital_failed(core::json_encode(e))
         }
         throw;
     }

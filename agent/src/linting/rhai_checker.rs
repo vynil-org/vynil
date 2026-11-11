@@ -150,6 +150,9 @@ impl<'a> RhaiChecker<'a> {
                 let plural_findings = check_k8s_resource_plural(&ast, file, self.config, &inline_disables);
                 findings.extend(plural_findings);
 
+                let module_findings = check_prefer_module(&ast, file, self.config, &inline_disables);
+                findings.extend(module_findings);
+
                 let context_findings = check_context_hook_no_return(&ast, file);
                 findings.extend(context_findings);
 
@@ -924,6 +927,89 @@ fn check_context_hook_no_return(ast: &AST, file: &Path) -> Vec<LintFinding> {
             message: "Context hook must return the context".to_string(),
         });
     }
+
+    findings
+}
+
+/// Bare helper names that have a module twin without a test double in vynil-core, with the
+/// qualified spelling to use instead. `http`, `k8s`, `s3` and `oci` are left out on purpose:
+/// their mocks have no module twin yet (vynil-core#47).
+const MODULE_FUNCTIONS: &[(&str, &str)] = &[
+    ("base64_encode", "core::base64_encode"),
+    ("base64_decode", "core::base64_decode"),
+    ("url_encode", "core::url_encode"),
+    ("json_encode", "core::json_encode"),
+    ("json_encode_escape", "core::json_encode_escape"),
+    ("json_decode", "core::json_decode"),
+    ("to_decimal", "core::to_decimal"),
+    ("basename", "core::basename"),
+    ("dirname", "core::dirname"),
+    ("regex_is_match", "core::regex_is_match"),
+    ("sleep", "core::sleep"),
+    ("date_now", "core::date_now"),
+    ("glob", "core::glob"),
+    ("yaml_encode", "core::yaml_encode"),
+    ("yaml_decode", "core::yaml_decode"),
+    ("yaml_decode_multi", "core::yaml_decode_multi"),
+    ("get_env", "host::get_env"),
+    ("log_debug", "host::log_debug"),
+    ("log_info", "host::log_info"),
+    ("log_warn", "host::log_warn"),
+    ("log_error", "host::log_error"),
+    ("file_read", "host::file_read"),
+    ("file_write", "host::file_write"),
+    ("file_copy", "host::file_copy"),
+    ("create_dir", "host::create_dir"),
+    ("read_dir", "host::read_dir"),
+    ("is_file", "host::is_file"),
+    ("is_dir", "host::is_dir"),
+    ("shell_run", "host::shell_run"),
+    ("shell_output", "host::shell_output"),
+    ("sha256", "crypto::sha256"),
+    ("crc32_hash", "crypto::crc32_hash"),
+    ("bcrypt_hash", "crypto::bcrypt_hash"),
+    ("new_argon", "crypto::new_argon"),
+    ("gen_private_key", "crypto::gen_private_key"),
+    ("semver_from", "semver::from"),
+    ("gen_password", "password::gen"),
+    ("gen_password_alphanum", "password::gen_alphanum"),
+];
+
+fn check_prefer_module(
+    ast: &AST,
+    file: &Path,
+    config: &LintConfig,
+    inline_disables: &HashMap<usize, HashSet<String>>,
+) -> Vec<LintFinding> {
+    let mut findings = Vec::new();
+    let local_functions: HashSet<&str> = ast.iter_fn_def().map(|f| f.name.as_str()).collect();
+
+    ast.walk(&mut |nodes: &[ASTNode]| {
+        if let Some(ASTNode::Expr(Expr::FnCall(fn_call, pos))) = nodes.last()
+            && fn_call.namespace.is_empty()
+            && !local_functions.contains(fn_call.name.as_str())
+            && let Some((bare, qualified)) = MODULE_FUNCTIONS
+                .iter()
+                .find(|(bare, _)| *bare == fn_call.name.as_str())
+        {
+            let line = pos.line();
+            let disabled = line
+                .and_then(|l| inline_disables.get(&l))
+                .cloned()
+                .unwrap_or_default();
+            if let Some(level) = config.resolve_level("rhai/prefer-module", file, LintLevel::Warn, &disabled)
+            {
+                findings.push(LintFinding {
+                    rule: "rhai/prefer-module".to_string(),
+                    level,
+                    file: file.to_path_buf(),
+                    line,
+                    message: format!("`{bare}(...)` is called by its global name; use `{qualified}(...)`"),
+                });
+            }
+        }
+        true
+    });
 
     findings
 }
@@ -1765,6 +1851,84 @@ mod tests {
         assert!(
             findings.iter().any(|f| f.rule == "rhai/k8s-resource-plural"),
             "Expected rhai/k8s-resource-plural warning for plural kind"
+        );
+    }
+
+    fn prefer_module_findings(source: &str) -> Vec<LintFinding> {
+        let base_dir = get_fixture_dir("rhai-checks");
+        let pkg = read_package_yaml(&base_dir.join("package.yaml")).expect("Failed to load package");
+        let config = LintConfig::default();
+        let mut checker = RhaiChecker::new(&base_dir, &base_dir, None, &pkg, &config);
+        checker
+            .check_file(&PathBuf::from("install.rhai"), source)
+            .into_iter()
+            .filter(|f| f.rule == "rhai/prefer-module")
+            .collect()
+    }
+
+    #[test]
+    fn bare_module_function_produces_prefer_module_warning() {
+        let findings = prefer_module_findings("fn run(instance, context) {\n    log_info(\"hello\");\n}");
+        assert_eq!(findings.len(), 1, "one bare call, one finding: {findings:?}");
+        assert_eq!(findings[0].level, LintLevel::Warn);
+        assert_eq!(findings[0].line, Some(2));
+        assert!(
+            findings[0].message.contains("`log_info(...)`")
+                && findings[0].message.contains("`host::log_info(...)`"),
+            "message must name both spellings: {}",
+            findings[0].message
+        );
+    }
+
+    #[test]
+    fn qualified_module_call_no_prefer_module_warning() {
+        let findings = prefer_module_findings(
+            "fn run(instance, context) { host::log_info(core::json_encode(context)); \"a\".to_upper(); }",
+        );
+        assert!(findings.is_empty(), "qualified calls are fine: {findings:?}");
+    }
+
+    #[test]
+    fn bare_semver_from_names_semver_from() {
+        let findings =
+            prefer_module_findings("let v = semver_from(\"1.0.0\"); let p = gen_password_alphanum(8);");
+        let messages: Vec<&str> = findings.iter().map(|f| f.message.as_str()).collect();
+        assert_eq!(messages.len(), 2, "{messages:?}");
+        assert!(messages[0].contains("`semver::from(...)`"), "{}", messages[0]);
+        assert!(
+            messages[1].contains("`password::gen_alphanum(...)`"),
+            "{}",
+            messages[1]
+        );
+    }
+
+    #[test]
+    fn locally_defined_function_not_flagged_as_bare_module_function() {
+        let findings =
+            prefer_module_findings("fn log_info(m) { m }\nfn run(instance, context) { log_info(\"x\"); }");
+        assert!(
+            findings.is_empty(),
+            "a local function is not the host one: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn http_and_k8s_names_not_flagged_as_bare_module_function() {
+        let findings = prefer_module_findings(
+            "let c = new_http_client(\"https://x\"); let s = k8s_resource(\"Secret\", \"ns\"); let y = s3_get_yaml(a, b);",
+        );
+        assert!(
+            findings.is_empty(),
+            "no module twin for the mocks yet: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn inline_disable_suppresses_prefer_module() {
+        let findings = prefer_module_findings("log_info(\"x\"); // vynil-lint-disable rhai/prefer-module");
+        assert!(
+            findings.is_empty(),
+            "the directive on the line suppresses: {findings:?}"
         );
     }
 

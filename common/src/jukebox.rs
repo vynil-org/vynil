@@ -202,7 +202,7 @@ impl JukeBox {
     /// Returns `Error::KubeError` when the Kubernetes API call fails.
     pub async fn get(name: String) -> Result<Self> {
         let api = Api::<Self>::all(get_client_async().await);
-        api.get(&name).await.map_err(Error::KubeError)
+        api.get(&name).await.map_err(Error::from)
     }
 
     ///
@@ -212,7 +212,7 @@ impl JukeBox {
     pub async fn list() -> Result<ObjectList<Self>> {
         let api = Api::<Self>::all(get_client_async().await);
         let lp = ListParams::default();
-        api.list(&lp).await.map_err(Error::KubeError)
+        api.list(&lp).await.map_err(Error::from)
     }
 
     ///
@@ -222,7 +222,7 @@ impl JukeBox {
     pub async fn list_with_client(cl: Client) -> Result<ObjectList<Self>> {
         let api = Api::<Self>::all(cl);
         let lp = ListParams::default();
-        api.list(&lp).await.map_err(Error::KubeError)
+        api.list(&lp).await.map_err(Error::from)
     }
 
     fn get_conditions_excluding(&self, exclude: &[ConditionsType]) -> Vec<ApplicationCondition> {
@@ -252,7 +252,7 @@ impl JukeBox {
         let ps = PatchParams::apply(get_short_name().as_str());
         api.patch_status(&name, &ps, &new_status)
             .await
-            .map_err(Error::KubeError)
+            .map_err(Error::from)
     }
 
     async fn send_event(&self, client: Client, ev: Event) -> Result<()> {
@@ -272,7 +272,7 @@ impl JukeBox {
                     }
                     Ok(())
                 }
-                _ => Err(Error::KubeError(e)),
+                _ => Err(Error::from(e)),
             },
         }
     }

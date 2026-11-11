@@ -50,7 +50,8 @@ n'est pas suivi et produit toujours `hbs/unused-option`.
 - paramètres et fonctions inutilisés (`rhai/unused-function`, `rhai/unused-variable`) ;
 - validation du mode d'API (pas de full-API dans les scripts core) ;
 - validation du type de paquet (pas d'accès tenant dans un paquet système) ;
-- validation du retour des hooks de contexte (`rhai/context-hook-no-return`).
+- validation du retour des hooks de contexte (`rhai/context-hook-no-return`) ;
+- noms d'helpers appelés sans module alors qu'une forme qualifiée existe (`rhai/prefer-module`, avertissement) : `log_info(...)` devient `host::log_info(...)`, `json_encode(...)` devient `core::json_encode(...)`, `semver_from(...)` devient `semver::from(...)`, idem pour les modules `crypto` et `password`. Les appels `http`, `k8s`, `s3` et `oci` ne sont pas encore signalés.
 
 ## Configuration : `.vynil-lint.yaml`
 

@@ -183,7 +183,7 @@ impl TenantInstance {
             .clone()
             .ok_or_else(|| Error::Other("TenantInstance has no namespace".to_string()))?;
         let ns_api: Api<Namespace> = Api::all(get_client_async().await);
-        let my_ns_meta = ns_api.get_metadata(&my_ns).await.map_err(Error::KubeError)?;
+        let my_ns_meta = ns_api.get_metadata(&my_ns).await.map_err(Error::from)?;
         let label_key =
             std::env::var("TENANT_LABEL").unwrap_or_else(|_| "vynil.solidite.fr/tenant".to_string());
         if let Some(labels) = my_ns_meta.metadata.labels
@@ -208,7 +208,7 @@ impl TenantInstance {
             .clone()
             .ok_or_else(|| Error::Other("TenantInstance has no namespace".to_string()))?;
         let ns_api: Api<Namespace> = Api::all(get_client_async().await);
-        let my_ns_meta = ns_api.get_metadata(&my_ns).await.map_err(Error::KubeError)?;
+        let my_ns_meta = ns_api.get_metadata(&my_ns).await.map_err(Error::from)?;
         let label_key =
             std::env::var("TENANT_LABEL").unwrap_or_else(|_| "vynil.solidite.fr/tenant".to_string());
         let res = vec![my_ns];
@@ -220,7 +220,7 @@ impl TenantInstance {
         if let Some(tenant_name) = tenant_name {
             let mut lp = ListParams::default();
             lp = lp.labels(format!("{label_key}=={tenant_name}").as_str());
-            let my_nss = ns_api.list_metadata(&lp).await.map_err(Error::KubeError)?;
+            let my_nss = ns_api.list_metadata(&lp).await.map_err(Error::from)?;
             return Ok(my_nss.items.into_iter().filter_map(|n| n.metadata.name).collect());
         }
         Ok(res)
@@ -237,7 +237,7 @@ impl TenantInstance {
         for ns in self.get_tenant_namespaces().await? {
             let api = Api::<Self>::namespaced(cli.clone(), &ns);
             let lp = ListParams::default();
-            for tnt in api.list(&lp).await.map_err(Error::KubeError)? {
+            for tnt in api.list(&lp).await.map_err(Error::from)? {
                 let mut svcs: Vec<String> = tnt.get_services().iter().map(|i| i.key.clone()).collect();
                 res.append(&mut svcs);
             }

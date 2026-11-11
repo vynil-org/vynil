@@ -1,4 +1,14 @@
-use common::rhaihandler::Script;
+use common::rhaihandler::{Module, Scope, Script};
+
+/// Replaces the `host` module by the script functions of `code` (mocked `get_env`,
+/// `shell_run`, `shell_output`; logs are no-ops): host functions are called qualified (`host::shell_run`), so a
+/// bare-name override in the global namespace no longer intercepts them.
+fn mock_host(rhai: &mut Script, code: &str) {
+    let stubs = "fn log_debug(m) {} fn log_info(m) {} fn log_warn(m) {} fn log_error(m) {}";
+    let ast = rhai.engine.compile(format!("{code}\n{stubs}")).unwrap();
+    let module = Module::eval_ast_as_new(Scope::new(), &ast, &rhai.engine).unwrap();
+    rhai.engine.register_static_module("host", module.into());
+}
 
 fn make_tenant_script() -> Script {
     let base = env!("CARGO_MANIFEST_DIR");
@@ -36,7 +46,8 @@ fn backup_redis_empty_list_completes() {
 fn backup_redis_nominal() {
     // All kubectl commands succeed; expect the script to complete without throwing.
     let mut rhai = make_tenant_script();
-    rhai.add_code(
+    mock_host(
+        &mut rhai,
         r#"
         fn get_env(name) {
             if name == "dragonfly_sts"      { "my-dragonfly" }
@@ -46,8 +57,7 @@ fn backup_redis_nominal() {
         fn shell_output(cmd) { "my-dragonfly-0" }
         fn shell_run(cmd)    { 0 }
         "#,
-    )
-    .unwrap();
+    );
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(
         r#"import "backup_prepare_redis" as bk; bk::run({ctx});"#
@@ -59,7 +69,8 @@ fn backup_redis_nominal() {
 fn backup_redis_pod_not_found_throws() {
     // kubectl get pods returns empty string → script must throw.
     let mut rhai = make_tenant_script();
-    rhai.add_code(
+    mock_host(
+        &mut rhai,
         r#"
         fn get_env(name) {
             if name == "dragonfly_sts"           { "my-dragonfly" }
@@ -69,8 +80,7 @@ fn backup_redis_pod_not_found_throws() {
         fn shell_output(cmd) { "" }
         fn shell_run(cmd)    { 0 }
         "#,
-    )
-    .unwrap();
+    );
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(
         r#"import "backup_prepare_redis" as bk; bk::run({ctx});"#
@@ -87,7 +97,8 @@ fn backup_redis_pod_not_found_throws() {
 fn backup_redis_save_failure_throws() {
     // SAVE command returns non-zero → script must throw.
     let mut rhai = make_tenant_script();
-    rhai.add_code(
+    mock_host(
+        &mut rhai,
         r#"
         fn get_env(name) {
             if name == "dragonfly_sts"           { "my-dragonfly" }
@@ -100,8 +111,7 @@ fn backup_redis_save_failure_throws() {
             else { 0 }
         }
         "#,
-    )
-    .unwrap();
+    );
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(
         r#"import "backup_prepare_redis" as bk; bk::run({ctx});"#
@@ -118,7 +128,8 @@ fn backup_redis_save_failure_throws() {
 fn backup_redis_cp_failure_throws() {
     // kubectl cp returns non-zero → script must throw.
     let mut rhai = make_tenant_script();
-    rhai.add_code(
+    mock_host(
+        &mut rhai,
         r#"
         fn get_env(name) {
             if name == "dragonfly_sts"           { "my-dragonfly" }
@@ -131,8 +142,7 @@ fn backup_redis_cp_failure_throws() {
             else { 0 }
         }
         "#,
-    )
-    .unwrap();
+    );
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(
         r#"import "backup_prepare_redis" as bk; bk::run({ctx});"#
@@ -160,7 +170,8 @@ fn restore_redis_empty_list_completes() {
 fn restore_redis_statefulset_single_replica() {
     // StatefulSet with 1 replica: no scale needed, full restore flow completes.
     let mut rhai = make_tenant_script();
-    rhai.add_code(
+    mock_host(
+        &mut rhai,
         r#"
         fn get_env(name) {
             if name == "dragonfly_sts"           { "my-dragonfly" }
@@ -174,8 +185,7 @@ fn restore_redis_statefulset_single_replica() {
         }
         fn shell_run(cmd) { 0 }
         "#,
-    )
-    .unwrap();
+    );
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_ok(), "Expected success, got: {:?}", result.err());
@@ -186,7 +196,8 @@ fn restore_redis_statefulset_multiple_replicas() {
     // StatefulSet with 2 replicas: scale down to 1 then scale back to 2.
     // All commands succeed; script must complete without error.
     let mut rhai = make_tenant_script();
-    rhai.add_code(
+    mock_host(
+        &mut rhai,
         r#"
         fn get_env(name) {
             if name == "dragonfly_sts"           { "my-dragonfly" }
@@ -200,8 +211,7 @@ fn restore_redis_statefulset_multiple_replicas() {
         }
         fn shell_run(cmd) { 0 }
         "#,
-    )
-    .unwrap();
+    );
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_ok(), "Expected success, got: {:?}", result.err());
@@ -212,7 +222,8 @@ fn restore_redis_deployment_detected() {
     // When kubectl get statefulset returns non-zero, resource type is "deployment".
     // Script must still complete successfully with all mock commands succeeding.
     let mut rhai = make_tenant_script();
-    rhai.add_code(
+    mock_host(
+        &mut rhai,
         r#"
         fn get_env(name) {
             if name == "myredis_sts"           { "my-redis" }
@@ -230,8 +241,7 @@ fn restore_redis_deployment_detected() {
             else { 0 }
         }
         "#,
-    )
-    .unwrap();
+    );
     let ctx = context("test-ns", &["myredis"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_ok(), "Expected success, got: {:?}", result.err());
@@ -241,7 +251,8 @@ fn restore_redis_deployment_detected() {
 fn restore_redis_pod_not_found_throws() {
     // kubectl get pods returns empty string → script must throw.
     let mut rhai = make_tenant_script();
-    rhai.add_code(
+    mock_host(
+        &mut rhai,
         r#"
         fn get_env(name) {
             if name == "dragonfly_sts"           { "my-dragonfly" }
@@ -254,8 +265,7 @@ fn restore_redis_pod_not_found_throws() {
         }
         fn shell_run(cmd) { 0 }
         "#,
-    )
-    .unwrap();
+    );
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_err(), "Expected throw when no pod found");
@@ -267,7 +277,8 @@ fn restore_redis_pod_not_found_throws() {
 fn restore_redis_cp_failure_throws() {
     // kubectl cp fails → script must throw.
     let mut rhai = make_tenant_script();
-    rhai.add_code(
+    mock_host(
+        &mut rhai,
         r#"
         fn get_env(name) {
             if name == "dragonfly_sts"           { "my-dragonfly" }
@@ -284,8 +295,7 @@ fn restore_redis_cp_failure_throws() {
             else { 0 }
         }
         "#,
-    )
-    .unwrap();
+    );
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_err(), "Expected throw when kubectl cp fails");
@@ -301,7 +311,8 @@ fn restore_redis_scale_down_required_for_multiple_replicas() {
     // Old code had no scale logic: would succeed even when scale fails.
     // New code scales before restore → propagates the failure.
     let mut rhai = make_tenant_script();
-    rhai.add_code(
+    mock_host(
+        &mut rhai,
         r#"
         fn get_env(name) {
             if name == "dragonfly_sts"           { "my-dragonfly" }
@@ -318,8 +329,7 @@ fn restore_redis_scale_down_required_for_multiple_replicas() {
             else { 0 }
         }
         "#,
-    )
-    .unwrap();
+    );
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_err(), "Expected throw when scale down fails");
@@ -336,7 +346,8 @@ fn restore_redis_resource_type_detection_uses_deployment() {
     // New code detects resource type: if get statefulset fails → use deployment.
     // Test: make rollout status statefulset fail → old code would throw, new code uses deployment.
     let mut rhai = make_tenant_script();
-    rhai.add_code(
+    mock_host(
+        &mut rhai,
         r#"
         fn get_env(name) {
             if name == "myredis_sts"           { "my-redis" }
@@ -356,8 +367,7 @@ fn restore_redis_resource_type_detection_uses_deployment() {
             else { 0 }
         }
         "#,
-    )
-    .unwrap();
+    );
     let ctx = context("test-ns", &["myredis"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(
@@ -371,7 +381,8 @@ fn restore_redis_resource_type_detection_uses_deployment() {
 fn restore_redis_rollout_restart_failure_throws() {
     // rollout restart fails → script must throw.
     let mut rhai = make_tenant_script();
-    rhai.add_code(
+    mock_host(
+        &mut rhai,
         r#"
         fn get_env(name) {
             if name == "dragonfly_sts"           { "my-dragonfly" }
@@ -388,8 +399,7 @@ fn restore_redis_rollout_restart_failure_throws() {
             else { 0 }
         }
         "#,
-    )
-    .unwrap();
+    );
     let ctx = context("test-ns", &["dragonfly"]);
     let result = rhai.eval(&format!(r#"import "restore_redis" as rs; rs::run({ctx});"#));
     assert!(result.is_err(), "Expected throw when rollout restart fails");

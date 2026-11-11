@@ -15,7 +15,7 @@ fn run(instance, context) {
         }
         let hbs = new_hbs();
         hbs.register_partial_dir(context.template_dir);
-        if is_dir(`${context.package_dir}/pods`) {
+        if host::is_dir(`${context.package_dir}/pods`) {
             hbs.register_partial_dir(`${context.package_dir}/pods`);
         }
         let all = yd::decode(hbs.render_from("{{> init_job.yaml }}", bctx::run(instance, context, true)));
@@ -31,8 +31,8 @@ fn run(instance, context) {
                     }
                 } catch (e) {
                     switch type_of(e) {
-                        "string" => log_warn(e),
-                        _ => log_warn(json_encode(e))
+                        "string" => host::log_warn(e),
+                        _ => host::log_warn(core::json_encode(e))
                     }
                 }
             }
@@ -44,7 +44,7 @@ fn run(instance, context) {
     } catch (e) {
         switch type_of(e) {
             "string" => instance.set_status_init_failed(e),
-            _ => instance.set_status_init_failed(json_encode(e))
+            _ => instance.set_status_init_failed(core::json_encode(e))
         }
         throw;
     }

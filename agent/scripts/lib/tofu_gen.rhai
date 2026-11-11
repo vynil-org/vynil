@@ -1,10 +1,10 @@
 import "tofu" as tf;
 fn has_tofu_files(path) {
-    if !is_dir(path) { return false; }
+    if !host::is_dir(path) { return false; }
     let generated = ["00_vynil_vars.tf", "00_vynil_locals.tf", "providers.tf"];
-    for f in read_dir(path) {
-        let b = basename(f);
-        if glob(b, "*.tf") && !generated.contains(b) { return true; }
+    for f in host::read_dir(path) {
+        let b = core::basename(f);
+        if core::glob(b, "*.tf") && !generated.contains(b) { return true; }
     }
     false
 }
@@ -28,7 +28,7 @@ fn gen_vars(options, path) {
 `;
         }
     }
-    file_write(`${path}/00_vynil_vars.tf`, str);
+    host::file_write(`${path}/00_vynil_vars.tf`, str);
 }
 
 fn gen_tfvars(context) {
@@ -40,7 +40,7 @@ fn gen_tfvars(context) {
 `;
         }
     }
-    file_write(`${context.package_dir}/tofu/vynil.tfvars`, str);
+    host::file_write(`${context.package_dir}/tofu/vynil.tfvars`, str);
 }
 
 fn gen_locals(context) {
@@ -49,7 +49,7 @@ fn gen_locals(context) {
     let defaults = tf::to_tf(context.defaults);
     let extra = tf::to_tf(context.extra);
     let owner = tf::to_tf(vynil_owner());
-    file_write(`${context.package_dir}/tofu/00_vynil_locals.tf`, `locals {
+    host::file_write(`${context.package_dir}/tofu/00_vynil_locals.tf`, `locals {
     vynil_cluster = ${cluster}
     vynil_instance = ${instance}
     vynil_defaults = ${defaults}
@@ -60,10 +60,10 @@ fn gen_locals(context) {
 
 fn cached_version(namespace, name) {
     let base = `/nonexistent/.terraform.d/plugins/registry.opentofu.org/${namespace}/${name}`;
-    if !is_dir(base) { return ""; }
-    let entries = read_dir(base);
+    if !host::is_dir(base) { return ""; }
+    let entries = host::read_dir(base);
     if entries.len() == 0 { return ""; }
-    basename(entries[0])
+    core::basename(entries[0])
 }
 fn provider_constraint(namespace, name, fallback) {
     let ver = cached_version(namespace, name);
@@ -75,7 +75,7 @@ fn gen_provider(path) {
     // HCL ${file(...)} syntax stored in variables to avoid Rhai interpolation conflicts
     let sa_token = "${file(\"/run/secrets/kubernetes.io/serviceaccount/token\")}";
     let sa_cert  = "${file(\"/run/secrets/kubernetes.io/serviceaccount/ca.crt\")}";
-    file_write(`${path}/providers.tf`, `terraform {
+    host::file_write(`${path}/providers.tf`, `terraform {
   required_providers {
     kubernetes = {
         source  = "hashicorp/kubernetes"

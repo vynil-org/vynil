@@ -12,8 +12,8 @@ fn security_filter(v) {
     if v.len() == 0 { return false; }
     let c = v.sub_string(0, 1);
     if c != "v" && (c < "0" || c > "9") { return false; }
-    try { semver_from(v); return true } catch(e) {
-        log_warn(`skipping non-semver tag ${v}`);
+    try { semver::from(v); return true } catch(e) {
+        host::log_warn(`skipping non-semver tag ${v}`);
     }
     false
 }
@@ -22,7 +22,7 @@ fn scan_image_with_maturity(image, reg, all_tags, maturity) {
     let tags = all_tags
         .filter(|str| maturity_filter(str, maturity))
         .filter(|v| security_filter(v))
-        .map(|v| semver_from(v));
+        .map(|v| semver::from(v));
     if tags.len() < 1 { return []; }
     tags.sort(|a, b| if a == b { 0 } else if a < b { 1 } else { -1 });
     let tags = tags.map(|v| v.to_string());
@@ -40,23 +40,23 @@ fn scan_image_with_maturity(image, reg, all_tags, maturity) {
                 registry: image.registry,
                 image: image.repository,
                 tag: current,
-                metadata: json_decode(annotations["fr.solidite.vynil.metadata"]),
-                requirements: json_decode(annotations["fr.solidite.vynil.requirements"]),
+                metadata: core::json_decode(annotations["fr.solidite.vynil.metadata"]),
+                requirements: core::json_decode(annotations["fr.solidite.vynil.requirements"]),
             };
             if annotations.keys().contains("fr.solidite.vynil.options") {
-                cur["options"] = json_decode(annotations["fr.solidite.vynil.options"]);
+                cur["options"] = core::json_decode(annotations["fr.solidite.vynil.options"]);
             }
             if annotations.keys().contains("fr.solidite.vynil.recommandations") {
-                cur["recommandations"] = json_decode(annotations["fr.solidite.vynil.recommandations"]);
+                cur["recommandations"] = core::json_decode(annotations["fr.solidite.vynil.recommandations"]);
             }
             if annotations.keys().contains("fr.solidite.vynil.value_script") {
                 cur["value_script"] = annotations["fr.solidite.vynil.value_script"];
             }
             if (type_of(cur["requirements"]) == "array" && cur["requirements"].len() > 0) {
-                if (cur["requirements"].some(|i| i.vynil_version != () && security_filter(i.vynil_version) && semver_from(i.vynil_version)>semver_from(vynil_version()))) {
+                if (cur["requirements"].some(|i| i.vynil_version != () && security_filter(i.vynil_version) && semver::from(i.vynil_version)>semver::from(vynil_version()))) {
                     if tags.len() >= 1 {iter_tags = tags.shift();}
                     print(`Ignoring ${image.repository} as it requiere a too new version, ${iter_tags}, ${current}, ${tags.len}`);
-                } else if (last_min_version != () && cur["requirements"].some(|i| i.minimum_previous_version != () && security_filter(i.minimum_previous_version) && semver_from(i.minimum_previous_version)>=semver_from(last_min_version))) {
+                } else if (last_min_version != () && cur["requirements"].some(|i| i.minimum_previous_version != () && security_filter(i.minimum_previous_version) && semver::from(i.minimum_previous_version)>=semver::from(last_min_version))) {
                     if tags.len() >= 1 {iter_tags = tags.shift();}
                 } else {
                     if cur["requirements"].some(|i| i.minimum_previous_version != () && security_filter(i.minimum_previous_version)) {
@@ -91,7 +91,7 @@ fn compute_waypoints_from_packages(packages, maturity) {
     let filtered = packages
         .filter(|p| maturity_filter(p.tag, maturity))
         .filter(|p| security_filter(p.tag));
-    let sorted_sv = filtered.map(|p| #{sv: semver_from(p.tag), pkg: p});
+    let sorted_sv = filtered.map(|p| #{sv: semver::from(p.tag), pkg: p});
     sorted_sv.sort(|a, b| if a.sv == b.sv { 0 } else if a.sv < b.sv { 1 } else { -1 });
     let sorted = sorted_sv.map(|v| v.pkg);
 
@@ -104,13 +104,13 @@ fn compute_waypoints_from_packages(packages, maturity) {
             if cur.requirements.some(|i|
                 i.vynil_version != () &&
                 security_filter(i.vynil_version) &&
-                semver_from(i.vynil_version) > semver_from(vynil_version())
+                semver::from(i.vynil_version) > semver::from(vynil_version())
             ) {
                 if sorted.len() >= 1 { iter = sorted.shift(); }
             } else if last_min_version != () && cur.requirements.some(|i|
                 i.minimum_previous_version != () &&
                 security_filter(i.minimum_previous_version) &&
-                semver_from(i.minimum_previous_version) >= semver_from(last_min_version)
+                semver::from(i.minimum_previous_version) >= semver::from(last_min_version)
             ) {
                 if sorted.len() >= 1 { iter = sorted.shift(); }
             } else {
@@ -214,7 +214,7 @@ try {
             if deduped.len() > 0 {
                 deduped
             } else {
-                log_warn(`partial scan: filter '${scan_filter}' matched no known package — run a full scan first`);
+                host::log_warn(`partial scan: filter '${scan_filter}' matched no known package — run a full scan first`);
                 []
             }
         };
@@ -227,7 +227,7 @@ try {
             } else {
                 secret::get_auth_from(spec.pull_secret, args.namespace, image.registry)
             };
-            log_info(`Scanning ${image.registry}/${image.repository}`);
+            host::log_info(`Scanning ${image.registry}/${image.repository}`);
             let reg = new_registry(image.registry, auth.user, auth.pass);
             let got_tags = reg.list_tags(image.repository);
             let image_found = if file_scan {
@@ -250,11 +250,11 @@ try {
     }
 } catch(e) {
     if type_of(e) == "string" {
-        log_warn(e);
+        host::log_warn(e);
         let tmp = box.set_status_failed(e);
     } else {
-        log_warn(json_encode(e));
-        let tmp = box.set_status_failed(json_encode(e));
+        host::log_warn(core::json_encode(e));
+        let tmp = box.set_status_failed(core::json_encode(e));
     }
     throw;
 };

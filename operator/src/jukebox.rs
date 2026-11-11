@@ -105,7 +105,7 @@ impl Reconciler for JukeBox {
                 &Patch::Apply(cj_def),
             )
             .await
-            .map_err(Error::KubeError)?;
+            .map_err(Error::from)?;
 
         // Only create/recreate the direct Job when:
         //  - no terminal job exists (initial creation), or
@@ -190,7 +190,7 @@ async fn wait_job_deleted(job_api: &Api<Job>, job_name: &str, job: Job) -> Resul
     tokio::time::timeout(std::time::Duration::from_secs(20), cond)
         .await
         .map_err(Error::Elapsed)?
-        .map_err(Error::KubeWaitError)
+        .map_err(Error::from)
         .map(|_| ())
 }
 
@@ -224,7 +224,7 @@ async fn upsert_scan_job(
                 &serde_json::from_value(job_def).map_err(Error::SerializationError)?,
             )
             .await
-            .map_err(Error::KubeError)?;
+            .map_err(Error::from)?;
     }
     Ok(())
 }
@@ -244,7 +244,7 @@ async fn remove_force_scan_annotation(client: &kube::Client, name: &str) -> Resu
     );
     stms.patch(name, &PatchParams::default(), &patch)
         .await
-        .map_err(Error::KubeError)?;
+        .map_err(Error::from)?;
     Ok(())
 }
 
